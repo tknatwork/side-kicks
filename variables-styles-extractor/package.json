@@ -1,0 +1,32 @@
+{
+  "name": "variables-styles-extractor",
+  "version": "1.6.0",
+  "description": "Export and import Figma variables and styles (color, text, effect, grid) with full variable binding support. Supports all color formats: Hex, RGB, CSS, HSL, HSB. Perfect for migrating design systems between files.",
+  "main": "code.js",
+  "scripts": {
+    "build": "tsc && terser code.js -o code.js --compress --mangle --keep-fnames",
+    "build:dev": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.98.0",
+    "terser": "^5.44.1",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "figma",
+    "plugin",
+    "variables",
+    "styles",
+    "design-system",
+    "export",
+    "import"
+  ],
+  "author": "Tushar Kant Naik <hi@tusharkantnaik.com> (https://tusharkantnaik.com)",
+  "license": "MIT",
+  "homepage": "https://tusharkantnaik.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tknatwork/side-kicks"
+  }
+}
