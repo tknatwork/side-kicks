@@ -2,8 +2,9 @@ node_modules/
 *.log
 .DS_Store
 
-# Local documentation (not pushed to GitHub)
-docs/
+# npm lock file (using pnpm)
+package-lock.json
 
-# Local version archives (not pushed to GitHub)
-releases/
+# Backup files
+backup/
+*.backup.js

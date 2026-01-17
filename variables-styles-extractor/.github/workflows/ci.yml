@@ -1,0 +1,121 @@
+# ============================================================================
+# CI/CD Pipeline - Variables & Styles Extractor
+# Figma Plugin Build & Validation
+# 
+# @copyright 2025 Tushar Kant Naik / The Keep Collective
+# @license MIT
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Validate
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Checkout repository
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Setup Node.js with pnpm
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Install pnpm
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      # Get pnpm store directory for caching
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      # Cache pnpm dependencies
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # Install dependencies
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build plugin (TypeScript compile + Terser minification)
+      - name: Build
+        run: pnpm build
+
+      # Validate output files exist
+      - name: Validate build output
+        run: |
+          echo "Validating build output..."
+          
+          # Check required files exist
+          if [ ! -f "code.js" ]; then
+            echo "❌ ERROR: code.js not found"
+            exit 1
+          fi
+          
+          if [ ! -f "ui.html" ]; then
+            echo "❌ ERROR: ui.html not found"
+            exit 1
+          fi
+          
+          if [ ! -f "manifest.json" ]; then
+            echo "❌ ERROR: manifest.json not found"
+            exit 1
+          fi
+          
+          echo "✅ All required files present"
+          
+          # Check code.js is minified (should be single line or very few lines)
+          LINES=$(wc -l < code.js)
+          if [ "$LINES" -gt 50 ]; then
+            echo "⚠️ WARNING: code.js has $LINES lines - may not be minified"
+          else
+            echo "✅ code.js is minified ($LINES lines)"
+          fi
+
+      # Check for coding standard violations (BP-001)
+      - name: Check CSS standards (BP-001)
+        run: |
+          echo "Checking for CSS containment violations..."
+          
+          # Check for forbidden CSS (contain: strict)
+          if grep -q "contain: strict" ui.html; then
+            echo "❌ ERROR: Found 'contain: strict' - use 'contain: layout style' instead (BP-001)"
+            exit 1
+          fi
+          
+          # Check for forbidden CSS (content-visibility: auto)
+          if grep -q "content-visibility: auto" ui.html; then
+            echo "❌ ERROR: Found 'content-visibility: auto' - not supported in Figma iframe (BP-001)"
+            exit 1
+          fi
+          
+          echo "✅ No CSS containment violations found"
+
+      # Upload build artifacts
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: figma-plugin
+          path: |
+            code.js
+            ui.html
+            manifest.json
+          retention-days: 7

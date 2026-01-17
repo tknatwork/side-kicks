@@ -1,0 +1,100 @@
+# ============================================================================
+# Release Pipeline - Variables & Styles Extractor
+# Creates GitHub release with plugin files
+# 
+# @copyright 2025 Tushar Kant Naik / The Keep Collective
+# @license MIT
+# ============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggered by version tags like v1.7.0
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      # Checkout repository
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Setup Node.js with pnpm
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Install pnpm
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      # Install dependencies
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Build plugin
+      - name: Build
+        run: pnpm build
+
+      # Validate CSS standards before release
+      - name: Validate CSS standards (BP-001)
+        run: |
+          if grep -q "contain: strict" ui.html; then
+            echo "❌ Release blocked: CSS violation (contain: strict)"
+            exit 1
+          fi
+          if grep -q "content-visibility: auto" ui.html; then
+            echo "❌ Release blocked: CSS violation (content-visibility: auto)"
+            exit 1
+          fi
+          echo "✅ CSS standards check passed"
+
+      # Extract version from tag
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      # Create release zip
+      - name: Create release package
+        run: |
+          mkdir -p release
+          cp code.js release/
+          cp ui.html release/
+          cp manifest.json release/
+          cp LICENSE release/
+          cp README.md release/
+          cp KNOWN_ISSUES.md release/
+          cd release && zip -r ../variables-styles-extractor-${{ steps.version.outputs.VERSION }}.zip .
+
+      # Create GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Variables & Styles Extractor ${{ steps.version.outputs.VERSION }}
+          body: |
+            ## ☕️ Variables & Styles Extractor ${{ steps.version.outputs.VERSION }}
+            
+            ### Installation
+            1. Download the zip file
+            2. Extract to a folder
+            3. In Figma: Plugins → Development → Import plugin from manifest
+            4. Select the `manifest.json` file
+            
+            ### Or install from Figma Community
+            Search "Variables & Styles Extractor" in Figma Community
+            
+            ---
+            See [CHANGELOG](https://github.com/tknatwork/side-kicks/blob/main/variables-styles-extractor/docs/CHANGELOG.md) for details.
+          files: |
+            variables-styles-extractor-${{ steps.version.outputs.VERSION }}.zip
+          draft: false
+          prerelease: false

@@ -1,0 +1,3127 @@
+<!--
+  ☕️ Variables & Styles Extractor - Figma Plugin
+  Export and import Figma variables and styles with full fidelity
+  
+  Copyright (c) 2025 Tushar Kant Naik / The Keep Collective
+  Licensed under MIT - See LICENSE file
+  
+  Author: Tushar Kant Naik <hi@tusharkantnaik.com>
+  Website: https://tusharkantnaik.com
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Variables and Styles Extractor</title>
+  <style>
+    :root {
+      --color-primary: #FF90E8;
+      --color-primary-hover: #FF6EDE;
+      --color-bg: #FFFFFF;
+      --color-bg-secondary: #F5F5F5;
+      --color-bg-tertiary: #EBEBEB;
+      --color-text: #000000;
+      --color-text-secondary: #666666;
+      --color-border: #000000;
+      --color-success: #52C41A;
+      --color-warning: #FAAD14;
+      --color-error: #FF4D4F;
+      --color-color: #9B59B6;
+      --color-number: #3498DB;
+      --color-boolean: #E67E22;
+      --color-string: #27AE60;
+      --shadow: 3px 3px 0px 0px #000000;
+      --shadow-hover: 5px 5px 0px 0px #000000;
+      --shadow-active: 1px 1px 0px 0px #000000;
+      --border-radius: 4px;
+      --border-width: 2px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-size: 12px;
+      color: var(--color-text);
+      background: var(--color-bg);
+      padding: 12px;
+      padding-bottom: 60px; /* Space for fixed footer */
+      line-height: 1.4;
+      /* Performance: Enable GPU acceleration */
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: var(--border-width) solid var(--color-border);
+    }
+
+    .header-logo {
+      width: 32px;
+      height: 32px;
+      flex-shrink: 0;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .header .badge {
+      background: var(--color-primary);
+      color: #000;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 9px;
+      font-weight: 600;
+    }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      gap: 0;
+      margin-bottom: 16px;
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 10px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--color-bg-secondary);
+      border: none;
+      border-right: var(--border-width) solid var(--color-border);
+      cursor: pointer;
+      transition: all 0.1s ease;
+    }
+
+    .tab:last-child {
+      border-right: none;
+    }
+
+    .tab:hover {
+      background: var(--color-bg-tertiary);
+    }
+
+    .tab.active {
+      background: var(--color-primary);
+      color: #000;
+    }
+
+    /* Tab Content */
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Section */
+    .section {
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      transition: all 0.1s ease;
+      background: var(--color-bg);
+      color: var(--color-text);
+      box-shadow: var(--shadow);
+      width: 100%;
+    }
+
+    .btn:hover {
+      box-shadow: var(--shadow-hover);
+      transform: translate(-2px, -2px);
+    }
+
+    .btn:active {
+      box-shadow: var(--shadow-active);
+      transform: translate(1px, 1px);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: var(--shadow);
+    }
+
+    .btn-primary {
+      background: var(--color-primary);
+    }
+
+    .btn-success {
+      background: var(--color-success);
+      color: #fff;
+    }
+
+    .btn-danger {
+      background: #dc3545;
+      color: #fff;
+    }
+
+    .btn-danger:hover {
+      background: #c82333;
+    }
+
+    .btn-secondary {
+      background: var(--color-bg-secondary);
+    }
+
+    .btn-small {
+      padding: 6px 10px;
+      font-size: 11px;
+    }
+
+    /* Form Elements */
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      padding: 8px 10px;
+      font-size: 12px;
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      background: var(--color-bg);
+      font-family: inherit;
+    }
+
+    .form-textarea {
+      min-height: 120px;
+      resize: vertical;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 10px;
+      /* Performance for large JSON content */
+      will-change: contents;
+      contain: content;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .form-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .form-checkbox input {
+      width: 16px;
+      height: 16px;
+      cursor: pointer;
+    }
+
+    /* Collections List - Optimized for large datasets */
+    .collections-list {
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      max-height: 280px;
+      overflow-y: auto;
+      /* Performance optimizations for smooth scrolling */
+      will-change: scroll-position;
+      contain: layout style;
+      overflow-anchor: none;
+      -webkit-overflow-scrolling: touch;
+      scroll-behavior: auto;
+    }
+
+    /* Remove top border from collections list when following stats */
+    #import-stats-summary + .collections-list {
+      border-top: none;
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
+      margin-top: -12px;
+    }
+
+    /* Collection item styling */
+    .collection-item {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--color-bg-tertiary);
+      gap: 10px;
+      /* GPU acceleration for smooth scrolling */
+      transform: translateZ(0);
+      backface-visibility: hidden;
+    }
+
+    .collection-item:last-child {
+      border-bottom: none;
+    }
+
+    .collection-item:hover {
+      background: var(--color-bg-secondary);
+    }
+
+    .collection-item.selected {
+      background: rgba(255, 144, 232, 0.2);
+    }
+
+    .collection-checkbox {
+      flex-shrink: 0;
+    }
+
+    .collection-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .collection-name {
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .collection-meta {
+      font-size: 10px;
+      color: var(--color-text-secondary);
+      margin-top: 2px;
+    }
+
+    .collection-types {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    .type-badge {
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+
+    .type-color { background: #EDE7F6; color: #7B1FA2; }
+    .type-float { background: #E3F2FD; color: #1565C0; }
+    .type-boolean { background: #FFF3E0; color: #E65100; }
+    .type-string { background: #E8F5E9; color: #2E7D32; }
+
+    /* Log Area - Performance optimized */
+    .log-area {
+      background: #1a1a1a;
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      padding: 10px;
+      max-height: 120px;
+      overflow-y: auto;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 10px;
+      color: #e0e0e0;
+      /* Performance */
+      will-change: scroll-position;
+      contain: content;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .log-entry {
+      padding: 2px 0;
+      border-bottom: 1px solid #333;
+    }
+
+    .log-entry:last-child {
+      border-bottom: none;
+    }
+
+    .log-time {
+      color: #666;
+      margin-right: 6px;
+    }
+
+    .log-success { color: #52C41A; }
+    .log-error { color: #FF4D4F; }
+    .log-warning { color: #FAAD14; }
+
+    /* Stats */
+    .stats {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .stats-section {
+      background: var(--color-bg-secondary);
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      padding: 8px;
+    }
+
+    .stats-section-title {
+      font-size: 10px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--color-text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stats-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .stat-card {
+      background: var(--color-bg);
+      border: 1px solid var(--color-border);
+      border-radius: var(--border-radius);
+      padding: 6px 10px;
+      text-align: center;
+      min-width: 50px;
+      flex: 1;
+    }
+
+    .stat-value {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .stat-label {
+      font-size: 9px;
+      color: var(--color-text-secondary);
+    }
+
+    /* File Input / Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--color-border);
+      border-radius: var(--border-radius);
+      padding: 20px;
+      text-align: center;
+      color: var(--color-text-secondary);
+      margin-bottom: 12px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--color-primary);
+      background: rgba(255, 144, 232, 0.1);
+    }
+
+    .drop-zone.file-loaded {
+      border-color: var(--color-success);
+      background: rgba(82, 196, 26, 0.05);
+    }
+
+    .loaded-file-name {
+      margin-top: 8px;
+      padding: 4px 10px;
+      background: var(--color-success);
+      color: white;
+      border-radius: 12px;
+      font-size: 10px;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .loaded-file-name.hidden {
+      display: none;
+    }
+
+    .drop-zone-icon {
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    /* Preview Section */
+    .preview-section {
+      background: var(--color-bg-secondary);
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .preview-title {
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .preview-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .preview-btn {
+      padding: 4px 8px;
+      font-size: 10px;
+      border: 1px solid var(--color-border);
+      border-radius: 3px;
+      background: var(--color-bg);
+      cursor: pointer;
+    }
+
+    .preview-btn:hover {
+      background: var(--color-bg-tertiary);
+    }
+
+    /* Structure Tree - Optimized for large structures */
+    .structure-tree {
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 10px;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      padding: 10px;
+      border-radius: var(--border-radius);
+      max-height: 150px;
+      overflow-y: auto;
+      /* Performance */
+      will-change: scroll-position;
+      contain: content;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .tree-collection {
+      margin-bottom: 8px;
+    }
+
+    .tree-collection-name {
+      color: #FF90E8;
+      font-weight: 600;
+    }
+
+    .tree-mode {
+      margin-left: 12px;
+      color: #64B5F6;
+    }
+
+    .tree-var {
+      margin-left: 24px;
+      color: #A5D6A7;
+    }
+
+    .tree-type {
+      color: #FFB74D;
+      font-size: 9px;
+    }
+
+    /* Grid */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    /* Help text */
+    .help-text {
+      font-size: 10px;
+      color: var(--color-text-secondary);
+      margin-top: 4px;
+    }
+
+    /* Validation Alerts */
+    .validation-section {
+      margin-bottom: 12px;
+    }
+
+    .validation-alert {
+      padding: 10px 12px;
+      border-radius: var(--border-radius);
+      border: var(--border-width) solid;
+      margin-bottom: 8px;
+      font-size: 11px;
+    }
+
+    .validation-alert.error {
+      background: #FFF2F2;
+      border-color: var(--color-error);
+      color: #8B0000;
+    }
+
+    .validation-alert.warning {
+      background: #FFFBEB;
+      border-color: var(--color-warning);
+      color: #7D5A00;
+    }
+
+    .validation-alert.success {
+      background: #F0FFF4;
+      border-color: var(--color-success);
+      color: #006400;
+    }
+
+    .validation-alert-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .validation-alert ul {
+      margin: 0;
+      padding-left: 16px;
+    }
+
+    .validation-alert li {
+      margin: 2px 0;
+    }
+
+    /* Plan Selector */
+    .plan-selector {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .plan-option {
+      padding: 8px 6px;
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      text-align: center;
+      cursor: pointer;
+      font-size: 10px;
+      background: var(--color-bg);
+      transition: all 0.1s ease;
+    }
+
+    .plan-option:hover {
+      background: var(--color-bg-secondary);
+    }
+
+    .plan-option.selected {
+      background: var(--color-primary);
+      font-weight: 600;
+    }
+
+    .plan-option .plan-name {
+      font-weight: 600;
+      display: block;
+    }
+
+    .plan-option .plan-modes {
+      color: var(--color-text-secondary);
+      font-size: 9px;
+    }
+
+    .plan-option.selected .plan-modes {
+      color: inherit;
+    }
+
+    /* Detected Plan Banner */
+    .detected-plan-banner {
+      background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+      border: var(--border-width) solid #4CAF50;
+      border-radius: var(--border-radius);
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .detected-plan-banner .plan-icon {
+      font-size: 20px;
+    }
+
+    .detected-plan-banner .plan-info {
+      flex: 1;
+    }
+
+    .detected-plan-banner .plan-label {
+      font-size: 10px;
+      color: #2E7D32;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .detected-plan-banner .plan-value {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1B5E20;
+    }
+
+    .detected-plan-banner .plan-detail {
+      font-size: 10px;
+      color: #388E3C;
+    }
+
+    /* Library Status Card */
+    .library-status-card {
+      border-radius: var(--border-radius);
+      padding: 12px;
+      margin-top: 12px;
+      margin-bottom: 12px;
+      font-size: 11px;
+    }
+
+    .library-status-card.library-available {
+      background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+      border: var(--border-width) solid #2196F3;
+    }
+
+    .library-status-card.library-missing {
+      background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+      border: var(--border-width) solid #FF9800;
+    }
+
+    .library-status-card.library-partial {
+      background: linear-gradient(135deg, #FFFDE7 0%, #FFF9C4 100%);
+      border: var(--border-width) solid #FFC107;
+    }
+
+    .library-status-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .library-status-icon {
+      font-size: 18px;
+    }
+
+    .library-status-title {
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .library-status-card.library-available .library-status-title {
+      color: #1565C0;
+    }
+
+    .library-status-card.library-missing .library-status-title {
+      color: #E65100;
+    }
+
+    .library-status-card.library-partial .library-status-title {
+      color: #F57F17;
+    }
+
+    .library-status-message {
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .library-collection-list {
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 4px;
+      padding: 8px;
+      margin-top: 8px;
+    }
+
+    .library-collection-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+      font-size: 10px;
+    }
+
+    .library-collection-item .status-icon {
+      font-size: 12px;
+    }
+
+    .library-collection-item.available {
+      color: #1B5E20;
+    }
+
+    .library-collection-item.missing {
+      color: #BF360C;
+    }
+
+    .library-import-options {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid rgba(0, 0, 0, 0.1);
+    }
+
+    .library-import-options label {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 10px;
+      margin-bottom: 6px;
+    }
+
+    .library-import-options input[type="radio"] {
+      margin-top: 2px;
+    }
+
+    .library-option-desc {
+      color: var(--color-text-secondary);
+      font-size: 9px;
+      margin-top: 2px;
+    }
+
+    /* Font Status Card */
+    .font-status-card {
+      border-radius: var(--border-radius);
+      padding: 12px;
+      margin-top: 12px;
+      margin-bottom: 12px;
+      font-size: 11px;
+    }
+
+    .font-status-card.font-available {
+      background: linear-gradient(135deg, #E8F5E9 0%, #C8E6C9 100%);
+      border: var(--border-width) solid #4CAF50;
+    }
+
+    .font-status-card.font-missing {
+      background: linear-gradient(135deg, #FCE4EC 0%, #F8BBD0 100%);
+      border: var(--border-width) solid #E91E63;
+    }
+
+    .font-status-card.font-partial {
+      background: linear-gradient(135deg, #FFF3E0 0%, #FFE0B2 100%);
+      border: var(--border-width) solid #FF9800;
+    }
+
+    .font-status-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .font-status-icon {
+      font-size: 18px;
+    }
+
+    .font-status-title {
+      font-weight: 700;
+      font-size: 12px;
+    }
+
+    .font-status-card.font-available .font-status-title {
+      color: #2E7D32;
+    }
+
+    .font-status-card.font-missing .font-status-title {
+      color: #AD1457;
+    }
+
+    .font-status-card.font-partial .font-status-title {
+      color: #E65100;
+    }
+
+    .font-status-message {
+      margin-bottom: 8px;
+      line-height: 1.4;
+    }
+
+    .font-list {
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 4px;
+      padding: 8px;
+      margin-top: 8px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    .font-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+      font-size: 10px;
+    }
+
+    .font-item .status-icon {
+      font-size: 12px;
+    }
+
+    .font-item.available {
+      color: #1B5E20;
+    }
+
+    .font-item.missing {
+      color: #880E4F;
+    }
+
+    .font-tip {
+      margin-top: 8px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.5);
+      border-radius: 4px;
+      font-size: 10px;
+      color: #5D4037;
+    }
+
+    /* Mode Selection - Optimized for many modes */
+    .mode-selection-section {
+      margin-top: 12px;
+      padding: 12px;
+      background: #FFF8E1;
+      border: var(--border-width) solid #FFC107;
+      border-radius: var(--border-radius);
+      max-height: 300px;
+      overflow-y: auto;
+      /* Performance */
+      will-change: scroll-position;
+      contain: content;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .mode-selection-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: #F57F17;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .mode-selection-help {
+      font-size: 10px;
+      color: #6D4C00;
+      margin-bottom: 10px;
+    }
+
+    .collection-mode-selector {
+      background: var(--color-bg);
+      border: 1px solid #FFD54F;
+      border-radius: var(--border-radius);
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+
+    .collection-mode-selector:last-child {
+      margin-bottom: 0;
+    }
+
+    .collection-mode-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .collection-mode-name {
+      font-weight: 600;
+      font-size: 11px;
+    }
+
+    .collection-mode-count {
+      font-size: 10px;
+      color: var(--color-text-secondary);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .collection-mode-count.valid {
+      color: var(--color-success);
+      background: rgba(82, 196, 26, 0.1);
+      font-weight: 600;
+    }
+
+    .collection-mode-count.exceeded {
+      color: var(--color-error);
+      background: rgba(255, 77, 79, 0.1);
+      font-weight: 600;
+    }
+
+    .collection-within-limit {
+      border-color: var(--color-success) !important;
+    }
+
+    .collection-exceeds-limit {
+      border-color: var(--color-warning) !important;
+    }
+
+    .mode-checkboxes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .mode-checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: var(--color-bg-secondary);
+      border: 1px solid var(--color-border);
+      border-radius: 12px;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.1s ease;
+    }
+
+    .mode-checkbox-label:hover {
+      background: var(--color-bg-tertiary);
+    }
+
+    .mode-checkbox-label.selected {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+    }
+
+    .mode-checkbox-label.disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .mode-checkbox-label input {
+      display: none;
+    }
+
+    /* Hidden */
+    .hidden {
+      display: none !important;
+    }
+
+    /* Styles Options */
+    .styles-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      padding: 10px;
+      background: var(--color-bg-secondary);
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+    }
+
+    /* Empty State */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+      text-align: center;
+    }
+    .empty-icon {
+      font-size: 32px;
+      margin-bottom: 12px;
+      opacity: 0.6;
+    }
+    .empty-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--color-text);
+      margin-bottom: 4px;
+    }
+    .empty-desc {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+    }
+
+    /* Loading */
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: var(--color-text-secondary);
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--color-bg-tertiary);
+      border-top-color: var(--color-primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Persistent Footer */
+    .plugin-footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: var(--color-bg);
+      border-top: var(--border-width) solid var(--color-border);
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      z-index: 100;
+    }
+
+    .footer-brand {
+      font-size: 10px;
+      color: var(--color-text-secondary);
+    }
+
+    .footer-brand span {
+      color: var(--color-text);
+      font-weight: 600;
+    }
+
+    .footer-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .footer-btn {
+      padding: 6px 10px;
+      font-size: 10px;
+      font-weight: 600;
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      transition: all 0.1s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .footer-btn-tip {
+      background: #FFDD00;
+      color: #000;
+    }
+
+    .footer-btn-tip:hover {
+      background: #FFE433;
+      box-shadow: var(--shadow);
+      transform: translate(-1px, -1px);
+    }
+
+    .footer-btn-shop {
+      background: var(--color-bg);
+      color: var(--color-text);
+    }
+
+    .footer-btn-shop:hover {
+      background: var(--color-bg-secondary);
+      box-shadow: var(--shadow);
+      transform: translate(-1px, -1px);
+    }
+
+    /* Tip Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.2s ease;
+    }
+
+    .modal-overlay.visible {
+      opacity: 1;
+      visibility: visible;
+    }
+
+    .modal {
+      background: var(--color-bg);
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      box-shadow: 6px 6px 0px 0px #000000;
+      padding: 20px;
+      max-width: 320px;
+      width: 90%;
+      transform: scale(0.9);
+      transition: transform 0.2s ease;
+    }
+
+    .modal-overlay.visible .modal {
+      transform: scale(1);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .modal-title {
+      font-size: 14px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      color: var(--color-text-secondary);
+      padding: 4px;
+      line-height: 1;
+    }
+
+    .modal-close:hover {
+      color: var(--color-text);
+    }
+
+    .modal-body {
+      font-size: 12px;
+      color: var(--color-text-secondary);
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+
+    .modal-body p {
+      margin-bottom: 12px;
+    }
+
+    .tip-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .tip-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      font-size: 12px;
+      font-weight: 600;
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      transition: all 0.1s ease;
+      text-decoration: none;
+      color: var(--color-text);
+    }
+
+    .tip-btn-paypal {
+      background: #0070BA;
+      color: #FFFFFF;
+      border-color: #0070BA;
+    }
+
+    .tip-btn-paypal:hover {
+      background: #005C99;
+      box-shadow: var(--shadow);
+      transform: translate(-2px, -2px);
+    }
+
+    .modal-footer {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--color-bg-tertiary);
+      font-size: 10px;
+      color: var(--color-text-secondary);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="export">📤 Export</button>
+    <button class="tab" data-tab="import">📥 Import</button>
+  </div>
+
+  <!-- Export Tab -->
+  <div id="export-tab" class="tab-content active">
+    <div class="section">
+      <div class="section-title" style="display: flex; justify-content: space-between; align-items: center;">
+        <span>Select Collections to Export</span>
+        <button class="btn btn-secondary btn-small" onclick="refreshCollections()" title="Refresh to see latest changes" style="padding: 4px 8px; font-size: 10px;">
+          🔄 Refresh
+        </button>
+      </div>
+      <div class="collections-list" id="export-collections">
+        <div class="loading">
+          <div class="spinner"></div>
+          <span>Loading collections...</span>
+        </div>
+      </div>
+      <div style="margin-top: 8px; display: flex; gap: 8px;">
+        <button class="btn btn-secondary btn-small" onclick="selectAllExport(true)" style="flex:1">✅ Select All</button>
+        <button class="btn btn-secondary btn-small" onclick="selectAllExport(false)" style="flex:1">❌ Deselect All</button>
+      </div>
+      
+      <!-- Library Dependencies Warning Banner -->
+      <div id="library-warning-banner" class="warning-banner hidden" style="margin-top: 12px; padding: 10px 12px; background: #FFF7E6; border: 2px solid #FAAD14; border-radius: 4px;">
+        <div style="font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 14px;">📚</span>
+          <span>Library Dependencies Detected</span>
+        </div>
+        <p style="font-size: 11px; color: #666; margin-bottom: 8px; line-height: 1.4;">
+          Some variables reference collections from <strong>linked libraries</strong> that cannot be exported:
+        </p>
+        <div id="library-deps-list" style="font-size: 10px; font-family: monospace; background: rgba(0,0,0,0.05); padding: 6px 8px; border-radius: 3px; margin-bottom: 8px;"></div>
+        <p style="font-size: 10px; color: #999; line-height: 1.4;">
+          ⚠️ <strong>Important:</strong> Only <em>local</em> variables & styles will be exported. Variables that alias library tokens will export their raw values. To preserve library references, ensure the destination file is connected to the same library.
+        </p>
+      </div>
+      
+      <!-- Font Requirements Info Banner (shown after export) -->
+      <div id="font-requirements-banner" class="warning-banner hidden" style="margin-top: 12px; padding: 10px 12px; background: #E8F5E9; border: 2px solid #4CAF50; border-radius: 4px;">
+        <div style="font-weight: 600; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 14px;">🔤</span>
+          <span>Font Requirements</span>
+        </div>
+        <p style="font-size: 11px; color: #555; margin-bottom: 8px; line-height: 1.4;">
+          The exported text styles require these fonts to be installed in the destination file:
+        </p>
+        <div id="font-requirements-list" style="font-size: 10px; font-family: monospace; background: rgba(0,0,0,0.05); padding: 6px 8px; border-radius: 3px; margin-bottom: 8px; max-height: 100px; overflow-y: auto;"></div>
+        <p style="font-size: 10px; color: #666; line-height: 1.4;">
+          💡 <strong>Tip:</strong> Ensure these fonts are installed (via Google Fonts, Adobe Fonts, or local installation) in the system before importing to the destination file.
+        </p>
+      </div>
+    </div>
+
+    <!-- Styles Export Options -->
+    <div class="section">
+      <div class="section-title">Include Styles (Optional)</div>
+      <div class="styles-options">
+        <label class="form-checkbox">
+          <input type="checkbox" id="export-color-styles" onchange="updateExportPreview()">
+          <span>🎨 Color Styles</span>
+        </label>
+        <label class="form-checkbox" style="margin-left: 16px;">
+          <input type="checkbox" id="export-include-images" onchange="updateExportPreview()">
+          <span>📸 Include image data</span>
+        </label>
+        <label class="form-checkbox">
+          <input type="checkbox" id="export-text-styles" onchange="updateExportPreview()">
+          <span>📝 Text Styles</span>
+        </label>
+        <label class="form-checkbox">
+          <input type="checkbox" id="export-effect-styles" onchange="updateExportPreview()">
+          <span>✨ Effect Styles</span>
+        </label>
+        <label class="form-checkbox">
+          <input type="checkbox" id="export-grid-styles" onchange="updateExportPreview()">
+          <span>📱 Grid/Layout Styles</span>
+        </label>
+      </div>
+      <p class="help-text">Styles connected to variables will preserve their bindings</p>
+      <p class="help-text" id="image-warning" style="color: var(--color-warning); display: none;">⚠️ Including images will increase file size significantly</p>
+    </div>
+
+    <!-- Export Preview -->
+    <div class="section hidden" id="export-preview-section">
+      <div class="preview-section">
+        <div class="preview-header">
+          <span class="preview-title">📊 Export Preview</span>
+        </div>
+        <div class="stats" id="export-preview-stats"></div>
+        <div class="structure-tree" id="export-preview-tree"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <button class="btn btn-primary" onclick="exportVariables()" id="export-btn">
+        📤 Export Selected
+      </button>
+      <p class="help-text">Exports variables and selected styles to JSON format</p>
+    </div>
+
+    <div class="section hidden" id="export-output-section">
+      <div class="section-title">Export Result</div>
+      <textarea class="form-textarea" id="export-output" readonly></textarea>
+      <div class="grid-2" style="margin-top: 8px;">
+        <button class="btn btn-secondary btn-small" onclick="copyExport()">📋 Copy</button>
+        <button class="btn btn-secondary btn-small" onclick="downloadExport()">💾 Download</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Import Tab -->
+  <div id="import-tab" class="tab-content">
+    <div class="section">
+      <div class="section-title">Import JSON</div>
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <div class="drop-zone-icon">📁</div>
+        <div id="drop-zone-text">Drop JSON file here or click to browse</div>
+        <div id="loaded-file-name" class="loaded-file-name hidden"></div>
+        <input type="file" id="file-input" accept=".json" style="display: none;">
+      </div>
+      <div class="section-title">Or paste JSON</div>
+      <textarea class="form-textarea" id="import-input" placeholder="Paste exported JSON here..." oninput="debouncedParseImportPreview()"></textarea>
+    </div>
+
+    <!-- Import Preview -->
+    <div class="section hidden" id="import-preview-section">
+      <div class="preview-section">
+        <div class="preview-header">
+          <span class="preview-title">📋 Detected Structure</span>
+          <div class="preview-actions">
+            <button class="preview-btn" onclick="selectAllImport(true)">Select All</button>
+            <button class="preview-btn" onclick="selectAllImport(false)">Deselect All</button>
+          </div>
+        </div>
+        
+        <!-- Import Stats Summary -->
+        <div id="import-stats-summary" class="stats"></div>
+        
+        <div class="collections-list" id="import-collections" style="max-height: 150px;"></div>
+      </div>
+    </div>
+
+    <!-- Plan Selection for Validation -->
+    <div class="section hidden" id="plan-selection-section">
+      <!-- Detected Plan Banner -->
+      <div class="detected-plan-banner" id="detected-plan-banner">
+        <div class="plan-icon">📊</div>
+        <div class="plan-info">
+          <div class="plan-label">Detected File Plan</div>
+          <div class="plan-value" id="detected-plan-value">Professional</div>
+          <div class="plan-detail" id="detected-plan-detail">Up to 10 modes per collection</div>
+        </div>
+      </div>
+      
+      <div class="section-title">Override Plan (if detection is wrong)</div>
+      <p class="help-text" style="margin-bottom: 8px;">
+        The plugin detected your plan based on existing collections. Select a different plan if incorrect.
+      </p>
+      <div class="plan-selector" id="plan-selector">
+        <div class="plan-option" data-plan="starter" onclick="selectPlan('starter')">
+          <span class="plan-name">Starter</span>
+          <span class="plan-modes">1 mode</span>
+        </div>
+        <div class="plan-option selected" data-plan="professional" onclick="selectPlan('professional')">
+          <span class="plan-name">Pro</span>
+          <span class="plan-modes">10 modes</span>
+        </div>
+        <div class="plan-option" data-plan="organization" onclick="selectPlan('organization')">
+          <span class="plan-name">Org</span>
+          <span class="plan-modes">20 modes</span>
+        </div>
+        <div class="plan-option" data-plan="enterprise" onclick="selectPlan('enterprise')">
+          <span class="plan-name">Enterprise</span>
+          <span class="plan-modes">Unlimited</span>
+        </div>
+      </div>
+      
+      <!-- Validation Results -->
+      <div id="validation-results"></div>
+      
+      <!-- Library Dependencies Status -->
+      <div id="library-status-section" class="hidden">
+        <div class="library-status-card" id="library-status-card">
+          <!-- Content populated by JavaScript -->
+        </div>
+      </div>
+      
+      <!-- Font Dependencies Status -->
+      <div id="font-status-section" class="hidden">
+        <div class="font-status-card" id="font-status-card">
+          <!-- Content populated by JavaScript -->
+        </div>
+      </div>
+      
+      <!-- Mode Selection (shown when modes exceed limit) -->
+      <div id="mode-selection-container" class="hidden"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Clear Before Import (Optional)</div>
+      <p class="help-text" style="margin-bottom: 8px;">⚠️ Warning: These actions cannot be undone!</p>
+      <div class="grid-2" style="gap: 8px;">
+        <button class="btn btn-danger btn-small" onclick="clearAllVariables()">🗑️ Clear All Variables</button>
+        <button class="btn btn-danger btn-small" onclick="clearAllStyles()">🗑️ Clear All Styles</button>
+      </div>
+      <button class="btn btn-danger btn-small" onclick="clearAll()" style="width: 100%; margin-top: 8px;">🗑️ Clear Everything</button>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Import Options</div>
+      <label class="form-checkbox">
+        <input type="checkbox" id="import-merge" checked>
+        <span>Merge with existing collections (create if not exists)</span>
+      </label>
+      <label class="form-checkbox" style="margin-top: 8px;">
+        <input type="checkbox" id="import-overwrite" checked>
+        <span>Overwrite existing variables</span>
+      </label>
+      <label class="form-checkbox" style="margin-top: 8px;">
+        <input type="checkbox" id="import-styles" checked>
+        <span>Import styles (if present in JSON)</span>
+      </label>
+    </div>
+
+    <div class="section">
+      <button class="btn btn-success" onclick="importVariables()" id="import-btn" disabled>
+        📥 Import Selected
+      </button>
+      <p class="help-text" id="import-status">Paste or drop a JSON file to preview</p>
+    </div>
+  </div>
+
+  <!-- Log Area -->
+  <div class="section" style="margin-top: 16px;">
+    <div class="section-title">Activity Log</div>
+    <div class="log-area" id="log-area">
+      <div class="log-entry">
+        <span class="log-time">--:--:--</span>
+        <span>Variables Extractor initialized</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========== PERFORMANCE UTILITIES ==========
+    
+    // Debounce function to prevent excessive re-rendering
+    function debounce(func, wait) {
+      let timeout;
+      return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    }
+    
+    // Throttle function for scroll events
+    function throttle(func, limit) {
+      let inThrottle;
+      return function(...args) {
+        if (!inThrottle) {
+          func.apply(this, args);
+          inThrottle = true;
+          setTimeout(() => inThrottle = false, limit);
+        }
+      };
+    }
+    
+    // Request animation frame wrapper for smooth updates
+    function rafUpdate(callback) {
+      requestAnimationFrame(() => {
+        callback();
+      });
+    }
+    
+    // Clear the file loaded indicator in drop zone
+    function clearFileLoadedIndicator() {
+      const dropZone = document.getElementById('drop-zone');
+      const dropZoneText = document.getElementById('drop-zone-text');
+      const loadedFileName = document.getElementById('loaded-file-name');
+      if (dropZone) dropZone.classList.remove('file-loaded');
+      if (dropZoneText) dropZoneText.textContent = 'Drop JSON file here or click to browse';
+      if (loadedFileName) {
+        loadedFileName.classList.add('hidden');
+        loadedFileName.textContent = '';
+      }
+    }
+    
+    // Debounced version of parseImportPreview for large JSON input
+    const debouncedParseImportPreview = debounce(() => {
+      // Clear file indicator when user manually types/pastes
+      clearFileLoadedIndicator();
+      parseImportPreview();
+    }, 150);
+    
+    // ========== STATE ==========
+    let collections = [];
+    let stylesInfo = { colorStyles: 0, textStyles: 0, effectStyles: 0, gridStyles: 0 };
+    let importData = null;
+    let exportData = '';
+    let selectedExportCollections = new Set();
+    let selectedImportCollections = new Set();
+    let selectedPlan = 'professional'; // Default plan
+    let detectedPlan = 'professional'; // Plan detected from file
+    let lastValidation = null;
+    let selectedModes = {}; // { collectionName: Set of selected mode names }
+    let collectionModes = {}; // { collectionName: [array of mode names] }
+    let libraryStatus = null; // { allAvailable, availableCollections, missingCollections }
+    let importWithLibraryLinks = true; // Default to try library links
+    let fontStatus = null; // { allAvailable, availableFonts, missingFonts }
+
+    // Plan limits (mirror of backend constants)
+    const PLAN_LIMITS = {
+      starter: { maxModes: 1, name: 'Starter', detail: '1 mode only (no multi-mode)' },
+      professional: { maxModes: 10, name: 'Professional', detail: 'Up to 10 modes per collection' },
+      organization: { maxModes: 20, name: 'Organization', detail: 'Up to 20 modes per collection' },
+      enterprise: { maxModes: Infinity, name: 'Enterprise', detail: 'Unlimited modes' }
+    };
+
+    // Update detected plan banner
+    function updateDetectedPlanBanner(plan) {
+      detectedPlan = plan;
+      const planInfo = PLAN_LIMITS[plan];
+      document.getElementById('detected-plan-value').textContent = planInfo.name;
+      document.getElementById('detected-plan-detail').textContent = planInfo.detail;
+    }
+
+    // Plan selection
+    function selectPlan(plan) {
+      selectedPlan = plan;
+      document.querySelectorAll('.plan-option').forEach(el => {
+        el.classList.toggle('selected', el.dataset.plan === plan);
+      });
+      
+      // Reset selected modes when plan changes
+      selectedModes = {};
+      
+      // Re-validate with new plan
+      if (importData) {
+        validateImport();
+      }
+    }
+
+    function handlePlanDetected(planData) {
+      // Update detected plan banner
+      updateDetectedPlanBanner(planData.plan);
+      
+      // Auto-select detected plan
+      selectedPlan = planData.plan;
+      document.querySelectorAll('.plan-option').forEach(el => {
+        el.classList.toggle('selected', el.dataset.plan === planData.plan);
+      });
+      addLog(`📊 Detected plan: ${PLAN_LIMITS[planData.plan].name} (based on existing collections)`, 'info');
+      
+      // Re-validate with detected plan
+      if (importData) {
+        validateImport();
+      }
+    }
+
+    // Handle library availability check result
+    function handleLibraryCheckResult(result) {
+      libraryStatus = result;
+      const section = document.getElementById('library-status-section');
+      const card = document.getElementById('library-status-card');
+      const importBtn = document.getElementById('import-btn');
+      
+      const { requiredCollections, availableCollections, missingCollections, allAvailable } = result;
+      const varCount = lastValidation?.libraryDependencies?.variableCount || 0;
+      
+      let html = '';
+      let cardClass = '';
+      
+      if (allAvailable) {
+        // All libraries connected - can restore links
+        cardClass = 'library-available';
+        html = `
+          <div class="library-status-header">
+            <span class="library-status-icon">📚</span>
+            <span class="library-status-title">Library Detected!</span>
+          </div>
+          <div class="library-status-message">
+            ${varCount} variables reference team library collections that are <strong>connected to this file</strong>.
+            Library links will be restored during import.
+          </div>
+          <div class="library-collection-list">
+            ${availableCollections.map(col => `
+              <div class="library-collection-item available">
+                <span class="status-icon">✅</span>
+                <span>${col}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        importWithLibraryLinks = true;
+        importBtn.textContent = '📥 Import with Library Links';
+        addLog(`📚 Library check: All ${availableCollections.length} required library collection(s) available`, 'success');
+      } else if (availableCollections.length > 0) {
+        // Partial - some libraries connected
+        cardClass = 'library-partial';
+        html = `
+          <div class="library-status-header">
+            <span class="library-status-icon">⚠️</span>
+            <span class="library-status-title">Partial Library Connection</span>
+          </div>
+          <div class="library-status-message">
+            ${varCount} variables reference team library collections. Some libraries are connected, but others are missing.
+          </div>
+          <div class="library-collection-list">
+            ${availableCollections.map(col => `
+              <div class="library-collection-item available">
+                <span class="status-icon">✅</span>
+                <span>${col} (connected)</span>
+              </div>
+            `).join('')}
+            ${missingCollections.map(col => `
+              <div class="library-collection-item missing">
+                <span class="status-icon">❌</span>
+                <span>${col} (not connected - will use fallback values)</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="library-import-options">
+            <p style="font-size: 10px; margin-bottom: 6px; color: #6D4C00;"><strong>Import will:</strong></p>
+            <ul style="font-size: 10px; margin: 0; padding-left: 16px; color: #6D4C00;">
+              <li>Restore library links for connected libraries</li>
+              <li>Use fallback values for missing libraries</li>
+            </ul>
+          </div>
+        `;
+        importWithLibraryLinks = true;
+        importBtn.textContent = '📥 Import (Mixed)';
+        addLog(`⚠️ Library check: ${availableCollections.length} connected, ${missingCollections.length} missing`, 'warning');
+      } else {
+        // No libraries connected - will use fallback values
+        cardClass = 'library-missing';
+        html = `
+          <div class="library-status-header">
+            <span class="library-status-icon">📦</span>
+            <span class="library-status-title">Library Not Connected</span>
+          </div>
+          <div class="library-status-message">
+            ${varCount} variables reference team library collections that are <strong>not connected</strong> to this file.
+            Variables will be imported with their <strong>fallback resolved values</strong>.
+          </div>
+          <div class="library-collection-list">
+            ${missingCollections.map(col => `
+              <div class="library-collection-item missing">
+                <span class="status-icon">❌</span>
+                <span>${col}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="library-import-options">
+            <p style="font-size: 10px; margin-bottom: 8px; color: #BF360C;">
+              <strong>💡 Tip:</strong> To restore library links, go to <em>Assets panel → Team Library</em> and enable the required libraries, then re-paste the JSON.
+            </p>
+          </div>
+        `;
+        importWithLibraryLinks = false;
+        importBtn.textContent = '📥 Import with Fallback Values';
+        addLog(`📦 Library check: ${missingCollections.length} library collection(s) not connected - will use fallback values`, 'warning');
+      }
+      
+      card.className = 'library-status-card ' + cardClass;
+      card.innerHTML = html;
+      section.classList.remove('hidden');
+    }
+
+    // Handle font availability check result
+    function handleFontCheckResult(result) {
+      fontStatus = result;
+      const section = document.getElementById('font-status-section');
+      const card = document.getElementById('font-status-card');
+      
+      const { requiredFonts, availableFonts, missingFonts, allAvailable } = result;
+      const styleCount = lastValidation?.fontDependencies?.styleCount || 0;
+      
+      let html = '';
+      let cardClass = '';
+      
+      if (allAvailable) {
+        // All fonts available
+        cardClass = 'font-available';
+        html = `
+          <div class="font-status-header">
+            <span class="font-status-icon">🔤</span>
+            <span class="font-status-title">All Fonts Available</span>
+          </div>
+          <div class="font-status-message">
+            All ${requiredFonts.length} font(s) used by ${styleCount} text style(s) are installed and ready for import.
+          </div>
+          <div class="font-list">
+            ${availableFonts.map(f => `
+              <div class="font-item available">
+                <span class="status-icon">✅</span>
+                <span>${f.family} ${f.style}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        addLog(`🔤 Font check: All ${availableFonts.length} required font(s) available`, 'success');
+      } else if (availableFonts.length > 0) {
+        // Partial - some fonts available
+        cardClass = 'font-partial';
+        html = `
+          <div class="font-status-header">
+            <span class="font-status-icon">⚠️</span>
+            <span class="font-status-title">Some Fonts Missing</span>
+          </div>
+          <div class="font-status-message">
+            ${styleCount} text style(s) require ${requiredFonts.length} font(s). Some are available, but ${missingFonts.length} are missing.
+            Text styles with missing fonts may not import correctly.
+          </div>
+          <div class="font-list">
+            ${availableFonts.map(f => `
+              <div class="font-item available">
+                <span class="status-icon">✅</span>
+                <span>${f.family} ${f.style}</span>
+              </div>
+            `).join('')}
+            ${missingFonts.map(f => `
+              <div class="font-item missing">
+                <span class="status-icon">❌</span>
+                <span>${f.family} ${f.style}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="font-tip">
+            💡 <strong>Tip:</strong> Install missing fonts from your system or a font provider (e.g., Google Fonts, Adobe Fonts) before importing.
+          </div>
+        `;
+        addLog(`⚠️ Font check: ${availableFonts.length} available, ${missingFonts.length} missing`, 'warning');
+      } else {
+        // No fonts available
+        cardClass = 'font-missing';
+        html = `
+          <div class="font-status-header">
+            <span class="font-status-icon">❌</span>
+            <span class="font-status-title">Fonts Not Found</span>
+          </div>
+          <div class="font-status-message">
+            ${styleCount} text style(s) require ${requiredFonts.length} font(s) that are <strong>not installed</strong>.
+            Text styles may fail to import or appear incorrectly.
+          </div>
+          <div class="font-list">
+            ${missingFonts.map(f => `
+              <div class="font-item missing">
+                <span class="status-icon">❌</span>
+                <span>${f.family} ${f.style}</span>
+              </div>
+            `).join('')}
+          </div>
+          <div class="font-tip">
+            💡 <strong>Install these fonts first:</strong> Download from Google Fonts, Adobe Fonts, or other providers, install on your system, then restart Figma and re-paste the JSON.
+          </div>
+        `;
+        addLog(`❌ Font check: ${missingFonts.length} required font(s) not installed`, 'error');
+      }
+      
+      card.className = 'font-status-card ' + cardClass;
+      card.innerHTML = html;
+      section.classList.remove('hidden');
+    }
+
+    function validateImport() {
+      if (!importData) return;
+      
+      parent.postMessage({
+        pluginMessage: {
+          type: 'validate_import',
+          data: JSON.stringify(importData),
+          plan: selectedPlan
+        }
+      }, '*');
+    }
+
+    function displayValidationResult(validation) {
+      lastValidation = validation;
+      const resultsEl = document.getElementById('validation-results');
+      const modeSelectionContainer = document.getElementById('mode-selection-container');
+      const importBtn = document.getElementById('import-btn');
+      const statusEl = document.getElementById('import-status');
+      
+      let html = '';
+      const planInfo = PLAN_LIMITS[selectedPlan];
+      const needsModeSelection = validation.importing && 
+                                  validation.importing.collectionsExceedingModeLimit && 
+                                  validation.importing.collectionsExceedingModeLimit.length > 0;
+      
+      // Show mode selection UI if needed (instead of blocking)
+      if (needsModeSelection && selectedPlan !== 'enterprise') {
+        html += `
+          <div class="validation-alert warning">
+            <div class="validation-alert-title">⚠️ Mode Limit Exceeded</div>
+            <p>Some collections have more modes than your ${planInfo.name} plan allows (${planInfo.maxModes} max).</p>
+            <p style="margin-top: 4px; font-size: 10px;"><strong>Select which modes to import below.</strong></p>
+          </div>
+        `;
+        
+        // Show mode selection UI
+        renderModeSelection(validation);
+        modeSelectionContainer.classList.remove('hidden');
+        
+        // Enable import if modes are selected within limits
+        updateImportButtonState();
+      } else {
+        // Hide mode selection if not needed
+        modeSelectionContainer.classList.add('hidden');
+        
+        // Show warnings
+        if (validation.warnings && validation.warnings.length > 0) {
+          html += `
+            <div class="validation-alert warning">
+              <div class="validation-alert-title">⚠️ Warnings</div>
+              <ul>${validation.warnings.map(w => `<li>${w}</li>`).join('')}</ul>
+            </div>
+          `;
+        }
+        
+        // Show success if no errors
+        if (validation.canImport) {
+          html += `
+            <div class="validation-alert success">
+              <div class="validation-alert-title">✅ Ready to Import</div>
+              <p>Import is compatible with ${planInfo.name} plan (${planInfo.maxModes === Infinity ? 'unlimited' : planInfo.maxModes} modes/collection)</p>
+              ${validation.importing ? `
+                <p style="margin-top: 4px; font-size: 10px;">
+                  ${validation.importing.collections} collections • 
+                  ${validation.importing.totalVariables} variables • 
+                  Max ${validation.importing.maxModesInAnyCollection} modes in any collection
+                </p>
+              ` : ''}
+            </div>
+          `;
+          importBtn.disabled = selectedImportCollections.size === 0;
+          if (selectedImportCollections.size > 0) {
+            statusEl.textContent = `Ready to import ${selectedImportCollections.size} collection(s)`;
+          }
+        }
+      }
+      
+      resultsEl.innerHTML = html;
+    }
+    
+    // Render mode selection UI for collections exceeding limits
+    function renderModeSelection(validation) {
+      const container = document.getElementById('mode-selection-container');
+      const planInfo = PLAN_LIMITS[selectedPlan];
+      const maxModes = planInfo.maxModes;
+      
+      let html = `
+        <div class="mode-selection-section">
+          <div class="mode-selection-title">
+            <span>🎛️</span> Select Modes to Import
+          </div>
+          <p class="mode-selection-help">
+            Your ${planInfo.name} plan allows up to ${maxModes} mode${maxModes === 1 ? '' : 's'} per collection. 
+            Select which modes you want to import for each collection.
+          </p>
+      `;
+      
+      // Parse import data to get collection modes
+      if (importData && Array.isArray(importData)) {
+        for (const item of importData) {
+          if ('_styles' in item) continue;
+          
+          const colName = Object.keys(item)[0];
+          const colData = item[colName];
+          
+          if (!colData || !colData.modes) continue;
+          
+          const modes = Object.keys(colData.modes);
+          collectionModes[colName] = modes;
+          
+          // Initialize selected modes if not already set
+          if (!selectedModes[colName]) {
+            // Pre-select first N modes up to limit
+            selectedModes[colName] = new Set(modes.slice(0, maxModes));
+          }
+          
+          const selectedCount = selectedModes[colName].size;
+          const exceedsLimit = modes.length > maxModes;
+          const isWithinLimit = selectedCount <= maxModes;
+          const collectionClass = exceedsLimit ? 'collection-exceeds-limit' : 'collection-within-limit';
+          const countClass = isWithinLimit ? 'valid' : 'exceeded';
+          
+          html += `
+            <div class="collection-mode-selector ${collectionClass}">
+              <div class="collection-mode-header">
+                <span class="collection-mode-name">📁 ${colName}</span>
+                <span class="collection-mode-count ${countClass}">
+                  ${selectedCount}/${maxModes} selected (${modes.length} available)
+                </span>
+              </div>
+              <div class="mode-checkboxes" data-collection="${colName}">
+                ${modes.map(mode => {
+                  const isSelected = selectedModes[colName].has(mode);
+                  const canSelect = isSelected || selectedCount < maxModes;
+                  return `
+                    <label class="mode-checkbox-label ${isSelected ? 'selected' : ''} ${!canSelect ? 'disabled' : ''}"
+                           onclick="toggleMode('${colName}', '${mode}', event)">
+                      <input type="checkbox" ${isSelected ? 'checked' : ''} ${!canSelect ? 'disabled' : ''}>
+                      <span>${mode}</span>
+                    </label>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        }
+      }
+      
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+    
+    // Toggle mode selection
+    function toggleMode(collectionName, modeName, event) {
+      event.preventDefault();
+      
+      const planInfo = PLAN_LIMITS[selectedPlan];
+      const maxModes = planInfo.maxModes;
+      
+      if (!selectedModes[collectionName]) {
+        selectedModes[collectionName] = new Set();
+      }
+      
+      const modeSet = selectedModes[collectionName];
+      
+      if (modeSet.has(modeName)) {
+        // Always allow deselection (but must have at least 1)
+        if (modeSet.size > 1) {
+          modeSet.delete(modeName);
+        }
+      } else {
+        // Only allow selection if under limit
+        if (modeSet.size < maxModes) {
+          modeSet.add(modeName);
+        }
+      }
+      
+      // Re-render mode selection
+      renderModeSelection(lastValidation);
+      updateImportButtonState();
+    }
+    
+    // Update import button based on mode selection
+    function updateImportButtonState() {
+      const importBtn = document.getElementById('import-btn');
+      const statusEl = document.getElementById('import-status');
+      const planInfo = PLAN_LIMITS[selectedPlan];
+      
+      let allValid = true;
+      let totalSelectedModes = 0;
+      
+      for (const colName in selectedModes) {
+        const count = selectedModes[colName].size;
+        totalSelectedModes += count;
+        if (count === 0 || count > planInfo.maxModes) {
+          allValid = false;
+        }
+      }
+      
+      if (allValid && selectedImportCollections.size > 0) {
+        importBtn.disabled = false;
+        statusEl.textContent = `Ready to import ${selectedImportCollections.size} collection(s) with selected modes`;
+      } else {
+        importBtn.disabled = true;
+        statusEl.textContent = 'Select modes within your plan limit to continue';
+      }
+    }
+
+    // Tab switching
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+      });
+    });
+
+    // Message handling
+    window.onmessage = function(event) {
+      const msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      switch (msg.type) {
+        case 'log':
+          addLog(msg.message);
+          break;
+        case 'collections':
+          collections = msg.data.collections;
+          stylesInfo = msg.data.styles || { colorStyles: 0, textStyles: 0, effectStyles: 0, gridStyles: 0 };
+          renderExportCollections();
+          updateStyleCheckboxLabels();
+          
+          // Handle library dependencies warning
+          const libraryDeps = msg.data.libraryDependencies || [];
+          const warningBanner = document.getElementById('library-warning-banner');
+          const depsList = document.getElementById('library-deps-list');
+          if (libraryDeps.length > 0) {
+            warningBanner.classList.remove('hidden');
+            depsList.innerHTML = libraryDeps.map(name => `<span style="display: inline-block; background: #fff; padding: 2px 6px; margin: 2px; border-radius: 2px; border: 1px solid #ddd;">📚 ${name}</span>`).join('');
+            addLog(`📚 Detected library dependencies: ${libraryDeps.join(', ')}`, 'warning');
+          } else {
+            warningBanner.classList.add('hidden');
+          }
+          break;
+
+        case 'collection_details':
+          updateCollectionDetails(msg.data);
+          break;
+        case 'export_complete':
+          exportData = msg.data.data;
+          document.getElementById('export-output').value = exportData;
+          document.getElementById('export-output-section').classList.remove('hidden');
+          const stats = msg.data.stats;
+          let logMsg = `✅ Export: ${stats.collections} collections, ${stats.variables} vars`;
+          if (stats.styles) {
+            const styleTotal = (stats.styles.color || 0) + (stats.styles.text || 0) + (stats.styles.effect || 0) + (stats.styles.grid || 0);
+            if (styleTotal > 0) {
+              logMsg += `, ${styleTotal} styles`;
+            }
+          }
+          addLog(logMsg, 'success');
+          
+          // Show external collections warning if present
+          const extColls = msg.data.externalCollections;
+          if (extColls && extColls.length > 0) {
+            addLog(`📚 ${extColls.length} library collection(s) referenced but not exported: ${extColls.join(', ')}`, 'warning');
+            addLog(`⚠️ Aliases to library tokens will use raw values on import`, 'warning');
+          }
+          
+          // Show font requirements if text styles were exported
+          const reqFonts = msg.data.requiredFonts;
+          const fontBanner = document.getElementById('font-requirements-banner');
+          const fontList = document.getElementById('font-requirements-list');
+          if (reqFonts && reqFonts.length > 0) {
+            fontBanner.classList.remove('hidden');
+            fontList.innerHTML = reqFonts.map(f => 
+              `<span style="display: inline-block; background: #fff; padding: 2px 6px; margin: 2px; border-radius: 2px; border: 1px solid #C8E6C9;">🔤 ${f.family} ${f.style}</span>`
+            ).join('');
+            addLog(`🔤 Required fonts for import: ${reqFonts.map(f => `${f.family} ${f.style}`).join(', ')}`, 'info');
+          } else {
+            fontBanner.classList.add('hidden');
+          }
+          break;
+        case 'import_complete':
+          const s = msg.data.stats;
+          let importMsg = `✅ Import: ${s.collectionsCreated} collections, ${s.variablesCreated} vars created`;
+          if (s.variablesUpdated > 0) {
+            importMsg += `, ${s.variablesUpdated} vars updated`;
+          }
+          if (s.stylesCreated > 0 || s.stylesUpdated > 0) {
+            importMsg += `, ${s.stylesCreated} styles created, ${s.stylesUpdated} updated`;
+          }
+          addLog(importMsg, 'success');
+          
+          // Library hybrid import stats
+          if (s.libraryLinksRestored > 0) {
+            addLog(`📚 ${s.libraryLinksRestored} library links restored`, 'success');
+          }
+          if (s.libraryValuesUsed > 0) {
+            addLog(`📦 ${s.libraryValuesUsed} variables use resolved values (library not connected)`, 'warning');
+          }
+          
+          loadCollections();
+          document.getElementById('import-input').value = '';
+          document.getElementById('file-input').value = ''; // Reset file input for re-selection
+          document.getElementById('import-preview-section').classList.add('hidden');
+          document.getElementById('import-btn').disabled = true;
+          document.getElementById('import-status').textContent = 'Paste or drop a JSON file to preview';
+          // Clear the file loaded indicator after successful import
+          clearFileLoadedIndicator();
+          break;
+        case 'clear_complete':
+          addLog(`✅ Cleared: ${msg.data.message}`, 'success');
+          loadCollections();
+          break;
+        case 'validation_result':
+          displayValidationResult(msg.data);
+          // If library dependencies detected, trigger library check
+          if (msg.data.libraryDependencies && msg.data.libraryDependencies.collections.length > 0) {
+            parent.postMessage({
+              pluginMessage: {
+                type: 'check_libraries',
+                collections: msg.data.libraryDependencies.collections
+              }
+            }, '*');
+          } else {
+            // No library dependencies - hide library status
+            document.getElementById('library-status-section').classList.add('hidden');
+            libraryStatus = null;
+          }
+          // If font dependencies detected, trigger font check
+          if (msg.data.fontDependencies && msg.data.fontDependencies.fonts.length > 0) {
+            parent.postMessage({
+              pluginMessage: {
+                type: 'check_fonts',
+                fonts: msg.data.fontDependencies.fonts
+              }
+            }, '*');
+          } else {
+            // No font dependencies - hide font status
+            document.getElementById('font-status-section').classList.add('hidden');
+            fontStatus = null;
+          }
+          break;
+        case 'library_check_result':
+          handleLibraryCheckResult(msg.data);
+          break;
+        case 'font_check_result':
+          handleFontCheckResult(msg.data);
+          break;
+        case 'plan_detected':
+          handlePlanDetected(msg.data);
+          break;
+        case 'error':
+          addLog('❌ ' + msg.data.message, 'error');
+          break;
+      }
+    };
+
+    // Maximum log entries to keep (prevents memory bloat with large operations)
+    const MAX_LOG_ENTRIES = 100;
+    
+    function addLog(message, type = 'info') {
+      const logArea = document.getElementById('log-area');
+      const time = new Date().toLocaleTimeString();
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+      entry.innerHTML = `<span class="log-time">${time}</span><span class="log-${type}">${message}</span>`;
+      
+      // Use requestAnimationFrame for smooth DOM updates
+      rafUpdate(() => {
+        logArea.appendChild(entry);
+        
+        // Limit log entries to prevent memory issues with large imports
+        while (logArea.children.length > MAX_LOG_ENTRIES) {
+          logArea.removeChild(logArea.firstChild);
+        }
+        
+        logArea.scrollTop = logArea.scrollHeight;
+      });
+    }
+
+    // ========== EXPORT ==========
+    
+    function renderExportCollections() {
+      const container = document.getElementById('export-collections');
+      
+      if (collections.length === 0) {
+        container.innerHTML = '<div class="loading">No variable collections found</div>';
+        // Check if styles also empty - if so, show empty state in preview
+        const totalStyles = stylesInfo.colorStyles + stylesInfo.textStyles + stylesInfo.effectStyles + stylesInfo.gridStyles;
+        if (totalStyles === 0) {
+          showEmptyStructureState();
+        }
+        return;
+      }
+
+      container.innerHTML = collections.map(c => {
+        selectedExportCollections.add(c.name); // Select all by default
+        return `
+          <div class="collection-item" onclick="toggleExportCollection('${c.name}')">
+            <input type="checkbox" class="collection-checkbox" id="export-${c.name}" checked onchange="event.stopPropagation(); updateExportSelection('${c.name}', this.checked)">
+            <div class="collection-info">
+              <div class="collection-name">${c.name}</div>
+              <div class="collection-meta">${c.variableCount} variables • Modes: ${c.modes.join(', ')}</div>
+              <div class="collection-types" id="types-${c.name}">
+                ${renderTypeBadges(c.types || {})}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      updateExportPreview();
+    }
+
+    // Show empty state when no collections AND no styles exist
+    function showEmptyStructureState() {
+      const previewSection = document.getElementById('export-preview-section');
+      const statsEl = document.getElementById('export-preview-stats');
+      const treeEl = document.getElementById('export-preview-tree');
+      
+      previewSection.classList.remove('hidden');
+      statsEl.innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📭</div>
+          <div class="empty-title">No structure detected</div>
+          <div class="empty-desc">This file has no variable collections or styles to export.</div>
+        </div>
+      `;
+      treeEl.innerHTML = '';
+    }
+
+    function updateStyleCheckboxLabels() {
+      // Update style checkbox labels with counts
+      const colorLabel = document.querySelector('label:has(#export-color-styles) span');
+      const textLabel = document.querySelector('label:has(#export-text-styles) span');
+      const effectLabel = document.querySelector('label:has(#export-effect-styles) span');
+      const gridLabel = document.querySelector('label:has(#export-grid-styles) span');
+      
+      if (colorLabel) colorLabel.textContent = `🎨 Color Styles (${stylesInfo.colorStyles})`;
+      if (textLabel) textLabel.textContent = `📝 Text Styles (${stylesInfo.textStyles})`;
+      if (effectLabel) effectLabel.textContent = `✨ Effect Styles (${stylesInfo.effectStyles})`;
+      if (gridLabel) gridLabel.textContent = `📱 Grid/Layout Styles (${stylesInfo.gridStyles})`;
+      
+      // Auto-check if styles exist
+      if (stylesInfo.colorStyles > 0) document.getElementById('export-color-styles').checked = true;
+      if (stylesInfo.textStyles > 0) document.getElementById('export-text-styles').checked = true;
+      if (stylesInfo.effectStyles > 0) document.getElementById('export-effect-styles').checked = true;
+      if (stylesInfo.gridStyles > 0) document.getElementById('export-grid-styles').checked = true;
+      
+      updateExportPreview();
+    }
+
+    function renderTypeBadges(types) {
+      const badges = [];
+      if (types.color) badges.push(`<span class="type-badge type-color">${types.color} colors</span>`);
+      if (types.float) badges.push(`<span class="type-badge type-float">${types.float} numbers</span>`);
+      if (types.boolean) badges.push(`<span class="type-badge type-boolean">${types.boolean} booleans</span>`);
+      if (types.string) badges.push(`<span class="type-badge type-string">${types.string} strings</span>`);
+      return badges.join('');
+    }
+
+    function toggleExportCollection(name) {
+      const checkbox = document.getElementById(`export-${name}`);
+      checkbox.checked = !checkbox.checked;
+      updateExportSelection(name, checkbox.checked);
+    }
+
+    function updateExportSelection(name, selected) {
+      if (selected) {
+        selectedExportCollections.add(name);
+      } else {
+        selectedExportCollections.delete(name);
+      }
+      updateExportPreview();
+    }
+
+    function selectAllExport(select) {
+      collections.forEach(c => {
+        const checkbox = document.getElementById(`export-${c.name}`);
+        if (checkbox) {
+          checkbox.checked = select;
+          if (select) {
+            selectedExportCollections.add(c.name);
+          } else {
+            selectedExportCollections.delete(c.name);
+          }
+        }
+      });
+      updateExportPreview();
+    }
+
+    function updateExportPreview() {
+      const section = document.getElementById('export-preview-section');
+      const statsEl = document.getElementById('export-preview-stats');
+      const treeEl = document.getElementById('export-preview-tree');
+
+      // Get style checkbox states
+      const includeColorStyles = document.getElementById('export-color-styles').checked;
+      const includeTextStyles = document.getElementById('export-text-styles').checked;
+      const includeEffectStyles = document.getElementById('export-effect-styles').checked;
+      const includeGridStyles = document.getElementById('export-grid-styles').checked;
+      const hasStylesSelected = includeColorStyles || includeTextStyles || includeEffectStyles || includeGridStyles;
+      
+      // Update include images checkbox and warning
+      const includeImagesCheckbox = document.getElementById('export-include-images');
+      const imageWarning = document.getElementById('image-warning');
+      if (includeImagesCheckbox) {
+        // Only enable if color styles is checked
+        includeImagesCheckbox.disabled = !includeColorStyles;
+        if (!includeColorStyles) {
+          includeImagesCheckbox.checked = false;
+        }
+        // Show warning if images are enabled
+        if (imageWarning) {
+          imageWarning.style.display = includeImagesCheckbox.checked ? 'block' : 'none';
+        }
+      }
+
+      if (selectedExportCollections.size === 0 && !hasStylesSelected) {
+        section.classList.add('hidden');
+        return;
+      }
+
+      section.classList.remove('hidden');
+
+      // Calculate variable stats
+      let totalVars = 0;
+      let totalColors = 0;
+      let totalNumbers = 0;
+      let totalStrings = 0;
+      let totalBooleans = 0;
+      
+      const selectedCols = collections.filter(c => selectedExportCollections.has(c.name));
+      selectedCols.forEach(c => {
+        totalVars += c.variableCount;
+        if (c.types) {
+          totalColors += c.types.color || 0;
+          totalNumbers += c.types.float || 0;
+          totalStrings += c.types.string || 0;
+          totalBooleans += c.types.boolean || 0;
+        }
+      });
+
+      // Calculate selected styles count
+      let selectedColorStyles = includeColorStyles ? stylesInfo.colorStyles : 0;
+      let selectedTextStyles = includeTextStyles ? stylesInfo.textStyles : 0;
+      let selectedEffectStyles = includeEffectStyles ? stylesInfo.effectStyles : 0;
+      let selectedGridStyles = includeGridStyles ? stylesInfo.gridStyles : 0;
+      let totalStyles = selectedColorStyles + selectedTextStyles + selectedEffectStyles + selectedGridStyles;
+
+      // Build stats HTML
+      let statsHtml = '';
+      
+      // Variables section
+      if (selectedExportCollections.size > 0) {
+        statsHtml += `
+          <div class="stats-section">
+            <div class="stats-section-title">📦 Variables</div>
+            <div class="stats-row">
+              <div class="stat-card">
+                <div class="stat-value">${selectedExportCollections.size}</div>
+                <div class="stat-label">Collections</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">${totalVars}</div>
+                <div class="stat-label">Variables</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">${totalColors}</div>
+                <div class="stat-label">Colors</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">${totalNumbers}</div>
+                <div class="stat-label">Numbers</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">${totalStrings}</div>
+                <div class="stat-label">Strings</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-value">${totalBooleans}</div>
+                <div class="stat-label">Booleans</div>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      // Styles section
+      if (hasStylesSelected && totalStyles > 0) {
+        statsHtml += `
+          <div class="stats-section">
+            <div class="stats-section-title">🎨 Styles</div>
+            <div class="stats-row">
+              <div class="stat-card">
+                <div class="stat-value">${totalStyles}</div>
+                <div class="stat-label">Total</div>
+              </div>
+              ${selectedColorStyles > 0 ? `
+              <div class="stat-card">
+                <div class="stat-value">${selectedColorStyles}</div>
+                <div class="stat-label">Color</div>
+              </div>` : ''}
+              ${selectedTextStyles > 0 ? `
+              <div class="stat-card">
+                <div class="stat-value">${selectedTextStyles}</div>
+                <div class="stat-label">Text</div>
+              </div>` : ''}
+              ${selectedEffectStyles > 0 ? `
+              <div class="stat-card">
+                <div class="stat-value">${selectedEffectStyles}</div>
+                <div class="stat-label">Effects</div>
+              </div>` : ''}
+              ${selectedGridStyles > 0 ? `
+              <div class="stat-card">
+                <div class="stat-value">${selectedGridStyles}</div>
+                <div class="stat-label">Grid</div>
+              </div>` : ''}
+            </div>
+          </div>
+        `;
+      }
+
+      statsEl.innerHTML = statsHtml;
+
+      // Build tree preview
+      let tree = '';
+      selectedCols.forEach(c => {
+        tree += `<div class="tree-collection"><span class="tree-collection-name">📁 ${c.name}</span>`;
+        c.modes.forEach(m => {
+          tree += `<div class="tree-mode">📂 ${m}</div>`;
+        });
+        tree += `<div class="tree-var">... ${c.variableCount} variables</div></div>`;
+      });
+      
+      // Add styles to tree if selected
+      if (hasStylesSelected && totalStyles > 0) {
+        tree += `<div class="tree-collection"><span class="tree-collection-name">🎨 Styles</span>`;
+        if (selectedColorStyles > 0) {
+          tree += `<div class="tree-mode">🎨 ${selectedColorStyles} Color Styles</div>`;
+        }
+        if (selectedTextStyles > 0) {
+          tree += `<div class="tree-mode">📝 ${selectedTextStyles} Text Styles</div>`;
+        }
+        if (selectedEffectStyles > 0) {
+          tree += `<div class="tree-mode">✨ ${selectedEffectStyles} Effect Styles</div>`;
+        }
+        if (selectedGridStyles > 0) {
+          tree += `<div class="tree-mode">📐 ${selectedGridStyles} Grid Styles</div>`;
+        }
+        tree += `</div>`;
+      }
+      
+      treeEl.innerHTML = tree;
+    }
+
+    function exportVariables() {
+      if (selectedExportCollections.size === 0) {
+        addLog('❌ Please select at least one collection', 'error');
+        return;
+      }
+      
+      const styleOptions = {
+        colorStyles: document.getElementById('export-color-styles').checked,
+        textStyles: document.getElementById('export-text-styles').checked,
+        effectStyles: document.getElementById('export-effect-styles').checked,
+        gridStyles: document.getElementById('export-grid-styles').checked
+      };
+      
+      const includeImages = document.getElementById('export-include-images').checked;
+      
+      if (includeImages) {
+        addLog(`📤 Exporting ${selectedExportCollections.size} collections with image data...`);
+      } else {
+        addLog(`📤 Exporting ${selectedExportCollections.size} collections...`);
+      }
+      
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'export',
+          collections: Array.from(selectedExportCollections),
+          styleOptions: styleOptions,
+          includeImages: includeImages
+        } 
+      }, '*');
+    }
+
+    function copyExport() {
+      if (!exportData || exportData.trim() === '') {
+        addLog('⚠️ No export data to copy. Run export first.', 'warning');
+        return;
+      }
+      
+      // Try execCommand first (works better in Figma plugin iframe)
+      function fallbackCopy() {
+        try {
+          var textarea = document.createElement('textarea');
+          textarea.value = exportData;
+          textarea.style.position = 'fixed';
+          textarea.style.left = '-9999px';
+          textarea.style.top = '0';
+          document.body.appendChild(textarea);
+          textarea.focus();
+          textarea.select();
+          var success = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          if (success) {
+            addLog('📋 Copied to clipboard!', 'success');
+          } else {
+            addLog('❌ Copy command failed. Use Download instead.', 'error');
+          }
+        } catch (e) {
+          addLog('❌ Failed to copy: ' + e + '. Use Download instead.', 'error');
+        }
+      }
+      
+      // In Figma plugin iframe, clipboard API is often unavailable or restricted
+      // Use fallback method directly which works better in sandboxed environments
+      fallbackCopy();
+    }
+
+    function downloadExport() {
+      const blob = new Blob([exportData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      addLog('💾 Downloaded export.json', 'success');
+    }
+
+    // ========== IMPORT ==========
+
+    function parseImportPreview() {
+      const data = document.getElementById('import-input').value.trim();
+      const previewSection = document.getElementById('import-preview-section');
+      const planSection = document.getElementById('plan-selection-section');
+      const modeSelectionContainer = document.getElementById('mode-selection-container');
+      const librarySection = document.getElementById('library-status-section');
+      const fontSection = document.getElementById('font-status-section');
+      const importBtn = document.getElementById('import-btn');
+      const statusEl = document.getElementById('import-status');
+
+      if (!data) {
+        previewSection.classList.add('hidden');
+        planSection.classList.add('hidden');
+        if (modeSelectionContainer) modeSelectionContainer.classList.add('hidden');
+        if (librarySection) librarySection.classList.add('hidden');
+        if (fontSection) fontSection.classList.add('hidden');
+        importBtn.disabled = true;
+        importBtn.textContent = '📥 Import Selected';
+        statusEl.textContent = 'Paste or drop a JSON file to preview';
+        importData = null;
+        selectedModes = {};
+        collectionModes = {};
+        libraryStatus = null;
+        fontStatus = null;
+        document.getElementById('validation-results').innerHTML = '';
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(data);
+        importData = parsed;
+        
+        // Reset state for new data
+        selectedModes = {};
+        collectionModes = {};
+        libraryStatus = null;
+        fontStatus = null;
+        importBtn.textContent = '📥 Import Selected';
+        
+        if (!Array.isArray(parsed)) {
+          throw new Error('Expected array format');
+        }
+
+        // Check for styles in the data (they would be at a specific index or have a special key)
+        let variableCollections = [];
+        let stylesData = null;
+        
+        parsed.forEach(item => {
+          const keys = Object.keys(item);
+          if (keys.length === 1 && keys[0] === '_styles') {
+            stylesData = item._styles;
+          } else {
+            variableCollections.push(item);
+          }
+        });
+
+        // Analyze structure
+        const collectionsList = document.getElementById('import-collections');
+        selectedImportCollections.clear();
+        
+        // Calculate totals for stats summary
+        let totalCollections = variableCollections.length;
+        let totalVariables = 0;
+        let totalColors = 0;
+        let totalNumbers = 0;
+        let totalStrings = 0;
+        let totalBooleans = 0;
+        
+        const collectionsHtml = variableCollections.map((colObj, idx) => {
+          const colName = Object.keys(colObj)[0];
+          const col = colObj[colName];
+          const modes = Object.keys(col.modes || {});
+          
+          // Count variables and types
+          let varCount = 0;
+          const types = { color: 0, float: 0, boolean: 0, string: 0 };
+          
+          modes.forEach(mode => {
+            const modeVars = col.modes[mode];
+            const flatVars = flattenObject(modeVars);
+            varCount = Math.max(varCount, flatVars.length);
+            flatVars.forEach(v => {
+              if (v.$type) types[v.$type]++;
+            });
+          });
+          
+          // Normalize type counts (don't multiply by modes)
+          Object.keys(types).forEach(t => {
+            types[t] = Math.round(types[t] / Math.max(modes.length, 1));
+          });
+          
+          // Add to totals
+          totalVariables += varCount;
+          totalColors += types.color;
+          totalNumbers += types.float;
+          totalStrings += types.string;
+          totalBooleans += types.boolean;
+
+          selectedImportCollections.add(colName);
+
+          return `
+            <div class="collection-item" onclick="toggleImportCollection('${colName}')">
+              <input type="checkbox" class="collection-checkbox" id="import-col-${idx}" checked 
+                     onchange="event.stopPropagation(); updateImportSelection('${colName}', this.checked)">
+              <div class="collection-info">
+                <div class="collection-name">${colName}</div>
+                <div class="collection-meta">~${varCount} variables • Modes: ${modes.join(', ')}</div>
+                <div class="collection-types">
+                  ${types.color > 0 ? `<span class="type-badge type-color">${types.color} colors</span>` : ''}
+                  ${types.float > 0 ? `<span class="type-badge type-float">${types.float} numbers</span>` : ''}
+                  ${types.boolean > 0 ? `<span class="type-badge type-boolean">${types.boolean} booleans</span>` : ''}
+                  ${types.string > 0 ? `<span class="type-badge type-string">${types.string} strings</span>` : ''}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        collectionsList.innerHTML = collectionsHtml;
+        
+        // Calculate style totals
+        let totalColorStyles = stylesData?.colorStyles?.length || 0;
+        let totalTextStyles = stylesData?.textStyles?.length || 0;
+        let totalEffectStyles = stylesData?.effectStyles?.length || 0;
+        let totalGridStyles = stylesData?.gridStyles?.length || 0;
+        let totalStyles = totalColorStyles + totalTextStyles + totalEffectStyles + totalGridStyles;
+        
+        // Build import stats summary HTML
+        const statsSummary = document.getElementById('import-stats-summary');
+        let statsHtml = '';
+        
+        // Variables section
+        if (totalCollections > 0) {
+          statsHtml += `
+            <div class="stats-section">
+              <div class="stats-section-title">\ud83d\udce6 Variables</div>
+              <div class="stats-row">
+                <div class="stat-card">
+                  <div class="stat-value">${totalCollections}</div>
+                  <div class="stat-label">Collections</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value">${totalVariables}</div>
+                  <div class="stat-label">Variables</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value">${totalColors}</div>
+                  <div class="stat-label">Colors</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value">${totalNumbers}</div>
+                  <div class="stat-label">Numbers</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value">${totalStrings}</div>
+                  <div class="stat-label">Strings</div>
+                </div>
+                <div class="stat-card">
+                  <div class="stat-value">${totalBooleans}</div>
+                  <div class="stat-label">Booleans</div>
+                </div>
+              </div>
+            </div>
+          `;
+        }
+        
+        // Styles section
+        if (totalStyles > 0) {
+          statsHtml += `
+            <div class="stats-section">
+              <div class="stats-section-title">\ud83c\udfa8 Styles</div>
+              <div class="stats-row">
+                <div class="stat-card">
+                  <div class="stat-value">${totalStyles}</div>
+                  <div class="stat-label">Total</div>
+                </div>
+                ${totalColorStyles > 0 ? `
+                <div class="stat-card">
+                  <div class="stat-value">${totalColorStyles}</div>
+                  <div class="stat-label">Color</div>
+                </div>` : ''}
+                ${totalTextStyles > 0 ? `
+                <div class="stat-card">
+                  <div class="stat-value">${totalTextStyles}</div>
+                  <div class="stat-label">Text</div>
+                </div>` : ''}
+                ${totalEffectStyles > 0 ? `
+                <div class="stat-card">
+                  <div class="stat-value">${totalEffectStyles}</div>
+                  <div class="stat-label">Effects</div>
+                </div>` : ''}
+                ${totalGridStyles > 0 ? `
+                <div class="stat-card">
+                  <div class="stat-value">${totalGridStyles}</div>
+                  <div class="stat-label">Grid</div>
+                </div>` : ''}
+              </div>
+            </div>
+          `;
+        }
+        
+        statsSummary.innerHTML = statsHtml;
+        
+        previewSection.classList.remove('hidden');
+        planSection.classList.remove('hidden');
+        importBtn.disabled = false;
+        
+        let statusText = `Ready to import ${variableCollections.length} collection(s)`;
+        if (stylesData) statusText += ' + styles';
+        statusEl.textContent = statusText;
+        addLog(`📋 Parsed ${variableCollections.length} collections from JSON`, 'success');
+        
+        // Trigger validation with current plan
+        validateImport();
+        
+        // Also detect plan from existing collections
+        parent.postMessage({ pluginMessage: { type: 'detect_plan' } }, '*');
+
+      } catch (e) {
+        previewSection.classList.add('hidden');
+        planSection.classList.add('hidden');
+        importBtn.disabled = true;
+        statusEl.textContent = '❌ Invalid JSON format';
+        importData = null;
+        addLog('❌ Invalid JSON: ' + e.message, 'error');
+      }
+    }
+
+    function flattenObject(obj, prefix = '') {
+      const results = [];
+      for (const key in obj) {
+        const val = obj[key];
+        if (val && typeof val === 'object' && '$type' in val) {
+          results.push(val);
+        } else if (val && typeof val === 'object') {
+          results.push(...flattenObject(val, prefix + key + '/'));
+        }
+      }
+      return results;
+    }
+
+    function toggleImportCollection(name) {
+      const checkboxes = document.querySelectorAll('#import-collections input[type="checkbox"]');
+      // Find the checkbox for this collection
+      const item = Array.from(document.querySelectorAll('#import-collections .collection-item'))
+        .find(el => el.querySelector('.collection-name').textContent === name);
+      if (item) {
+        const checkbox = item.querySelector('input[type="checkbox"]');
+        checkbox.checked = !checkbox.checked;
+        updateImportSelection(name, checkbox.checked);
+      }
+    }
+
+    function updateImportSelection(name, selected) {
+      if (selected) {
+        selectedImportCollections.add(name);
+      } else {
+        selectedImportCollections.delete(name);
+      }
+      updateImportStatus();
+    }
+
+    function selectAllImport(select) {
+      if (!importData) return;
+      
+      importData.forEach((colObj, idx) => {
+        const colName = Object.keys(colObj)[0];
+        const checkbox = document.getElementById(`import-col-${idx}`);
+        if (checkbox) {
+          checkbox.checked = select;
+          if (select) {
+            selectedImportCollections.add(colName);
+          } else {
+            selectedImportCollections.delete(colName);
+          }
+        }
+      });
+      updateImportStatus();
+    }
+
+    function updateImportStatus() {
+      const btn = document.getElementById('import-btn');
+      const status = document.getElementById('import-status');
+      
+      if (selectedImportCollections.size === 0) {
+        btn.disabled = true;
+        status.textContent = 'Select at least one collection to import';
+      } else {
+        btn.disabled = false;
+        status.textContent = `Ready to import ${selectedImportCollections.size} collection(s)`;
+      }
+    }
+
+    function clearAllVariables() {
+      if (!confirm('⚠️ This will delete ALL variable collections and variables in this file. This cannot be undone. Continue?')) {
+        return;
+      }
+      addLog('🗑️ Clearing all variables...');
+      parent.postMessage({ pluginMessage: { type: 'clear_variables' } }, '*');
+    }
+
+    function clearAllStyles() {
+      if (!confirm('⚠️ This will delete ALL local styles (color, text, effect, grid) in this file. This cannot be undone. Continue?')) {
+        return;
+      }
+      addLog('🗑️ Clearing all styles...');
+      parent.postMessage({ pluginMessage: { type: 'clear_styles' } }, '*');
+    }
+
+    function clearAll() {
+      if (!confirm('⚠️ This will delete ALL variables AND styles in this file. This cannot be undone. Continue?')) {
+        return;
+      }
+      addLog('🗑️ Clearing everything...');
+      parent.postMessage({ pluginMessage: { type: 'clear_all' } }, '*');
+    }
+
+    function importVariables() {
+      if (!importData || selectedImportCollections.size === 0) {
+        addLog('❌ Please select collections to import', 'error');
+        return;
+      }
+
+      // Filter import data to selected collections only (but keep _styles if present)
+      let filteredData = importData.filter(colObj => {
+        const colName = Object.keys(colObj)[0];
+        return colName === '_styles' || selectedImportCollections.has(colName);
+      });
+      
+      // If mode selection is active, filter modes in each collection
+      const planInfo = PLAN_LIMITS[selectedPlan];
+      if (Object.keys(selectedModes).length > 0 && planInfo.maxModes !== Infinity) {
+        filteredData = filteredData.map(colObj => {
+          const colName = Object.keys(colObj)[0];
+          if (colName === '_styles') return colObj;
+          
+          const colData = colObj[colName];
+          if (!colData || !colData.modes) return colObj;
+          
+          // Filter to only selected modes
+          const selectedModesForCol = selectedModes[colName];
+          if (!selectedModesForCol || selectedModesForCol.size === 0) return colObj;
+          
+          const filteredModes = {};
+          for (const [modeName, modeData] of Object.entries(colData.modes)) {
+            if (selectedModesForCol.has(modeName)) {
+              filteredModes[modeName] = modeData;
+            }
+          }
+          
+          return { [colName]: { modes: filteredModes } };
+        });
+        
+        addLog(`📥 Importing ${selectedImportCollections.size} collections with selected modes (${planInfo.name} plan limit: ${planInfo.maxModes})...`);
+      } else {
+        addLog(`📥 Importing ${selectedImportCollections.size} collections...`);
+      }
+      
+      // Remove styles if not wanted
+      const includeStyles = document.getElementById('import-styles').checked;
+      const finalData = includeStyles ? filteredData : filteredData.filter(item => Object.keys(item)[0] !== '_styles');
+
+      parent.postMessage({
+        pluginMessage: {
+          type: 'import',
+          data: JSON.stringify(finalData),
+          options: {
+            merge: document.getElementById('import-merge').checked,
+            overwrite: document.getElementById('import-overwrite').checked,
+            importStyles: includeStyles
+          }
+        }
+      }, '*');
+    }
+
+    // File drop handling (BP-002: Null check DOM elements)
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+
+    if (dropZone) {
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragover');
+      });
+
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragover');
+      });
+
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragover');
+        const file = e.dataTransfer.files[0];
+        if (file) handleFile(file);
+      });
+    }
+
+    if (fileInput) {
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) handleFile(file);
+        // Reset input value to allow selecting the same file again
+        e.target.value = '';
+      });
+    }
+
+    function handleFile(file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        document.getElementById('import-input').value = e.target.result;
+        
+        // Show loaded file name in drop zone
+        const dropZone = document.getElementById('drop-zone');
+        const dropZoneText = document.getElementById('drop-zone-text');
+        const loadedFileName = document.getElementById('loaded-file-name');
+        
+        dropZone.classList.add('file-loaded');
+        dropZoneText.textContent = 'File loaded:';
+        loadedFileName.textContent = '✅ ' + file.name;
+        loadedFileName.classList.remove('hidden');
+        
+        addLog('📁 Loaded: ' + file.name);
+        parseImportPreview();
+      };
+      reader.readAsText(file);
+    }
+
+    // ========== INIT ==========
+
+    function loadCollections() {
+      parent.postMessage({ pluginMessage: { type: 'get_collections' } }, '*');
+    }
+
+    // Reset export state - clears stale data from previous files
+    function resetExportState() {
+      exportData = '';
+      selectedExportCollections = new Set();
+      document.getElementById('export-output').value = '';
+      document.getElementById('export-output-section').classList.add('hidden');
+    }
+
+    // Reset import state - clears stale data from previous files
+    function resetImportState() {
+      importData = null;
+      selectedImportCollections = new Set();
+      selectedModes = {};
+      collectionModes = {};
+      lastValidation = null;
+      document.getElementById('import-input').value = '';
+      document.getElementById('file-input').value = '';
+      document.getElementById('import-preview-section').classList.add('hidden');
+      document.getElementById('import-btn').disabled = true;
+      document.getElementById('import-status').textContent = 'Paste or drop a JSON file to preview';
+      
+      // Reset drop zone file display
+      const dropZone = document.getElementById('drop-zone');
+      const dropZoneText = document.getElementById('drop-zone-text');
+      const loadedFileName = document.getElementById('loaded-file-name');
+      dropZone.classList.remove('file-loaded');
+      dropZoneText.textContent = 'Drop JSON file here or click to browse';
+      loadedFileName.classList.add('hidden');
+      loadedFileName.textContent = '';
+    }
+
+    // Manual refresh - reloads collections and clears stale export data
+    function refreshCollections() {
+      addLog('🔄 Refreshing Variables & Styles...', 'info');
+      
+      // Reset all export state (clears preview, selections, output)
+      resetExportState();
+      
+      // Also hide the preview section and clear collections array
+      document.getElementById('export-preview-section').classList.add('hidden');
+      collections = [];
+      stylesInfo = { colorStyles: 0, textStyles: 0, effectStyles: 0, gridStyles: 0 };
+      
+      // Reload collections from Figma
+      loadCollections();
+      
+      addLog('✅ Export Preview has been updated', 'success');
+    }
+
+    // Initialize - always start fresh
+    resetExportState();
+    resetImportState();
+    loadCollections();
+
+    // ========== TIP MODAL ==========
+    function openTipModal() {
+      document.getElementById('tipModal').classList.add('visible');
+    }
+
+    function closeTipModal() {
+      document.getElementById('tipModal').classList.remove('visible');
+    }
+
+    // Close modal on overlay click
+    document.getElementById('tipModal').addEventListener('click', function(e) {
+      if (e.target === this) {
+        closeTipModal();
+      }
+    });
+
+    // Close modal on Escape key
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        closeTipModal();
+      }
+    });
+  </script>
+
+  <!-- Persistent Footer -->
+  <footer class="plugin-footer">
+    <div class="footer-brand">
+      Made with ♥ by <span>The Keep Collective</span>
+    </div>
+    <div class="footer-actions">
+      <button class="footer-btn footer-btn-tip" onclick="openTipModal()">
+        ☕ Buy me a coffee
+      </button>
+      <a href="https://shop.tusharkantnaik.com" target="_blank" class="footer-btn footer-btn-shop">
+        🛍️ Collector's Shop
+      </a>
+    </div>
+  </footer>
+
+  <!-- Tip Modal -->
+  <div class="modal-overlay" id="tipModal">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="modal-title">☕ Support My Work</div>
+        <button class="modal-close" onclick="closeTipModal()">×</button>
+      </div>
+      <div class="modal-body">
+        <p>Hey! I'm an individual designer who builds tools to make life simpler.</p>
+        <p>If this plugin saved you time, consider buying me a coffee. Every tip helps me keep building useful stuff!</p>
+      </div>
+      <div class="tip-options">
+        <a href="https://paypal.me/thekeepcollective" target="_blank" class="tip-btn tip-btn-paypal" onclick="closeTipModal()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944 3.72a.641.641 0 0 1 .632-.54h6.012c2.657 0 4.553.855 5.441 2.403.889 1.549.702 3.605-.46 5.53-1.161 1.926-3.318 3.178-5.84 3.178H8.17l-1.094 7.046zm6.658-15.157H9.402l-1.68 10.796h2.674c1.916 0 3.567-.957 4.418-2.371.851-1.413.944-3.078.258-4.261-.687-1.184-2.163-2.164-4.338-2.164z"/>
+          </svg>
+          Tip via PayPal
+        </a>
+      </div>
+      <div class="modal-footer">
+        No pressure — the plugin is free forever. 🫡
+      </div>
+    </div>
+  </div>
+</body>
+</html>

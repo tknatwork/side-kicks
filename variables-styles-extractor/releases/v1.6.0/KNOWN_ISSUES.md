@@ -1,7 +1,6 @@
-# Known Issues - Variables & Styles Extractor
+# Known Issues - v1.6.0
 
-**Plugin**: Variables & Styles Extractor  
-**Current Version**: 1.6.0  
+**Version**: 1.6.0  
 **Status**: Published to Figma Community
 
 ---
@@ -10,13 +9,13 @@
 
 No known issues at this time.
 
-If you're experiencing a problem, please check the [GitHub Issues](https://github.com/tknatwork/side-kicks/issues) or report a new one.
-
 ---
 
 ## Reporting Issues
 
-### Via GitHub (Recommended)
+If you encounter a problem, please report it:
+
+### Via GitHub
 1. Go to [GitHub Issues](https://github.com/tknatwork/side-kicks/issues)
 2. Click "New Issue"
 3. Select "Bug Report" template
@@ -24,15 +23,15 @@ If you're experiencing a problem, please check the [GitHub Issues](https://githu
 
 ### Information to Include
 - Figma version
-- Plugin version (shown in window title bar)
+- Plugin version (shown in window title)
 - Operating system
 - Steps to reproduce
 - Expected vs. actual behavior
-- Export JSON if relevant (remove sensitive data first)
+- Export JSON if relevant (remove sensitive data)
 
 ---
 
-## Resolved Issues
+## Resolved Issues (Previous Versions)
 
 ### Grid Import Validation (Fixed in v1.2.0)
 Grid styles failed to import with "layoutGrids validation error". Fixed by using conditional property structure per alignment type.
