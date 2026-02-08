@@ -792,6 +792,8 @@ class VariableCache {
     constructor() {
         this.collectionMap = new Map();
         this.variableMap = new Map();
+        this.libraryVariableMap = new Map(); // Library/remote variables
+        this.libraryCollectionNames = new Set(); // Names of connected library collections
         this.initialized = false;
     }
     async initialize() {
@@ -803,6 +805,9 @@ class VariableCache {
     async rebuild() {
         this.collectionMap.clear();
         this.variableMap.clear();
+        this.libraryVariableMap.clear();
+        this.libraryCollectionNames.clear();
+        // Index local collections and variables
         for (const col of await figma.variables.getLocalVariableCollectionsAsync()) {
             this.collectionMap.set(col.name, col);
             for (const varId of col.variableIds) {
@@ -812,12 +817,50 @@ class VariableCache {
                 }
             }
         }
+        // Also index library/remote variables that are available in this file
+        await this.indexLibraryVariables();
+    }
+    // Index library variables from connected team libraries
+    async indexLibraryVariables() {
+        try {
+            // Get all library variable collections available to this file
+            const libraryCollections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+            for (const libCol of libraryCollections) {
+                this.libraryCollectionNames.add(libCol.name);
+                // Get variables in this library collection
+                try {
+                    const libraryVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libCol.key);
+                    for (const libVar of libraryVars) {
+                        // Import the variable so we can reference it by ID
+                        try {
+                            const importedVar = await figma.variables.importVariableByKeyAsync(libVar.key);
+                            if (importedVar) {
+                                this.libraryVariableMap.set(`${libCol.name}/${importedVar.name}`, importedVar);
+                            }
+                        }
+                        catch (importErr) {
+                            // Individual variable import failure - skip
+                        }
+                    }
+                }
+                catch (e) {
+                    Logger.log(`  ⚠️ Could not index library collection "${libCol.name}": ${e}`);
+                }
+            }
+            if (this.libraryCollectionNames.size > 0) {
+                Logger.log(`📚 Indexed ${this.libraryVariableMap.size} library variables from ${this.libraryCollectionNames.size} connected libraries`);
+            }
+        }
+        catch (e) {
+            Logger.log(`⚠️ Could not access team library: ${e}`);
+        }
     }
     getCollection(name) {
         return this.collectionMap.get(name);
     }
     getVariable(key) {
-        return this.variableMap.get(key);
+        // Check local variables first, then library variables
+        return this.variableMap.get(key) || this.libraryVariableMap.get(key);
     }
     setVariable(key, variable) {
         this.variableMap.set(key, variable);
@@ -838,6 +881,14 @@ class VariableCache {
         for (const key of keysToRemove) {
             this.variableMap.delete(key);
         }
+    }
+    // Check if a collection is available (local or library)
+    isCollectionAvailable(name) {
+        return this.collectionMap.has(name) || this.libraryCollectionNames.has(name);
+    }
+    // Get all connected library collection names
+    getLibraryCollectionNames() {
+        return Array.from(this.libraryCollectionNames);
     }
     get size() {
         return this.variableMap.size;
@@ -2611,22 +2662,24 @@ figma.ui.onmessage = async (msg) => {
             // Check if required library collections are available
             try {
                 const requiredCollections = msg.collections;
-                const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
-                const localCollectionNames = localCollections.map(c => c.name);
-                // Check for external library collections (remote)
-                // Note: Figma API doesn't provide direct access to team library collections
-                // We can only check if variables referencing those libraries can be resolved
+                // Initialize cache to index both local and library collections
+                await variableCache.rebuild();
                 const availableCollections = [];
                 const missingCollections = [];
                 for (const collectionName of requiredCollections) {
-                    if (localCollectionNames.includes(collectionName)) {
+                    if (variableCache.isCollectionAvailable(collectionName)) {
                         availableCollections.push(collectionName);
                     }
                     else {
-                        // Try to find in team libraries (this is a best-effort check)
-                        // Team library collections might still be available for referencing
                         missingCollections.push(collectionName);
                     }
+                }
+                Logger.log(`📚 Library check: ${availableCollections.length} available, ${missingCollections.length} missing`);
+                if (availableCollections.length > 0) {
+                    Logger.log(`  ✅ Available: ${availableCollections.join(', ')}`);
+                }
+                if (missingCollections.length > 0) {
+                    Logger.log(`  ❌ Missing: ${missingCollections.join(', ')}`);
                 }
                 Logger.send('library_check_result', {
                     allAvailable: missingCollections.length === 0,
