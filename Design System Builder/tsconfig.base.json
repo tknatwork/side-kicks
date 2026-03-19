@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "moduleResolution": "node",
+    "module": "commonjs",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "baseUrl": ".",
+    "paths": {
+      "@dsb/core": ["packages/core/src"],
+      "@dsb/core/*": ["packages/core/src/*"],
+      "@dsb/figma-api": ["packages/figma-api/src"],
+      "@dsb/figma-api/*": ["packages/figma-api/src/*"],
+      "@dsb/guardrails": ["packages/guardrails/src"],
+      "@dsb/guardrails/*": ["packages/guardrails/src/*"],
+      "@dsb/licensing": ["packages/licensing/src"],
+      "@dsb/licensing/*": ["packages/licensing/src/*"],
+      "@dsb/updater": ["packages/updater/src"],
+      "@dsb/updater/*": ["packages/updater/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}

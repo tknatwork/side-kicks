@@ -1,0 +1,23 @@
+{
+  "name": "@dsb/updater",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Secure OTA update system — version checking, Ed25519 signature verification, atomic updates with rollback",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@dsb/guardrails": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

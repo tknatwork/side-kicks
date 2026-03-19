@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.plugin.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": true,
+    "typeRoots": ["../../node_modules/@types", "../../node_modules/@figma"],
+    "types": ["plugin-typings"],
+    "baseUrl": ".",
+    "paths": {}
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/__tests__/**", "**/*.test.ts"]
+}

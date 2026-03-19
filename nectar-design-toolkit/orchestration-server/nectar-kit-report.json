@@ -1,0 +1,76 @@
+{
+  "timestamp": "2025-12-13T22:36:22.953Z",
+  "file": {
+    "name": "Nectar Design System (Base)",
+    "currentPage": "🎯 Icons"
+  },
+  "pages": [
+    "📚 NDS Documentation",
+    "🎯 Icons",
+    "Components-extras",
+    "Token preview",
+    "Style guide",
+    "------------",
+    "Cover-1",
+    "Components",
+    "Dark Mode Components",
+    "Primitives",
+    "Dark Mode Primitives",
+    "Style guide",
+    "Stars",
+    "--------",
+    "◆ Cover",
+    "📖 Getting Started",
+    "🎨 Foundations",
+    "🎨 Color",
+    "✏️ Typography",
+    "📐 Spacing",
+    "💫 Effects",
+    "🖼️ Icons",
+    "📱 Responsive",
+    "🧩 Components",
+    "🔘 Buttons",
+    "📝 Inputs",
+    "🏷️ Labels & Badges",
+    "📋 Cards",
+    "🗂️ Navigation",
+    "💬 Dialogs & Modals",
+    "📊 Data Display",
+    "⏳ Feedback",
+    "📐 Patterns",
+    "📄 Page Layouts",
+    "📝 Forms",
+    "📋 Lists & Tables",
+    "🔄 Loading States",
+    "💡 Examples",
+    "📚 Reference"
+  ],
+  "collections": [
+    {
+      "name": "Brand",
+      "variables": 68,
+      "modes": 1
+    },
+    {
+      "name": "Mapped",
+      "variables": 141,
+      "modes": 2
+    },
+    {
+      "name": "Alias",
+      "variables": 292,
+      "modes": 1
+    },
+    {
+      "name": "Breakpoints",
+      "variables": 385,
+      "modes": 3
+    }
+  ],
+  "styles": {
+    "paint": 136,
+    "text": 44,
+    "effect": 4
+  },
+  "icons": 76
+}

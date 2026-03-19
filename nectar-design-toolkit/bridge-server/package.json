@@ -1,0 +1,14 @@
+{
+  "name": "figma-bridge-server",
+  "version": "1.0.0",
+  "description": "WebSocket bridge server connecting MCP to Figma Plugin",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.js.map
+
+# Turbo
+.turbo/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Workspace temp files (auto-cleaned)
+workspace/temp/*
+!workspace/temp/.gitkeep
+
+# Encrypted assets (built for distribution, not tracked in dev)
+**/*.enc
+
+# Integrity manifest (generated at package time)
+packages/guardrails/dist/integrity-manifest.json
+
+# License cache
+.dsb/
+
+# Logs
+*.log
+logs/
+
+# GCC session transcripts (large, machine-generated)
+.gcc/sessions/

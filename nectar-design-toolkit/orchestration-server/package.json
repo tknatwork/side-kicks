@@ -1,0 +1,28 @@
+{
+  "name": "nectar-orchestration-server",
+  "version": "1.0.0",
+  "description": "Orchestration server for Nectar DS Figma plugin",
+  "type": "module",
+  "main": "index.js",
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "start": "node index.js",
+    "build-kit": "node build-nectar-design-kit.js",
+    "build-kit:check": "node build-nectar-design-kit.js check",
+    "build-kit:pages": "node build-nectar-design-kit.js pages",
+    "build-kit:variables": "node build-nectar-design-kit.js variables",
+    "build-kit:icons": "node build-nectar-design-kit.js icons",
+    "build-kit:styles": "node build-nectar-design-kit.js styles",
+    "build-kit:report": "node build-nectar-design-kit.js report",
+    "import-icons": "node import-icons.js",
+    "import-icons:extract": "node import-icons.js extract",
+    "import-icons:create": "node import-icons.js create"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@material-design-icons/svg": "^0.14.15"
+  }
+}

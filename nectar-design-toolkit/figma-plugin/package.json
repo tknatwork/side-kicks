@@ -1,0 +1,13 @@
+{
+  "name": "portfolio-ds-builder",
+  "version": "1.0.0",
+  "description": "Figma plugin for AI-controlled design system building",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.2",
+    "typescript": "^5.0.0"
+  }
+}

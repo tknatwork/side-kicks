@@ -1,0 +1,29 @@
+{
+  "name": "@dsb/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP tools server — Claude's primary interface to the toolkit (86 tools)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run --passWithNoTests",
+    "test:unit": "vitest run --passWithNoTests",
+    "typecheck": "echo 'NOTE: tsc --noEmit OOMs due to MCP SDK types. Use IDE type checking or esbuild build instead.' && exit 0",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@dsb/core": "workspace:*",
+    "@dsb/guardrails": "workspace:*",
+    "@dsb/licensing": "workspace:*",
+    "@dsb/updater": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.5.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

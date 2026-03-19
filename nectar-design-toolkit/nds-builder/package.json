@@ -1,0 +1,31 @@
+{
+  "name": "nds-builder",
+  "version": "1.0.0",
+  "description": "Figma plugin to build Nectar Design System following Ant Design structure with neo-brutalism style",
+  "author": "Tushar Kant",
+  "license": "MIT",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -f code.js",
+    "dev": "pnpm run watch"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.99.0",
+    "typescript": "^5.3.3"
+  },
+  "keywords": [
+    "figma",
+    "plugin",
+    "design-system",
+    "nectar",
+    "ant-design",
+    "neo-brutalism",
+    "variables",
+    "tokens"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "packageManager": "pnpm@8.0.0"
+}

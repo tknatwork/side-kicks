@@ -1,0 +1,1173 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --bg-secondary: #f5f5f5;
+      --text: #333333;
+      --text-muted: #888888;
+      --border: #e0e0e0;
+      --accent: #0d99ff;
+      --accent-hover: #0b85e0;
+      --success: #14ae5c;
+      --error: #f24822;
+      --warning: #ffcd29;
+      --font: 'Inter', system-ui, -apple-system, sans-serif;
+      --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    }
+
+    /* Figma dark theme support */
+    .figma-dark {
+      --bg: #2c2c2c;
+      --bg-secondary: #383838;
+      --text: #e5e5e5;
+      --text-muted: #999999;
+      --border: #444444;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: var(--font);
+      font-size: 12px;
+      color: var(--text);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* ── Header ── */
+    .header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--error);
+      transition: background 0.3s;
+    }
+
+    .status-dot.connected { background: var(--success); }
+    .status-dot.connecting { background: var(--warning); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .title {
+      font-weight: 600;
+      font-size: 13px;
+      flex: 1;
+    }
+
+    .version {
+      color: var(--text-muted);
+      font-size: 10px;
+    }
+
+    /* ── Connection Panel ── */
+    .connect-panel {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .input-row label {
+      font-size: 11px;
+      color: var(--text-muted);
+      min-width: 48px;
+      line-height: 28px;
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      flex: 1;
+      height: 28px;
+      padding: 0 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--text);
+      background: var(--bg-secondary);
+      outline: none;
+    }
+
+    input:focus { border-color: var(--accent); }
+
+    input[type="number"] { width: 64px; flex: none; }
+
+    /* ── Buttons ── */
+    .button-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      height: 28px;
+      padding: 0 12px;
+      border: none;
+      border-radius: 4px;
+      font-family: var(--font);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #ffffff;
+      flex: 1;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:disabled {
+      background: var(--border);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: var(--bg-secondary);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+
+    .btn-danger {
+      background: var(--error);
+      color: #ffffff;
+    }
+    .btn-danger:hover { opacity: 0.9; }
+
+    /* ── Stats Bar ── */
+    .stats-bar {
+      padding: 6px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 16px;
+      font-size: 10px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .stat-value {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ── Build Progress ── */
+    .build-progress {
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: none;
+    }
+
+    .build-progress.active { display: block; }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 4px;
+      font-size: 10px;
+    }
+
+    .progress-step { color: var(--text); font-weight: 500; }
+    .progress-pct { color: var(--accent); font-weight: 600; }
+
+    .progress-track {
+      height: 4px;
+      background: var(--bg-secondary);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    .progress-fill.done { background: var(--success); }
+    .progress-fill.error { background: var(--error); }
+
+    /* ── Error Badge ── */
+    .error-badge {
+      display: inline-block;
+      background: var(--error);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 8px;
+      margin-left: 4px;
+    }
+
+    .error-badge.hidden { display: none; }
+
+    /* ── Workflow Panel ── */
+    .workflow-panel {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      display: none;
+    }
+
+    .workflow-panel.active { display: block; }
+
+    .workflow-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .workflow-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+
+    .btn-extract {
+      background: #22c55e;
+      color: #fff;
+      font-weight: 600;
+      flex: 1;
+    }
+
+    .btn-extract:hover { opacity: 0.9; }
+    .btn-extract:disabled {
+      background: var(--border);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+
+    .workflow-nudge {
+      display: none;
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .figma-dark .workflow-nudge {
+      background: #422006;
+      border-color: #b45309;
+      color: #fef3c7;
+    }
+
+    .workflow-nudge.visible { display: block; }
+
+    .nudge-title {
+      font-weight: 700;
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .nudge-steps {
+      padding-left: 16px;
+      margin: 4px 0;
+    }
+
+    .nudge-steps li {
+      margin: 2px 0;
+      color: var(--text);
+    }
+
+    .figma-dark .nudge-steps li { color: #fef3c7; }
+
+    .extract-status {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      margin-top: 4px;
+    }
+
+    .extract-status.done { color: var(--success); font-weight: 600; }
+
+    .workflow-inner { display: none; }
+    .workflow-inner.visible { display: block; }
+
+    .nudge-footer {
+      margin-top: 6px;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .dest-ready {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+
+    .dest-ready strong { color: var(--text); }
+
+    .btn-build {
+      background: #f97316;
+      color: #fff;
+      font-weight: 600;
+      width: 100%;
+    }
+
+    .btn-build:hover { opacity: 0.9; }
+    .btn-build:disabled {
+      background: var(--border);
+      color: var(--text-muted);
+      cursor: not-allowed;
+    }
+
+    .btn-cache-clear {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .btn-cache-clear:hover { background: #ef4444; color: #fff; border-color: #ef4444; }
+    .btn-cache-clear:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .build-status-text {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: var(--mono);
+      margin-top: 6px;
+    }
+
+    .build-status-text.done { color: var(--success); font-weight: 600; }
+
+    /* ── Log Panel ── */
+    .log-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 16px 2px;
+      flex-shrink: 0;
+    }
+
+    .log-header-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-clear {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 9px;
+      padding: 1px 6px;
+      height: 18px;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    .btn-clear:hover { background: var(--bg-secondary); }
+
+    .log-panel {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 16px;
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.6;
+    }
+
+    .log-entry {
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .log-entry.error { color: var(--error); }
+    .log-entry.success { color: var(--success); }
+
+    /* ── Footer ── */
+    .footer {
+      padding: 8px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 10px;
+      color: var(--text-muted);
+      text-align: center;
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div id="statusDot" class="status-dot"></div>
+    <div class="title">Design System Builder</div>
+    <div class="version" id="versionLabel">v1.0.0</div>
+    <button id="roleBadge" onclick="cycleFileRole()" style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;background:#3b82f6;color:#fff;border:none;cursor:pointer;" title="Click to cycle: Source → Destination → Both">SOURCE + DEST</button>
+  </div>
+
+  <!-- Connection Panel -->
+  <div class="connect-panel">
+    <div class="input-row">
+      <label>Token</label>
+      <input type="text" id="tokenInput" placeholder="Session token (or leave empty)" />
+    </div>
+    <div class="input-row">
+      <label>Port</label>
+      <input type="number" id="portInput" value="9877" min="1024" max="65535" />
+    </div>
+    <div class="button-row">
+      <button class="btn-primary" id="connectBtn" onclick="handleConnect()">Connect</button>
+      <button class="btn-secondary" id="pauseBtn" onclick="handlePause()" style="display:none;">Pause</button>
+      <button class="btn-danger" id="stopBtn" onclick="handleStop()" style="display:none;">Stop</button>
+    </div>
+  </div>
+
+  <!-- Stats Bar -->
+  <div class="stats-bar">
+    <span>Status: <span class="stat-value" id="statusText">Disconnected</span></span>
+    <span>Commands: <span class="stat-value" id="cmdCount">0</span></span>
+    <span>Queue: <span class="stat-value" id="queueDepth">0</span></span>
+    <span>Errors: <span class="stat-value" id="errorCount">0</span><span class="error-badge hidden" id="errorBadge">0</span></span>
+  </div>
+
+  <!-- Build Progress -->
+  <div class="build-progress" id="buildProgress">
+    <div class="progress-header">
+      <span class="progress-step" id="buildStep">Preparing...</span>
+      <span class="progress-pct" id="buildPct">0%</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="buildFill"></div>
+    </div>
+  </div>
+
+  <!-- Workflow Panel (context-sensitive by role) -->
+  <div class="workflow-panel" id="workflowPanel">
+    <!-- Source mode content -->
+    <div id="sourceWorkflow" class="workflow-inner">
+      <div class="workflow-desc">
+        Extract all design system data from this file so it can be used as the source for a cross-file build.
+      </div>
+      <div class="workflow-actions">
+        <button type="button" class="btn-primary btn-extract" id="extractBtn" onclick="startSourceExtraction()">Extract Source Data</button>
+      </div>
+      <div class="extract-status" id="extractStatus"></div>
+      <div class="workflow-nudge" id="sourceNudge">
+        <div class="nudge-title">Source data extracted</div>
+        <div>Now switch to the destination file:</div>
+        <ol class="nudge-steps">
+          <li>Open your destination Figma file</li>
+          <li>Run the DSB plugin there</li>
+          <li>Connect on the same port</li>
+          <li>Set role to Destination</li>
+        </ol>
+        <div class="nudge-footer">
+          Claude will use the extracted source data to build into the destination.
+        </div>
+      </div>
+    </div>
+    <!-- Destination mode content -->
+    <div id="destWorkflow" class="workflow-inner">
+      <div class="dest-ready">
+        <strong>Destination mode active.</strong> This file will receive the replicated design system from the source.
+      </div>
+      <div class="workflow-actions">
+        <button type="button" class="btn-primary btn-build" id="buildBtn" onclick="startDestinationBuild()">Build from Source</button>
+        <button type="button" class="btn-cache-clear" id="clearCacheBtn" onclick="handleClearCache()">Clear Cache</button>
+      </div>
+      <div class="build-status-text" id="buildStatusText"></div>
+    </div>
+    <!-- Source+Dest mode content -->
+    <div id="bothWorkflow" class="workflow-inner">
+      <div class="dest-ready">
+        <strong>In-place mode.</strong> This file is both source and destination. Claude reads and writes within the same file.
+      </div>
+    </div>
+  </div>
+
+  <!-- Log Header + Panel -->
+  <div class="log-header">
+    <span class="log-header-label">Activity Log</span>
+    <button type="button" class="btn-clear" onclick="handleClearLog()">Clear</button>
+  </div>
+  <div class="log-panel" id="logPanel"></div>
+
+  <!-- Footer -->
+  <div class="footer">
+    Claude-powered design system builder. All intelligence via MCP.
+  </div>
+
+  <script>
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 1: UI STATE
+    // ══════════════════════════════════════════════════════════════════════
+
+    var isConnected = false;
+    var isPaused = false;
+    var commandsExecuted = 0;
+
+    // Polling state
+    var pollTimer = null;
+    var heartbeatTimer = null;
+    var consecutiveErrors = 0;
+    var MAX_CONSECUTIVE_ERRORS = 10;
+    var POLL_INTERVAL_MS = 50;
+    var HEARTBEAT_INTERVAL_MS = 5000;
+    var BASE_POLL_INTERVAL_MS = 50;
+    var currentPollInterval = POLL_INTERVAL_MS;
+    var baseUrl = '';
+    var sessionToken = '';
+    var currentFileRole = 'source+destination';
+
+    // Elements
+    var statusDot = document.getElementById('statusDot');
+    var statusText = document.getElementById('statusText');
+    var cmdCount = document.getElementById('cmdCount');
+    var logPanel = document.getElementById('logPanel');
+    var connectBtn = document.getElementById('connectBtn');
+    var pauseBtn = document.getElementById('pauseBtn');
+    var stopBtn = document.getElementById('stopBtn');
+    var tokenInput = document.getElementById('tokenInput');
+    var portInput = document.getElementById('portInput');
+    var roleBadge = document.getElementById('roleBadge');
+    var queueDepthEl = document.getElementById('queueDepth');
+    var errorCountEl = document.getElementById('errorCount');
+    var errorBadge = document.getElementById('errorBadge');
+    var buildProgress = document.getElementById('buildProgress');
+    var buildStep = document.getElementById('buildStep');
+    var buildPct = document.getElementById('buildPct');
+    var buildFill = document.getElementById('buildFill');
+    var errorTotal = 0;
+    var buildPollTimer = null;
+    var workflowPanel = document.getElementById('workflowPanel');
+    var sourceWorkflow = document.getElementById('sourceWorkflow');
+    var destWorkflow = document.getElementById('destWorkflow');
+    var bothWorkflow = document.getElementById('bothWorkflow');
+    var extractBtn = document.getElementById('extractBtn');
+    var extractStatus = document.getElementById('extractStatus');
+    var sourceNudge = document.getElementById('sourceNudge');
+    var extractionRunning = false;
+    var extractionSteps = ['deep_extract', 'get_pages', 'get_file_info'];
+    var extractionCompleted = 0;
+    var buildBtn = document.getElementById('buildBtn');
+    var buildStatusText = document.getElementById('buildStatusText');
+    var buildRunning = false;
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 2: THEME DETECTION
+    // ══════════════════════════════════════════════════════════════════════
+
+    if (document.body.dataset.figmaTheme === 'dark' ||
+        window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.body.classList.add('figma-dark');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 3: LOG DISPLAY
+    // ══════════════════════════════════════════════════════════════════════
+
+    function addLogEntry(message, type) {
+      var entry = document.createElement('div');
+      entry.className = 'log-entry' + (type ? ' ' + type : '');
+      entry.textContent = message;
+      logPanel.appendChild(entry);
+      logPanel.scrollTop = logPanel.scrollHeight;
+
+      if (message.indexOf('Executing:') !== -1) {
+        commandsExecuted++;
+        cmdCount.textContent = commandsExecuted;
+      }
+      if (type === 'error') {
+        errorTotal++;
+        errorCountEl.textContent = errorTotal;
+        errorBadge.textContent = errorTotal;
+        errorBadge.className = 'error-badge';
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 4: HTTP NETWORKING (runs in UI iframe — the ONLY place
+    // Figma allows fetch)
+    // ══════════════════════════════════════════════════════════════════════
+
+    function getHeaders() {
+      var h = { 'Content-Type': 'application/json' };
+      if (sessionToken) {
+        h['Authorization'] = 'Bearer ' + sessionToken;
+      }
+      return h;
+    }
+
+    /** Register plugin with the orchestration server. */
+    function register() {
+      fetch(baseUrl + '/register', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ pluginId: 'dsb-builder-plugin', timestamp: Date.now() }),
+      }).then(function(resp) {
+        if (resp.ok) {
+          addLogEntry('Registered with orchestration server', 'success');
+        }
+      }).catch(function(e) {
+        addLogEntry('Registration failed: ' + e, 'error');
+      });
+    }
+
+    /** Poll for pending commands, relay to code.js for execution. */
+    function poll() {
+      if (isPaused) return;
+
+      fetch(baseUrl + '/poll', {
+        method: 'GET',
+        headers: getHeaders(),
+      }).then(function(resp) {
+        if (!resp.ok) {
+          handlePollError();
+          return;
+        }
+
+        consecutiveErrors = 0;
+        currentPollInterval = POLL_INTERVAL_MS;
+        if (!isConnected) {
+          setConnected(true);
+        }
+
+        return resp.json();
+      }).then(function(data) {
+        if (!data || !data.commands) return;
+
+        for (var i = 0; i < data.commands.length; i++) {
+          var command = data.commands[i];
+          // Relay command to code.js (plugin sandbox) for Figma API execution
+          parent.postMessage({
+            pluginMessage: { type: 'exec-command', command: command }
+          }, '*');
+        }
+      }).catch(function() {
+        handlePollError();
+      });
+    }
+
+    function handlePollError() {
+      consecutiveErrors++;
+      // Exponential backoff: 50 → 100 → 200 → 400 → cap at 2000ms
+      currentPollInterval = Math.min(BASE_POLL_INTERVAL_MS * Math.pow(2, consecutiveErrors), 2000);
+      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS && isConnected) {
+        setConnected(false);
+        addLogEntry('Lost connection after ' + consecutiveErrors + ' errors', 'error');
+      }
+    }
+
+    /** Send command result back to orchestration server. */
+    function sendResult(result) {
+      fetch(baseUrl + '/response', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify(result),
+      }).catch(function(e) {
+        addLogEntry('Failed to send result: ' + e, 'error');
+      });
+    }
+
+    /** Heartbeat — re-register periodically to maintain connection. */
+    function heartbeat() {
+      fetch(baseUrl + '/register', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ pluginId: 'dsb-builder-plugin', timestamp: Date.now() }),
+      }).then(function(resp) {
+        if (resp.ok && !isConnected) {
+          setConnected(true);
+          consecutiveErrors = 0;
+          addLogEntry('Reconnected to orchestration server', 'success');
+        }
+      }).catch(function() {
+        // Heartbeat failures are expected during disconnection
+      });
+    }
+
+    /** Update the role badge color and text + toggle workflow panel. */
+    function updateRoleBadge(role) {
+      currentFileRole = role;
+      roleBadge.style.display = 'inline-block';
+      if (role === 'source') {
+        roleBadge.textContent = 'SOURCE';
+        roleBadge.style.background = '#22c55e';
+        roleBadge.style.color = '#fff';
+      } else if (role === 'destination') {
+        roleBadge.textContent = 'DESTINATION';
+        roleBadge.style.background = '#f97316';
+        roleBadge.style.color = '#fff';
+      } else {
+        roleBadge.textContent = 'SOURCE + DEST';
+        roleBadge.style.background = '#3b82f6';
+        roleBadge.style.color = '#fff';
+      }
+      updateWorkflowPanel(role);
+    }
+
+    /** Show the right workflow content based on role. */
+    function updateWorkflowPanel(role) {
+      sourceWorkflow.className = 'workflow-inner';
+      destWorkflow.className = 'workflow-inner';
+      bothWorkflow.className = 'workflow-inner';
+      if (role === 'source') {
+        workflowPanel.className = 'workflow-panel active';
+        sourceWorkflow.className = 'workflow-inner visible';
+      } else if (role === 'destination') {
+        workflowPanel.className = 'workflow-panel active';
+        destWorkflow.className = 'workflow-inner visible';
+      } else {
+        workflowPanel.className = 'workflow-panel active';
+        bothWorkflow.className = 'workflow-inner visible';
+      }
+    }
+
+    /** Cycle through file roles when badge is clicked. */
+    function cycleFileRole() {
+      var nextRole;
+      if (currentFileRole === 'source+destination') {
+        nextRole = 'source';
+      } else if (currentFileRole === 'source') {
+        nextRole = 'destination';
+      } else {
+        nextRole = 'source+destination';
+      }
+      parent.postMessage({
+        pluginMessage: { type: 'exec-command', command: { id: 'role-' + Date.now(), type: 'set_file_role', payload: { role: nextRole } } }
+      }, '*');
+      updateRoleBadge(nextRole);
+      addLogEntry('File role changed to: ' + nextRole);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 4b: SOURCE EXTRACTION WORKFLOW
+    // ══════════════════════════════════════════════════════════════════════
+
+    /** Fire extraction commands to code.js and cache results on the server. */
+    function startSourceExtraction() {
+      if (extractionRunning) return;
+      if (!isConnected) {
+        addLogEntry('Connect to the server first before extracting.', 'error');
+        return;
+      }
+      extractionRunning = true;
+      extractionCompleted = 0;
+      extractBtn.disabled = true;
+      extractBtn.textContent = 'Extracting...';
+      sourceNudge.className = 'workflow-nudge';
+      extractStatus.className = 'extract-status';
+      extractStatus.textContent = '0/' + extractionSteps.length + ' steps...';
+      addLogEntry('Extracting source data via server (results will be cached)...');
+
+      runExtractionStep(0);
+    }
+
+    /** Run extraction steps sequentially through the HTTP server so results get cached. */
+    function runExtractionStep(index) {
+      if (index >= extractionSteps.length) {
+        extractionRunning = false;
+        extractBtn.disabled = false;
+        extractBtn.textContent = 'Re-extract Source Data';
+        extractStatus.className = 'extract-status done';
+        extractStatus.textContent = 'Source data stored on server. Switch to destination file.';
+        sourceNudge.className = 'workflow-nudge visible';
+        addLogEntry('Source extraction complete. Switch to destination file, set Destination mode, and click Build from Source.', 'success');
+        return;
+      }
+      var step = extractionSteps[index];
+      extractStatus.textContent = (index + 1) + '/' + extractionSteps.length + ' — ' + step + '...';
+      fetch(baseUrl + '/command', {
+        method: 'POST', headers: getHeaders(),
+        body: JSON.stringify({ type: step, payload: {} }),
+      }).then(function(resp) { return resp.json(); }).then(function(data) {
+        extractionCompleted++;
+        if (data && data.success !== false) {
+          addLogEntry(step + ' — done (' + (index + 1) + '/' + extractionSteps.length + ')', 'success');
+          // Store deep_extract result as source data for cross-file pipeline
+          if (step === 'deep_extract' && data.data) {
+            fetch(baseUrl + '/source-data', {
+              method: 'POST', headers: getHeaders(),
+              body: JSON.stringify({
+                data: data.data,
+                fileName: data.data.fileName || 'unknown',
+                extractedAt: (data.data._meta && data.data._meta.extractedAt) || new Date().toISOString(),
+              }),
+            }).then(function() {
+              addLogEntry('Source data stored on server for cross-file build.', 'success');
+            }).catch(function() {
+              addLogEntry('Warning: failed to store source data on server.', 'error');
+            });
+          }
+        } else {
+          addLogEntry(step + ' failed: ' + (data.error || 'unknown'), 'error');
+        }
+        runExtractionStep(index + 1);
+      }).catch(function(e) {
+        extractionCompleted++;
+        addLogEntry(step + ' error: ' + e, 'error');
+        runExtractionStep(index + 1);
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 4b2: DESTINATION BUILD WORKFLOW
+    // ══════════════════════════════════════════════════════════════════════
+
+    /**
+     * Trigger replication build in destination mode.
+     * This sends a signal to Claude (via a log message and a special
+     * command) that the user wants to replicate from source.
+     * Claude orchestrates the actual replication via MCP tools.
+     */
+    function startDestinationBuild() {
+      if (buildRunning) return;
+      if (!isConnected) { addLogEntry('Connect to the server first.', 'error'); return; }
+      buildRunning = true;
+      buildBtn.disabled = true;
+      buildBtn.textContent = 'Checking...';
+      buildStatusText.textContent = 'Checking for cached source data...';
+      // First verify source data exists on server
+      fetch(baseUrl + '/source-data', {
+        method: 'GET', headers: getHeaders(),
+      }).then(function(resp) {
+        if (!resp.ok) {
+          buildStatusText.textContent = 'No source data found. Extract from source file first.';
+          addLogEntry('No source data on server. Open source file, set Source mode, click Extract Source Data.', 'error');
+          buildRunning = false; buildBtn.disabled = false; buildBtn.textContent = 'Build from Source';
+          return null;
+        }
+        return resp.json();
+      }).then(function(sourceInfo) {
+        if (!sourceInfo) return;
+        var fileName = sourceInfo.fileName || 'unknown';
+        addLogEntry('Source data found: "' + fileName + '" (extracted ' + sourceInfo.extractedAt + ')', 'success');
+        buildStatusText.textContent = 'Source: "' + fileName + '". Tell Claude: "run dsb_replicate"';
+        addLogEntry('Tell Claude: "run dsb_replicate" to build from "' + fileName + '" into this file.', 'success');
+        if (buildPollTimer) clearInterval(buildPollTimer);
+        buildPollTimer = setInterval(pollBuildStatus, 1000);
+        buildRunning = false; buildBtn.disabled = false; buildBtn.textContent = 'Build from Source';
+      }).catch(function(e) {
+        buildStatusText.textContent = 'Error checking source data: ' + e;
+        addLogEntry('Source data check failed: ' + e, 'error');
+        buildRunning = false; buildBtn.disabled = false; buildBtn.textContent = 'Build from Source';
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 4c: QUEUE DEPTH + BUILD PROGRESS POLLING
+    // ══════════════════════════════════════════════════════════════════════
+
+    /** Poll /status for queue depth (runs alongside command polling). */
+    function pollQueueDepth() {
+      if (!baseUrl) return;
+      fetch(baseUrl + '/status', { method: 'GET', headers: getHeaders() })
+        .then(function(resp) { return resp.ok ? resp.json() : null; })
+        .then(function(data) {
+          if (!data) return;
+          var pending = data.queue ? (data.queue.pending || 0) : 0;
+          var processing = data.queue ? (data.queue.processing || 0) : 0;
+          queueDepthEl.textContent = pending + processing;
+        })
+        .catch(function() { /* silent — non-critical */ });
+    }
+
+    /** Poll /build-status for progress bar updates. */
+    function pollBuildStatus() {
+      if (!baseUrl) return;
+      fetch(baseUrl + '/build-status', { method: 'GET' })
+        .then(function(resp) { return resp.ok ? resp.json() : null; })
+        .then(function(data) {
+          if (!data) return;
+          if (data.active) {
+            buildProgress.className = 'build-progress active';
+            var step = data.currentStep || data.status || 'Working...';
+            buildStep.textContent = step;
+            buildPct.textContent = data.progressPercent + '%';
+            buildFill.style.width = data.progressPercent + '%';
+            buildFill.className = data.hasErrors ? 'progress-fill error' : 'progress-fill';
+          } else if (data.completedCount > 0) {
+            buildProgress.className = 'build-progress active';
+            var isDone = data.status === 'completed';
+            var isFailed = data.status === 'failed';
+            buildStep.textContent = isDone ? 'Build complete' : (isFailed ? 'Build failed' : 'Idle');
+            buildPct.textContent = data.progressPercent + '%';
+            buildFill.style.width = data.progressPercent + '%';
+            buildFill.className = isDone ? 'progress-fill done' : (isFailed ? 'progress-fill error' : 'progress-fill');
+          } else {
+            buildProgress.className = 'build-progress';
+          }
+        })
+        .catch(function() { /* silent */ });
+    }
+
+    /** Clear the log panel and reset error count. */
+    function handleClearLog() {
+      logPanel.innerHTML = '';
+      commandsExecuted = 0;
+      cmdCount.textContent = '0';
+      errorTotal = 0;
+      errorCountEl.textContent = '0';
+      errorBadge.className = 'error-badge hidden';
+      addLogEntry('Log cleared.');
+    }
+
+    function handleClearCache() {
+      if (!isConnected) { addLogEntry('Connect to the server first.', 'error'); return; }
+      var btn = document.getElementById('clearCacheBtn');
+      btn.disabled = true;
+      btn.textContent = 'Clearing...';
+      fetch(baseUrl + '/cache', {
+        method: 'DELETE',
+        headers: getHeaders(),
+      }).then(function(resp) { return resp.json(); }).then(function(data) {
+        var msg = 'Cache cleared: ' + (data.cleared || 0) + ' entries freed';
+        if (data.freedBytes) { msg += ' (' + Math.round(data.freedBytes / 1024) + ' KB)'; }
+        addLogEntry(msg, 'success');
+        btn.disabled = false;
+        btn.textContent = 'Clear Cache';
+      }).catch(function(e) {
+        addLogEntry('Cache clear failed: ' + e, 'error');
+        btn.disabled = false;
+        btn.textContent = 'Clear Cache';
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 5: CONNECTION STATE MANAGEMENT
+    // ══════════════════════════════════════════════════════════════════════
+
+    function setConnected(connected) {
+      isConnected = connected;
+
+      // Update UI
+      if (isConnected) {
+        statusDot.className = 'status-dot connected';
+        statusText.textContent = 'Connected';
+        connectBtn.disabled = true;
+        connectBtn.textContent = 'Connected';
+        pauseBtn.style.display = '';
+        stopBtn.style.display = '';
+      } else {
+        statusDot.className = 'status-dot';
+        statusText.textContent = 'Disconnected';
+        connectBtn.disabled = false;
+        connectBtn.textContent = 'Connect';
+        pauseBtn.style.display = 'none';
+        stopBtn.style.display = 'none';
+        isPaused = false;
+      }
+
+      // Notify code.js of connection state change
+      parent.postMessage({
+        pluginMessage: { type: 'connection-status', connected: isConnected }
+      }, '*');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 6: USER ACTIONS
+    // ══════════════════════════════════════════════════════════════════════
+
+    function handleConnect() {
+      if (isConnected) return;
+
+      sessionToken = tokenInput.value.trim();
+      var port = parseInt(portInput.value, 10) || 9877;
+
+      statusDot.className = 'status-dot connecting';
+      statusText.textContent = 'Connecting...';
+      connectBtn.disabled = true;
+
+      // Try HTTPS first (needed for Figma web app / browser context),
+      // then fall back to HTTP (works in Figma desktop app).
+      var httpsUrl = 'https://localhost:' + (port + 1);
+      var httpUrl = 'http://localhost:' + port;
+
+      addLogEntry('Trying HTTPS (' + httpsUrl + ')...');
+
+      fetch(httpsUrl + '/health', { method: 'GET' })
+        .then(function(resp) {
+          if (!resp.ok) throw new Error('HTTPS health returned ' + resp.status);
+          baseUrl = httpsUrl;
+          addLogEntry('Connected via HTTPS on port ' + (port + 1), 'success');
+          startPolling();
+        })
+        .catch(function() {
+          addLogEntry('HTTPS not available, trying HTTP...', 'warn');
+          return fetch(httpUrl + '/health', { method: 'GET' })
+            .then(function(resp) {
+              if (!resp.ok) throw new Error('HTTP health returned ' + resp.status);
+              baseUrl = httpUrl;
+              addLogEntry('Connected via HTTP on port ' + port, 'success');
+              startPolling();
+            });
+        })
+        .catch(function() {
+          addLogEntry('Server not reachable on HTTPS (' + httpsUrl + ') or HTTP (' + httpUrl + ')', 'error');
+          addLogEntry('Make sure the orchestration server is running with DSB_ENABLE_HTTPS=true', 'error');
+          statusDot.className = 'status-dot';
+          statusText.textContent = 'Disconnected';
+          connectBtn.disabled = false;
+        });
+    }
+
+    function startPolling() {
+      register();
+      pollTimer = setInterval(poll, POLL_INTERVAL_MS);
+      heartbeatTimer = setInterval(heartbeat, HEARTBEAT_INTERVAL_MS);
+      // Queue depth + build status: poll every 2s (non-critical, low frequency)
+      buildPollTimer = setInterval(function() {
+        pollQueueDepth();
+        pollBuildStatus();
+      }, 2000);
+    }
+
+    function handlePause() {
+      isPaused = !isPaused;
+      pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+      statusText.textContent = isPaused ? 'Paused' : 'Connected';
+      statusDot.className = isPaused ? 'status-dot connecting' : 'status-dot connected';
+      addLogEntry(isPaused ? 'Execution paused.' : 'Execution resumed.');
+    }
+
+    function handleStop() {
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      if (heartbeatTimer !== null) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+      }
+      if (buildPollTimer !== null) {
+        clearInterval(buildPollTimer);
+        buildPollTimer = null;
+      }
+      setConnected(false);
+      consecutiveErrors = 0;
+      queueDepthEl.textContent = '0';
+      buildProgress.className = 'build-progress';
+      addLogEntry('Polling stopped.');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // SECTION 7: MESSAGE HANDLER (from code.js → UI)
+    // ══════════════════════════════════════════════════════════════════════
+
+    window.onmessage = function(event) {
+      var msg = event.data.pluginMessage;
+      if (!msg) return;
+
+      // ── Plugin init ──
+      if (msg.type === 'init') {
+        document.getElementById('versionLabel').textContent = 'v' + msg.pluginVersion;
+      }
+
+      // ── Log messages from code.js ──
+      if (msg.type === 'log') {
+        var logType = '';
+        if (msg.message.indexOf('Error') !== -1 || msg.message.indexOf('Failed') !== -1) {
+          logType = 'error';
+        } else if (msg.message.indexOf('Created') !== -1 || msg.message.indexOf('success') !== -1) {
+          logType = 'success';
+        }
+        addLogEntry(msg.message, logType);
+      }
+
+      // ── Command result from code.js → send to orchestration server ──
+      if (msg.type === 'command-result') {
+        sendResult(msg.result);
+        // Update role badge when set_file_role completes
+        if (msg.result && msg.result.data && msg.result.data.role) {
+          updateRoleBadge(msg.result.data.role);
+        }
+        // Extraction progress now tracked via HTTP path (runExtractionStep)
+      }
+
+      // ── Console buffer request from code.js (debug tools) ──
+      if (msg.type === 'get-console-buffer') {
+        var entries = [];
+        var logEntries = logPanel.querySelectorAll('.log-entry');
+        var filter = msg.filter || '';
+        var limit = msg.limit || 200;
+        for (var j = 0; j < logEntries.length && entries.length < limit; j++) {
+          var text = logEntries[j].textContent || '';
+          if (!filter || text.indexOf(filter) !== -1) {
+            entries.push(text);
+          }
+        }
+        parent.postMessage({
+          pluginMessage: {
+            type: 'command-result',
+            result: {
+              commandId: msg.commandId,
+              success: true,
+              data: { entries: entries, total: logEntries.length, filtered: entries.length },
+            }
+          }
+        }, '*');
+      }
+
+      // ── Clear console buffer ──
+      if (msg.type === 'clear-console-buffer') {
+        logPanel.innerHTML = '';
+        commandsExecuted = 0;
+        cmdCount.textContent = '0';
+        parent.postMessage({
+          pluginMessage: {
+            type: 'command-result',
+            result: {
+              commandId: msg.commandId,
+              success: true,
+              data: { cleared: true },
+            }
+          }
+        }, '*');
+      }
+
+      // ── Status response ──
+      if (msg.type === 'status') {
+        if (msg.logBuffer) {
+          for (var i = 0; i < msg.logBuffer.length; i++) {
+            addLogEntry(msg.logBuffer[i]);
+          }
+        }
+      }
+
+      // ── Paused state ──
+      if (msg.type === 'paused') {
+        isPaused = msg.paused;
+        pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+        statusText.textContent = isPaused ? 'Paused' : 'Connected';
+        statusDot.className = isPaused ? 'status-dot connecting' : 'status-dot connected';
+      }
+    };
+
+    // Request initial status from code.js
+    parent.postMessage({ pluginMessage: { type: 'get-status' } }, '*');
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "Portfolio DS Builder",
+  "id": "portfolio-ds-builder",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "capabilities": [],
+  "enableProposedApi": false,
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["none"],
+    "devAllowedDomains": [
+      "http://localhost:9876",
+      "http://localhost:9877",
+      "ws://localhost:9876"
+    ]
+  },
+  "permissions": ["currentuser"]
+}

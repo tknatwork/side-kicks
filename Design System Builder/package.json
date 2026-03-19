@@ -1,0 +1,43 @@
+{
+  "name": "design-system-builder",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-driven design system builder for Figma — Claude-required toolkit for creating 3-tier variable architectures",
+  "author": "Tushar Kant Naik",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "workspaces": [
+    "packages/core",
+    "packages/figma-api",
+    "packages/builder-plugin",
+    "packages/mcp-server",
+    "packages/orchestration-server",
+    "packages/licensing",
+    "packages/guardrails",
+    "packages/updater"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "build:plugin": "turbo run build --filter=@dsb/builder-plugin",
+    "build:servers": "turbo run build --filter=@dsb/mcp-server --filter=@dsb/orchestration-server",
+    "dev": "turbo run dev",
+    "test": "turbo run test",
+    "test:unit": "turbo run test:unit",
+    "test:integration": "turbo run test:integration",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "server:start": "node packages/orchestration-server/dist/index.js"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "prettier": "^3.4.0",
+    "eslint": "^9.15.0"
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dsb.dev/schema/template.schema.json",
+  "title": "DSB Token Template",
+  "description": "Schema for Design System Builder token template files. Templates define the starting structure for a 3-tier design system.",
+  "type": "object",
+  "required": ["name", "version", "tiers", "tokens"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Human-readable template name",
+      "examples": ["Material UI", "Ant Design", "Apple HIG", "shadcn/ui"]
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of the template"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the template's design system origin"
+    },
+    "framework": {
+      "type": "string",
+      "enum": ["react", "react-native", "vue", "svelte", "html-css", "flutter", "any"],
+      "description": "Primary framework this template targets"
+    },
+    "tiers": {
+      "type": "object",
+      "description": "Tier configuration for the 3-tier architecture",
+      "required": ["primitives", "semantic", "component"],
+      "properties": {
+        "primitives": {
+          "$ref": "#/$defs/tierConfig"
+        },
+        "semantic": {
+          "$ref": "#/$defs/tierConfig"
+        },
+        "component": {
+          "$ref": "#/$defs/tierConfig"
+        },
+        "breakpoints": {
+          "$ref": "#/$defs/tierConfig"
+        }
+      }
+    },
+    "tokens": {
+      "type": "object",
+      "description": "Token definitions organized by tier",
+      "properties": {
+        "primitives": {
+          "type": "object",
+          "description": "Tier 1: Raw values (colors, spacing, typography)"
+        },
+        "semantic": {
+          "type": "object",
+          "description": "Tier 2: Purpose-driven aliases to primitives"
+        },
+        "component": {
+          "type": "object",
+          "description": "Tier 3: Component-specific mapped values with theme modes"
+        }
+      }
+    },
+    "fonts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["family", "weights"],
+        "properties": {
+          "family": { "type": "string" },
+          "weights": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "fallback": { "type": "string" }
+        }
+      },
+      "description": "Required font families for this template"
+    }
+  },
+  "$defs": {
+    "tierConfig": {
+      "type": "object",
+      "required": ["collectionName"],
+      "properties": {
+        "collectionName": {
+          "type": "string",
+          "description": "Name of the Figma variable collection"
+        },
+        "modes": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Mode names for this collection"
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

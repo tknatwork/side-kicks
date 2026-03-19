@@ -1,0 +1,389 @@
+{
+  "source": "Central Icon System",
+  "fileKey": "quMngmJX7ahR1d3QfA6LUm",
+  "exportedAt": "2025-11-30T22:32:51.183Z",
+  "variant": {
+    "stroke": "1",
+    "radius": "3",
+    "join": "round"
+  },
+  "categories": {
+    "Arrows (Circle)": [
+      "arrow-up-circle",
+      "arrow-right-up-circle",
+      "arrow-right-circle",
+      "arrow-right-down-circle",
+      "arrow-down-circle",
+      "arrow-left-down-circle",
+      "arrow-left-circle",
+      "arrow-left-up-circle"
+    ],
+    "Arrows (Simple)": [
+      "arrow-up",
+      "arrow-up-right",
+      "arrow-right",
+      "arrow-down-right",
+      "arrow-down",
+      "arrow-down-left",
+      "arrow-left",
+      "arrow-up-left"
+    ],
+    "Layout": [
+      "column-split",
+      "column-wide-half",
+      "column-wide-half-add",
+      "column-wide-half-remove"
+    ],
+    "Slides": [
+      "slide-wide-add",
+      "slide-tall-add",
+      "slides-tall",
+      "slides-tall-add",
+      "slides-wide",
+      "slides-wide-add"
+    ],
+    "Layers": [
+      "layers-two",
+      "layers-three",
+      "layers-behind"
+    ],
+    "UI": [
+      "carousel",
+      "placeholder",
+      "kanban-view"
+    ],
+    "Sidebar": [
+      "sidebar-left-arrow",
+      "sidebar-wide-left-arrow",
+      "sidebar-simple-left-wide",
+      "sidebar-simple-right-wide",
+      "sidebar-simple-left-square",
+      "sidebar-simple-right-square"
+    ]
+  },
+  "icons": [
+    {
+      "name": "arrow-up-circle",
+      "aliases": [
+        "arrow-top"
+      ],
+      "files": {
+        "outline": "arrow-up-circle-outline.svg",
+        "filled": "arrow-up-circle-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-right-up-circle",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-right-up-circle-outline.svg",
+        "filled": "arrow-right-up-circle-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-right-circle",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-right-circle-outline.svg",
+        "filled": "arrow-right-circle-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-right-down-circle",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-right-down-circle-outline.svg",
+        "filled": "arrow-right-down-circle-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-down-circle",
+      "aliases": [
+        "arrow-bottom"
+      ],
+      "files": {
+        "outline": "arrow-down-circle-outline.svg",
+        "filled": "arrow-down-circle-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-left-down-circle",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-left-down-circle-outline.svg",
+        "filled": "arrow-left-down-circle-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-left-circle",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-left-circle-outline.svg",
+        "filled": "arrow-left-circle-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-left-up-circle",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-left-up-circle-outline.svg",
+        "filled": "arrow-left-up-circle-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-up",
+      "aliases": [
+        "arrow-top"
+      ],
+      "files": {
+        "outline": "arrow-up-outline.svg",
+        "filled": "arrow-up-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-up-right",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-up-right-outline.svg",
+        "filled": "arrow-up-right-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-right",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-right-outline.svg",
+        "filled": "arrow-right-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-down-right",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-down-right-outline.svg",
+        "filled": "arrow-down-right-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-down",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-down-outline.svg",
+        "filled": "arrow-down-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-down-left",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-down-left-outline.svg",
+        "filled": "arrow-down-left-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-left",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-left-outline.svg",
+        "filled": "arrow-left-filled.svg"
+      }
+    },
+    {
+      "name": "arrow-up-left",
+      "aliases": [],
+      "files": {
+        "outline": "arrow-up-left-outline.svg",
+        "filled": "arrow-up-left-filled.svg"
+      }
+    },
+    {
+      "name": "column-split",
+      "aliases": [],
+      "files": {
+        "outline": "column-split-outline.svg",
+        "filled": "column-split-filled.svg"
+      }
+    },
+    {
+      "name": "column-wide-half",
+      "aliases": [],
+      "files": {
+        "outline": "column-wide-half-outline.svg",
+        "filled": "column-wide-half-filled.svg"
+      }
+    },
+    {
+      "name": "column-wide-half-add",
+      "aliases": [],
+      "files": {
+        "outline": "column-wide-half-add-outline.svg",
+        "filled": "column-wide-half-add-filled.svg"
+      }
+    },
+    {
+      "name": "column-wide-half-remove",
+      "aliases": [],
+      "files": {
+        "outline": "column-wide-half-remove-outline.svg",
+        "filled": "column-wide-half-remove-filled.svg"
+      }
+    },
+    {
+      "name": "slide-wide-add",
+      "aliases": [],
+      "files": {
+        "outline": "slide-wide-add-outline.svg",
+        "filled": "slide-wide-add-filled.svg"
+      }
+    },
+    {
+      "name": "slide-tall-add",
+      "aliases": [],
+      "files": {
+        "outline": "slide-tall-add-outline.svg",
+        "filled": "slide-tall-add-filled.svg"
+      }
+    },
+    {
+      "name": "slides-tall",
+      "aliases": [],
+      "files": {
+        "outline": "slides-tall-outline.svg",
+        "filled": "slides-tall-filled.svg"
+      }
+    },
+    {
+      "name": "slides-tall-add",
+      "aliases": [],
+      "files": {
+        "outline": "slides-tall-add-outline.svg",
+        "filled": "slides-tall-add-filled.svg"
+      }
+    },
+    {
+      "name": "slides-wide",
+      "aliases": [],
+      "files": {
+        "outline": "slides-wide-outline.svg",
+        "filled": "slides-wide-filled.svg"
+      }
+    },
+    {
+      "name": "slides-wide-add",
+      "aliases": [],
+      "files": {
+        "outline": "slides-wide-add-outline.svg",
+        "filled": "slides-wide-add-filled.svg"
+      }
+    },
+    {
+      "name": "layers-two",
+      "aliases": [
+        "stack"
+      ],
+      "files": {
+        "outline": "layers-two-outline.svg",
+        "filled": "layers-two-filled.svg"
+      }
+    },
+    {
+      "name": "layers-three",
+      "aliases": [
+        "stack"
+      ],
+      "files": {
+        "outline": "layers-three-outline.svg",
+        "filled": "layers-three-filled.svg"
+      }
+    },
+    {
+      "name": "layers-behind",
+      "aliases": [
+        "slides",
+        "pages"
+      ],
+      "files": {
+        "outline": "layers-behind-outline.svg",
+        "filled": "layers-behind-filled.svg"
+      }
+    },
+    {
+      "name": "carousel",
+      "aliases": [
+        "slides"
+      ],
+      "files": {
+        "outline": "carousel-outline.svg",
+        "filled": "carousel-filled.svg"
+      }
+    },
+    {
+      "name": "placeholder",
+      "aliases": [
+        "generate"
+      ],
+      "files": {
+        "outline": "placeholder-outline.svg",
+        "filled": "placeholder-filled.svg"
+      }
+    },
+    {
+      "name": "kanban-view",
+      "aliases": [
+        "columns"
+      ],
+      "files": {
+        "outline": "kanban-view-outline.svg",
+        "filled": "kanban-view-filled.svg"
+      }
+    },
+    {
+      "name": "sidebar-left-arrow",
+      "aliases": [],
+      "files": {
+        "outline": "sidebar-left-arrow-outline.svg",
+        "filled": "sidebar-left-arrow-filled.svg"
+      }
+    },
+    {
+      "name": "sidebar-wide-left-arrow",
+      "aliases": [],
+      "files": {
+        "outline": "sidebar-wide-left-arrow-outline.svg",
+        "filled": "sidebar-wide-left-arrow-filled.svg"
+      }
+    },
+    {
+      "name": "sidebar-simple-left-wide",
+      "aliases": [],
+      "files": {
+        "outline": "sidebar-simple-left-wide-outline.svg",
+        "filled": "sidebar-simple-left-wide-filled.svg"
+      }
+    },
+    {
+      "name": "sidebar-simple-right-wide",
+      "aliases": [],
+      "files": {
+        "outline": "sidebar-simple-right-wide-outline.svg",
+        "filled": "sidebar-simple-right-wide-filled.svg"
+      }
+    },
+    {
+      "name": "sidebar-simple-left-square",
+      "aliases": [],
+      "files": {
+        "outline": "sidebar-simple-left-square-outline.svg",
+        "filled": "sidebar-simple-left-square-filled.svg"
+      }
+    },
+    {
+      "name": "sidebar-simple-right-square",
+      "aliases": [],
+      "files": {
+        "outline": "sidebar-simple-right-square-outline.svg",
+        "filled": "sidebar-simple-right-square-filled.svg"
+      }
+    }
+  ]
+}
