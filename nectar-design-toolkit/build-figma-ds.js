@@ -1347,6 +1347,7 @@ main().catch(function (err) {
   // Strip ASCII control characters so the log line can't be forged.
   // Defends against CodeQL js/log-injection.
   const safeMsg = String(err && err.message != null ? err.message : err)
+    .replace(/\n|\r/g, '')
     .replace(/[\x00-\x1f\x7f]+/g, ' ')
     .slice(0, 500);
   console.error('\nFATAL ERROR:', safeMsg);

@@ -31,7 +31,7 @@ function safeLog(value) {
   const str = typeof value === 'string' ? value : String(value);
   // Strip ASCII control characters (incl. \r, \n, \t, ANSI escape prefix \x1b)
   // and cap length so log forging via huge strings is also blocked.
-  return str.replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+  return str.replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
 }
 
 // ============================================================================
@@ -97,7 +97,7 @@ const httpServer = http.createServer(async (req, res) => {
         // .replace() call adjacent to the log statement. The same pattern
         // is repeated at every log site below; safeLog() exists for any
         // future code that prefers the helper.
-        const name = String(fileInfo?.name || 'Unknown').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+        const name = String(fileInfo?.name || 'Unknown').replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
         console.log(`💓 Heartbeat from ${name}`);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -121,8 +121,8 @@ const httpServer = http.createServer(async (req, res) => {
     if (commandQueue.length > 0) {
       // FIFO: Get oldest command
       const cmd = commandQueue.shift();
-      const sCmd = String(cmd.command).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
-      const sId = String(cmd.id).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+      const sCmd = String(cmd.command).replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+      const sId = String(cmd.id).replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
       console.log(`📤 Dispatching command to plugin: ${sCmd} (${sId})`);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -156,12 +156,12 @@ const httpServer = http.createServer(async (req, res) => {
           pendingResponses.delete(id);
 
           if (success) {
-            const sId = String(id).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+            const sId = String(id).replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
             console.log(`✅ Command success: ${sId}`);
             pending.resolve(data);
           } else {
-            const sId2 = String(id).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
-            const sErr = String(error).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+            const sId2 = String(id).replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+            const sErr = String(error).replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
             console.error(`❌ Command failed: ${sId2} - ${sErr}`);
             pending.reject(new Error(error || 'Unknown error from plugin'));
           }
@@ -189,8 +189,8 @@ const httpServer = http.createServer(async (req, res) => {
         const { command, payload } = JSON.parse(body);
         const id = `cmd-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-        const sCmd = String(command).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
-        const sId3 = String(id).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+        const sCmd = String(command).replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+        const sId3 = String(id).replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
         console.log(`📥 Received command: ${sCmd} (${sId3})`);
 
         // Create Promise to wait for result
