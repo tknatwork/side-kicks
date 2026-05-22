@@ -1,0 +1,16 @@
+# CODEOWNERS — automatic review assignment
+# https://docs.github.com/en/repositories/managing-your-repositories-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Every PR touching this repo will automatically request review from @tknatwork.
+# Combined with branch protection (require review from Code Owners), this
+# prevents merging without owner approval.
+
+# Default owner for everything in the repo
+* @tknatwork
+
+# Workflow + security files — explicit ownership (defense in depth against
+# someone editing CI to exfiltrate secrets or weaken branch protection)
+/.github/                                  @tknatwork
+/variables-styles-extractor/.github/       @tknatwork
+/variables-styles-extractor/manifest.json  @tknatwork
+/variables-styles-extractor/LICENSE        @tknatwork

@@ -1,7 +1,7 @@
 # ============================================================================
 # CI/CD Pipeline - Variables & Styles Extractor
 # Figma Plugin Build & Validation
-# 
+#
 # @copyright 2025 Tushar Kant Naik / The Keep Collective
 # @license MIT
 # ============================================================================
@@ -14,15 +14,31 @@ on:
   pull_request:
     branches: [main]
 
+# Lock the default GITHUB_TOKEN to read-only at workflow scope.
+# Any job needing more permissions must declare them explicitly.
+# Defense in depth: a future job added without a permissions block
+# inherits read-only and cannot write to the repo or releases.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build & Validate
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 15
+
+    # Explicit per-job permissions (matches workflow scope; intent visible
+    # at the job level for future readers).
+    permissions:
+      contents: read
+
     steps:
       # Checkout repository
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Don't persist credentials past the step that needs them.
+          persist-credentials: false
 
       # Setup Node.js with pnpm
       - name: Setup Node.js
@@ -63,25 +79,25 @@ jobs:
       - name: Validate build output
         run: |
           echo "Validating build output..."
-          
+
           # Check required files exist
           if [ ! -f "code.js" ]; then
             echo "❌ ERROR: code.js not found"
             exit 1
           fi
-          
+
           if [ ! -f "ui.html" ]; then
             echo "❌ ERROR: ui.html not found"
             exit 1
           fi
-          
+
           if [ ! -f "manifest.json" ]; then
             echo "❌ ERROR: manifest.json not found"
             exit 1
           fi
-          
+
           echo "✅ All required files present"
-          
+
           # Check code.js is minified (should be single line or very few lines)
           LINES=$(wc -l < code.js)
           if [ "$LINES" -gt 50 ]; then
@@ -94,19 +110,19 @@ jobs:
       - name: Check CSS standards (BP-001)
         run: |
           echo "Checking for CSS containment violations..."
-          
+
           # Check for forbidden CSS (contain: strict)
           if grep -q "contain: strict" ui.html; then
             echo "❌ ERROR: Found 'contain: strict' - use 'contain: layout style' instead (BP-001)"
             exit 1
           fi
-          
+
           # Check for forbidden CSS (content-visibility: auto)
           if grep -q "content-visibility: auto" ui.html; then
             echo "❌ ERROR: Found 'content-visibility: auto' - not supported in Figma iframe (BP-001)"
             exit 1
           fi
-          
+
           echo "✅ No CSS containment violations found"
 
       # Upload build artifacts
