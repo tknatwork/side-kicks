@@ -34,7 +34,7 @@ const MAX_LOGS = 200;
 function safeLog(value) {
   if (value === null || value === undefined) return String(value);
   const str = typeof value === 'string' ? value : String(value);
-  return str.replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+  return str.replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
 }
 
 // Closed set of categories actually used in this file. Anything else
@@ -56,7 +56,7 @@ function log(category, message, data = null) {
   // Inline sanitization so CodeQL sees the .replace() adjacent to the
   // console.log call (helper functions are not auto-recognized as
   // sanitizers). Strips ASCII control chars + caps length.
-  const safeMessage = String(message ?? '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+  const safeMessage = String(message ?? '').replace(/\n|\r/g, '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
 
   const entry = {
     time: new Date().toISOString(),
