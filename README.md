@@ -44,8 +44,8 @@ Figma plugin to export and import variables & styles between files.
 | Property | Value |
 |----------|-------|
 | **Status** | Active - Published |
-| **Version** | 1.6.0 (published) / 1.7.0 (dev) |
-| **Figma** | [Community Page](https://www.figma.com/community/plugin/1584331992332668732) |
+| **Version** | 2.0.0 (published 17 January 2026) |
+| **Figma** | [Community Page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
 
 ---
 
