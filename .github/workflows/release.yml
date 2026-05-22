@@ -1,6 +1,9 @@
 # ============================================================================
 # Release Pipeline - Variables & Styles Extractor
-# Creates GitHub release with plugin files
+# Creates GitHub release with plugin files.
+#
+# Lives at repo root .github/workflows/ so GitHub discovers it.
+# Build commands run from variables-styles-extractor/ via working-directory.
 #
 # @copyright 2025 Tushar Kant Naik / The Keep Collective
 # @license MIT
@@ -17,6 +20,11 @@ on:
 # The release job escalates to contents: write explicitly below.
 permissions:
   contents: read
+
+# All `run:` steps execute inside variables-styles-extractor/.
+defaults:
+  run:
+    working-directory: variables-styles-extractor
 
 jobs:
   release:
@@ -93,10 +101,12 @@ jobs:
           cp manifest.json release/
           cp LICENSE release/
           cp README.md release/
-          cp KNOWN_ISSUES.md release/
+          cp KNOWN_ISSUES.md release/ 2>/dev/null || cp docs/KNOWN_ISSUES.md release/ 2>/dev/null || true
           cd release && zip -r "../variables-styles-extractor-${VERSION}.zip" .
 
       # Create GitHub Release
+      # action-gh-release uses GITHUB_WORKSPACE-relative paths for `files`
+      # so we point it at the path under variables-styles-extractor/.
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -116,6 +126,6 @@ jobs:
             ---
             See [CHANGELOG](https://github.com/tknatwork/side-kicks/blob/main/variables-styles-extractor/docs/CHANGELOG.md) for details.
           files: |
-            variables-styles-extractor-${{ steps.version.outputs.VERSION }}.zip
+            variables-styles-extractor/variables-styles-extractor-${{ steps.version.outputs.VERSION }}.zip
           draft: false
           prerelease: false

@@ -2,6 +2,9 @@
 # CI/CD Pipeline - Variables & Styles Extractor
 # Figma Plugin Build & Validation
 #
+# Lives at repo root .github/workflows/ so GitHub discovers it.
+# Build commands run from variables-styles-extractor/ via working-directory.
+#
 # @copyright 2025 Tushar Kant Naik / The Keep Collective
 # @license MIT
 # ============================================================================
@@ -11,8 +14,14 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - 'variables-styles-extractor/**'
+      - '.github/workflows/ci.yml'
   pull_request:
     branches: [main]
+    paths:
+      - 'variables-styles-extractor/**'
+      - '.github/workflows/ci.yml'
 
 # Lock the default GITHUB_TOKEN to read-only at workflow scope.
 # Any job needing more permissions must declare them explicitly.
@@ -20,6 +29,12 @@ on:
 # inherits read-only and cannot write to the repo or releases.
 permissions:
   contents: read
+
+# All `run:` steps execute inside variables-styles-extractor/ (the plugin
+# package). `uses:` steps still operate on the full checkout.
+defaults:
+  run:
+    working-directory: variables-styles-extractor
 
 jobs:
   build:
@@ -63,7 +78,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('variables-styles-extractor/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-pnpm-store-
 
@@ -131,7 +146,7 @@ jobs:
         with:
           name: figma-plugin
           path: |
-            code.js
-            ui.html
-            manifest.json
+            variables-styles-extractor/code.js
+            variables-styles-extractor/ui.html
+            variables-styles-extractor/manifest.json
           retention-days: 7
