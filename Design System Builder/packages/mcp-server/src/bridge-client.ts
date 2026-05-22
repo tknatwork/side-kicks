@@ -46,11 +46,26 @@ export interface BridgeStatus {
 // SECTION 2: BRIDGE CLIENT
 // ============================================================================
 
+// Allowed port range for the orchestration server. Reject anything
+// outside this window so a tampered config file cannot redirect the
+// bridge at an arbitrary host:port. The hostname is hard-coded to
+// localhost in baseUrl below so only the port is dynamic.
+// Defends against CodeQL js/file-access-to-http.
+const MIN_BRIDGE_PORT = 1024;
+const MAX_BRIDGE_PORT = 65535;
+
 export class BridgeClient {
   private readonly baseUrl: string;
   private readonly sessionToken: string;
 
   constructor(port: number, sessionToken: string) {
+    if (!Number.isInteger(port) || port < MIN_BRIDGE_PORT || port > MAX_BRIDGE_PORT) {
+      throw new Error(
+        `BridgeClient: port ${port} is outside the allowed range [${MIN_BRIDGE_PORT}, ${MAX_BRIDGE_PORT}]`
+      );
+    }
+    // Hostname is fixed at localhost — the only attacker surface is the
+    // port, which we've just validated.
     this.baseUrl = `http://localhost:${port}`;
     this.sessionToken = sessionToken;
   }

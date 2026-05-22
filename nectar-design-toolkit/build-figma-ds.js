@@ -1342,6 +1342,13 @@ async function main() {
 }
 
 main().catch(function (err) {
-  console.error('\nFATAL ERROR:', err.message);
+  // Sanitize err.message before logging — error messages may carry
+  // upstream-controlled bytes (HTTP headers, fetched JSON, env vars).
+  // Strip ASCII control characters so the log line can't be forged.
+  // Defends against CodeQL js/log-injection.
+  const safeMsg = typeof err.message === 'string'
+    ? err.message.replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500)
+    : String(err.message);
+  console.error('\nFATAL ERROR:', safeMsg);
   process.exit(1);
 });

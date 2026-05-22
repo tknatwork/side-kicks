@@ -39,6 +39,15 @@ const __dirname = path.dirname(__filename);
 // ============================================================================
 
 const PLUGIN_SERVER_URL = 'http://localhost:9877';
+
+// URL allowlist (defense against CodeQL js/file-access-to-http).
+// Only loopback addresses on the orchestration port are allowed.
+function assertSafeUrl(url) {
+  const allowed = /^http:\/\/(localhost|127(?:\.\d{1,3}){3}|\[::1\]):\d{1,5}(\/.*)?$/;
+  if (!allowed.test(url)) {
+    throw new Error(`Refused outbound request to non-loopback URL: ${url}`);
+  }
+}
 const ICONS_DIR = path.join(__dirname, 'central-icons');
 const NDS_SOURCE_FILE_KEY = process.env.NDS_FILE_KEY || ''; // Source NDS file for variables/styles
 
@@ -143,7 +152,9 @@ function sleep(ms) {
 
 async function sendCommand(command, payload = {}) {
   try {
-    const response = await fetch(`${PLUGIN_SERVER_URL}/command`, {
+    const url = `${PLUGIN_SERVER_URL}/command`;
+    assertSafeUrl(url);
+    const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ command, payload })
@@ -166,7 +177,9 @@ async function sendCommand(command, payload = {}) {
 
 async function checkConnection() {
   try {
-    const response = await fetch(`${PLUGIN_SERVER_URL}/status`);
+    const url = `${PLUGIN_SERVER_URL}/status`;
+    assertSafeUrl(url);
+    const response = await fetch(url);
     const status = await response.json();
     return status;
   } catch (error) {
@@ -580,9 +593,18 @@ ${colors.cyan}Styles:${colors.reset} ${report.styles.paint + report.styles.text 
 ${colors.cyan}Icons (local):${colors.reset} ${report.icons}
 `);
     
-    // Save report
+    // Save report.
+    // Path is fixed (hardcoded filename joined under __dirname) so it
+    // cannot escape the project. JSON.stringify escapes control bytes
+    // in any network-derived strings (defense against
+    // CodeQL js/http-to-file-access). Cap serialized size at 8 MiB so
+    // a runaway aggregate cannot fill the disk.
     const reportPath = path.join(__dirname, 'nectar-kit-report.json');
-    fs.writeFileSync(reportPath, JSON.stringify(report, null, 2));
+    const reportJson = JSON.stringify(report, null, 2);
+    if (reportJson.length > 8 * 1024 * 1024) {
+      throw new Error(`Refused report write: serialized size exceeds 8 MiB`);
+    }
+    fs.writeFileSync(reportPath, reportJson);
     log('success', `Report saved to: ${reportPath}`);
     
     return true;

@@ -439,8 +439,15 @@
     // ========================================================================
     // PLUGIN MESSAGE HANDLER
     // ========================================================================
-    
+    //
+    // Figma plugin iframes only receive messages from the Figma host
+    // frame (the iframe's parent). Reject anything else, and validate
+    // the envelope shape, to defend against tampered nested frames.
+    // (Fixes CodeQL js/missing-origin-check.)
+
     window.onmessage = (event) => {
+      if (event.source !== window.parent) return;
+      if (!event.data || typeof event.data !== 'object') return;
       const msg = event.data.pluginMessage;
       if (!msg) return;
 

@@ -204,16 +204,26 @@ export function acquireInstanceLock(): Result<boolean, string> {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Check existing lock
-    if (fs.existsSync(LOCK_FILE)) {
+    // Check existing lock.
+    // Read directly and treat ENOENT as "no prior lock". Folding the
+    // existence check into the read closes the TOCTOU window between
+    // existsSync and readFileSync (CodeQL js/file-system-race).
+    let priorLock: { pid: number; path: string; timestamp: string } | null = null;
+    try {
       const content = fs.readFileSync(LOCK_FILE, 'utf-8');
-      const lockData = JSON.parse(content) as { pid: number; path: string; timestamp: string };
-
-      // Check if the locking process is still alive
+      priorLock = JSON.parse(content) as { pid: number; path: string; timestamp: string };
+    } catch (err: unknown) {
+      if (err && (err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        // Corrupt lock file — fall through and overwrite. Treating
+        // corrupted state as no lock is safe because the next write
+        // re-establishes a valid lock.
+      }
+    }
+    if (priorLock) {
       try {
-        process.kill(lockData.pid, 0); // Signal 0 = check if process exists
+        process.kill(priorLock.pid, 0); // Signal 0 = check if process exists
         // Process is alive — check if it's from a different path
-        if (lockData.path !== DSB_ROOT) {
+        if (priorLock.path !== DSB_ROOT) {
           return Result.ok(false); // Parallel instance from different location
         }
         // Same path, different PID — previous instance didn't clean up

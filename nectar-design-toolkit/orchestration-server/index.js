@@ -27,30 +27,53 @@ const HTTP_PORT = 9877;
 const logs = [];
 const MAX_LOGS = 200;
 
+// Sanitize values destined for console / log entries.
+// Defends against CodeQL js/log-injection + js/tainted-format-string:
+// untrusted strings could otherwise embed \r\n + ANSI escapes to forge
+// log lines or move the cursor.
+function safeLog(value) {
+  if (value === null || value === undefined) return String(value);
+  const str = typeof value === 'string' ? value : String(value);
+  return str.replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+}
+
+// Closed set of categories actually used in this file. Anything else
+// renders as UNKNOWN so an attacker can't pivot category to inject.
+const CATEGORY_COLORS = {
+  SYSTEM:   '\x1b[36m',
+  WS:       '\x1b[33m',
+  HTTP:     '\x1b[35m',
+  PLUGIN:   '\x1b[32m',
+  COMMAND:  '\x1b[34m',
+  ERROR:    '\x1b[31m',
+  RESPONSE: '\x1b[32m',
+};
+
 function log(category, message, data = null) {
+  const safeCategory = Object.prototype.hasOwnProperty.call(CATEGORY_COLORS, category)
+    ? category
+    : 'UNKNOWN';
+  const safeMessage = safeLog(message);
+
   const entry = {
     time: new Date().toISOString(),
-    category,
-    message,
+    category: safeCategory,
+    message: safeMessage,
     data
   };
   logs.unshift(entry);
   if (logs.length > MAX_LOGS) logs.pop();
-  
-  // Console output with colors
-  const colors = {
-    'SYSTEM': '\x1b[36m',    // Cyan
-    'WS': '\x1b[33m',        // Yellow
-    'HTTP': '\x1b[35m',      // Magenta
-    'PLUGIN': '\x1b[32m',    // Green
-    'COMMAND': '\x1b[34m',   // Blue
-    'ERROR': '\x1b[31m',     // Red
-    'RESPONSE': '\x1b[32m',  // Green
-  };
-  const color = colors[category] || '\x1b[37m';
+
+  // Console output with colors. category color is looked up from the
+  // closed set; message + data are sanitized / JSON-encoded.
+  const color = CATEGORY_COLORS[safeCategory] || '\x1b[37m';
   const reset = '\x1b[0m';
-  
-  console.log(`${color}[${category}]${reset} ${message}`, data ? JSON.stringify(data).slice(0, 100) : '');
+
+  // JSON.stringify escapes control characters in nested strings.
+  // The fixed format string ('%s [%s]%s %s %s') prevents tainted-format
+  // injection because no user data flows into the format string itself.
+  const dataStr = data ? JSON.stringify(data).slice(0, 100) : '';
+  console.log('%s[%s]%s %s %s', color, safeCategory, reset, safeMessage, dataStr);
 }
 
 // ============================================================================

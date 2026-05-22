@@ -773,8 +773,15 @@
       }
     });
 
-    // Handle messages from plugin
+    // Handle messages from plugin.
+    // Figma plugin iframes sit inside the Figma host frame; only messages
+    // posted from that parent should be honoured. Reject anything coming
+    // from a nested frame or from an unexpected window. The pluginMessage
+    // envelope shape is also validated to defend against malformed input.
+    // (Fixes CodeQL js/missing-origin-check.)
     window.onmessage = (event) => {
+      if (event.source !== window.parent) return;
+      if (!event.data || typeof event.data !== 'object') return;
       const msg = event.data.pluginMessage;
       if (!msg) return;
 
@@ -834,54 +841,82 @@
     }
 
     function showFontCheckResults(fonts) {
-      fontList.innerHTML = '';
-      
+      // Clear list using replaceChildren (safer than innerHTML='')
+      fontList.replaceChildren();
+
       let allAvailable = true;
       let hasMissing = false;
-      
+
+      // Build all entries via DOM API so font.family / font.styles[].name
+      // (message-payload-derived) are inserted as text, not parsed as HTML.
+      // Fixes CodeQL js/xss at this site.
       fonts.forEach(font => {
         const availableStyles = font.styles.filter(s => s.available);
         const missingStyles = font.styles.filter(s => !s.available);
-        
+
         let status = 'available';
-        let statusText = '✓ All Available';
         let statusIcon = '✓';
-        
+        let statusLabel = 'Ready';
+
         if (missingStyles.length === font.styles.length) {
           status = 'missing';
-          statusText = '✗ Not Installed';
           statusIcon = '✗';
+          statusLabel = 'Missing';
           allAvailable = false;
           hasMissing = true;
         } else if (missingStyles.length > 0) {
           status = 'partial';
-          statusText = `⚠ ${missingStyles.length} Missing`;
           statusIcon = '⚠';
+          statusLabel = 'Partial';
           allAvailable = false;
         }
-        
-        const stylesText = font.styles.map(s => 
-          `<span style="color: ${s.available ? 'var(--success)' : 'var(--danger)'}">${s.name}</span>`
-        ).join(', ');
-        
-        fontList.innerHTML += `
-          <div class="font-item">
-            <div class="font-info">
-              <span class="font-name">${font.family}</span>
-              <span class="font-styles">Required: ${stylesText}</span>
-            </div>
-            <span class="font-status ${status}">${statusIcon} ${status === 'available' ? 'Ready' : status === 'partial' ? 'Partial' : 'Missing'}</span>
-          </div>
-        `;
+
+        const item = document.createElement('div');
+        item.className = 'font-item';
+
+        const info = document.createElement('div');
+        info.className = 'font-info';
+
+        const familySpan = document.createElement('span');
+        familySpan.className = 'font-name';
+        familySpan.textContent = font.family;
+        info.appendChild(familySpan);
+
+        const stylesSpan = document.createElement('span');
+        stylesSpan.className = 'font-styles';
+        stylesSpan.appendChild(document.createTextNode('Required: '));
+        font.styles.forEach((s, i) => {
+          if (i > 0) stylesSpan.appendChild(document.createTextNode(', '));
+          const styleSpan = document.createElement('span');
+          styleSpan.style.color = s.available
+            ? 'var(--success)'
+            : 'var(--danger)';
+          styleSpan.textContent = s.name;
+          stylesSpan.appendChild(styleSpan);
+        });
+        info.appendChild(stylesSpan);
+
+        item.appendChild(info);
+
+        const statusSpan = document.createElement('span');
+        // Class is computed from the closed set above, not user data.
+        statusSpan.className = `font-status ${status}`;
+        statusSpan.textContent = `${statusIcon} ${statusLabel}`;
+        item.appendChild(statusSpan);
+
+        fontList.appendChild(item);
       });
-      
-      // Add summary
+
+      // Add summary (text-only, no untrusted data)
       const summaryClass = allAvailable ? 'all-good' : 'has-missing';
-      const summaryText = allAvailable 
+      const summaryText = allAvailable
         ? '✓ All required fonts are installed. You can generate styles!'
         : '⚠ Some fonts are missing. Install them before generating for best results, or fallback fonts will be used.';
-      
-      fontList.innerHTML += `<div class="font-summary ${summaryClass}">${summaryText}</div>`;
+
+      const summaryDiv = document.createElement('div');
+      summaryDiv.className = `font-summary ${summaryClass}`;
+      summaryDiv.textContent = summaryText;
+      fontList.appendChild(summaryDiv);
       
       fontCheckResults.classList.remove('hidden');
       

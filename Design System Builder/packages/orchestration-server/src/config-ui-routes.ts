@@ -23,9 +23,38 @@
 
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
+import rateLimit from 'express-rate-limit';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { DSB_ROOT } from '@dsb/guardrails';
+
+// ============================================================================
+// RATE LIMITERS
+// ============================================================================
+// These limiters defend against CodeQL js/missing-rate-limiting by capping
+// requests to handlers that touch the filesystem or perform authorization.
+// All routes are localhost-only (per the file's security note) so generous
+// limits suffice — the goal is to bound abuse from a buggy/malicious caller,
+// not to police a public API.
+
+// Browser-facing routes (config-ui, config-results submit, validate-license).
+// Cap at 60 requests per minute per IP.
+const browserRouteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 60,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Try again shortly.' },
+});
+
+// Auth-gated routes (config-results poll + delete). Cap at 120 per minute.
+const authRouteLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Try again shortly.' },
+});
 
 // ============================================================================
 // SECTION 1: TYPES
@@ -76,7 +105,7 @@ export function createConfigUiRouter(
 
   // ─── GET /config-ui — Serve the HTML wizard ──────────────────────────
 
-  router.get('/config-ui', (_req: Request, res: Response) => {
+  router.get('/config-ui', browserRouteLimiter, (_req: Request, res: Response) => {
     const htmlPath = path.join(DSB_ROOT, 'workspace', 'temp', 'config-ui.html');
 
     if (!fs.existsSync(htmlPath)) {
@@ -103,7 +132,7 @@ export function createConfigUiRouter(
 
   // ─── POST /config-results — Receive encrypted config from UI ────────
 
-  router.post('/config-results', (req: Request, res: Response) => {
+  router.post('/config-results', browserRouteLimiter, (req: Request, res: Response) => {
     const { ciphertext, iv, authTag, algorithm } = req.body;
 
     // Validate required fields
@@ -138,7 +167,7 @@ export function createConfigUiRouter(
 
   // ─── GET /config-results — Claude polls for submitted config ────────
 
-  router.get('/config-results', auth, (_req: Request, res: Response) => {
+  router.get('/config-results', authRouteLimiter, auth, (_req: Request, res: Response) => {
     // Check if session exists and hasn't expired
     if (!activeSession) {
       res.json({ available: false, message: 'No config submitted yet.' });
@@ -160,7 +189,7 @@ export function createConfigUiRouter(
 
   // ─── DELETE /config-results — Claude clears after reading ───────────
 
-  router.delete('/config-results', auth, (_req: Request, res: Response) => {
+  router.delete('/config-results', authRouteLimiter, auth, (_req: Request, res: Response) => {
     const had = activeSession !== null;
     activeSession = null;
 
@@ -173,7 +202,7 @@ export function createConfigUiRouter(
 
   // ─── POST /validate-license — UI submits license key ────────────────
 
-  router.post('/validate-license', async (req: Request, res: Response) => {
+  router.post('/validate-license', browserRouteLimiter, async (req: Request, res: Response) => {
     const { licenseKey } = req.body;
 
     if (!licenseKey || typeof licenseKey !== 'string') {
