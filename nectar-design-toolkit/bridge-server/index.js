@@ -93,7 +93,12 @@ const httpServer = http.createServer(async (req, res) => {
         if (data.fileInfo) fileInfo = data.fileInfo;
         lastHeartbeat = Date.now();
 
-        console.log(`💓 Heartbeat from ${safeLog(fileInfo?.name || 'Unknown')}`);
+        // Inline sanitization so CodeQL's local taint analysis sees the
+        // .replace() call adjacent to the log statement. The same pattern
+        // is repeated at every log site below; safeLog() exists for any
+        // future code that prefers the helper.
+        const name = String(fileInfo?.name || 'Unknown').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+        console.log(`💓 Heartbeat from ${name}`);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));
@@ -116,7 +121,9 @@ const httpServer = http.createServer(async (req, res) => {
     if (commandQueue.length > 0) {
       // FIFO: Get oldest command
       const cmd = commandQueue.shift();
-      console.log(`📤 Dispatching command to plugin: ${safeLog(cmd.command)} (${safeLog(cmd.id)})`);
+      const sCmd = String(cmd.command).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+      const sId = String(cmd.id).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+      console.log(`📤 Dispatching command to plugin: ${sCmd} (${sId})`);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
@@ -149,10 +156,13 @@ const httpServer = http.createServer(async (req, res) => {
           pendingResponses.delete(id);
 
           if (success) {
-            console.log(`✅ Command success: ${id}`);
+            const sId = String(id).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+            console.log(`✅ Command success: ${sId}`);
             pending.resolve(data);
           } else {
-            console.error(`❌ Command failed: ${safeLog(id)} - ${safeLog(error)}`);
+            const sId2 = String(id).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+            const sErr = String(error).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+            console.error(`❌ Command failed: ${sId2} - ${sErr}`);
             pending.reject(new Error(error || 'Unknown error from plugin'));
           }
         }
@@ -179,7 +189,9 @@ const httpServer = http.createServer(async (req, res) => {
         const { command, payload } = JSON.parse(body);
         const id = `cmd-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-        console.log(`📥 Received command: ${safeLog(command)} (${safeLog(id)})`);
+        const sCmd = String(command).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+        const sId3 = String(id).replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+        console.log(`📥 Received command: ${sCmd} (${sId3})`);
 
         // Create Promise to wait for result
         const promise = new Promise((resolve, reject) => {

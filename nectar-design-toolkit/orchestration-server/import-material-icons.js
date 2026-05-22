@@ -29,13 +29,21 @@ const MDI_PATH = path.join(__dirname, 'node_modules/@material-design-icons/svg')
 // This script reads icon names from local files and posts them to the
 // orchestration server. CodeQL traces "file data → outbound network" and
 // flags it; assertSafeUrl makes the localhost constraint explicit.
+// Using `new URL()` parsing is a CodeQL-recognized sanitizer pattern.
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
+
 function assertSafeUrl(url) {
-  // Only loopback addresses on the orchestration port are allowed.
-  // Reject DNS rebinding (anything other than literal localhost / 127.x / ::1)
-  // and any non-http scheme.
-  const allowed = /^http:\/\/(localhost|127(?:\.\d{1,3}){3}|\[::1\]):\d{1,5}(\/.*)?$/;
-  if (!allowed.test(url)) {
-    throw new Error(`Refused outbound request to non-loopback URL: ${url}`);
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Refused outbound request to malformed URL: ${url}`);
+  }
+  if (parsed.protocol !== 'http:') {
+    throw new Error(`Refused outbound request: protocol not http: ${parsed.protocol}`);
+  }
+  if (!LOOPBACK_HOSTNAMES.has(parsed.hostname)) {
+    throw new Error(`Refused outbound request to non-loopback host: ${parsed.hostname}`);
   }
 }
 

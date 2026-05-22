@@ -53,7 +53,10 @@ function log(category, message, data = null) {
   const safeCategory = Object.prototype.hasOwnProperty.call(CATEGORY_COLORS, category)
     ? category
     : 'UNKNOWN';
-  const safeMessage = safeLog(message);
+  // Inline sanitization so CodeQL sees the .replace() adjacent to the
+  // console.log call (helper functions are not auto-recognized as
+  // sanitizers). Strips ASCII control chars + caps length.
+  const safeMessage = String(message ?? '').replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
 
   const entry = {
     time: new Date().toISOString(),

@@ -41,11 +41,20 @@ const __dirname = path.dirname(__filename);
 const PLUGIN_SERVER_URL = 'http://localhost:9877';
 
 // URL allowlist (defense against CodeQL js/file-access-to-http).
-// Only loopback addresses on the orchestration port are allowed.
+// `new URL()` parsing is a CodeQL-recognized sanitizer pattern.
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]', '::1']);
 function assertSafeUrl(url) {
-  const allowed = /^http:\/\/(localhost|127(?:\.\d{1,3}){3}|\[::1\]):\d{1,5}(\/.*)?$/;
-  if (!allowed.test(url)) {
-    throw new Error(`Refused outbound request to non-loopback URL: ${url}`);
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Refused outbound request to malformed URL: ${url}`);
+  }
+  if (parsed.protocol !== 'http:') {
+    throw new Error(`Refused outbound request: protocol not http: ${parsed.protocol}`);
+  }
+  if (!LOOPBACK_HOSTNAMES.has(parsed.hostname)) {
+    throw new Error(`Refused outbound request to non-loopback host: ${parsed.hostname}`);
   }
 }
 const ICONS_DIR = path.join(__dirname, 'central-icons');

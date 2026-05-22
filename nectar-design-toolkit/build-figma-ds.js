@@ -1346,9 +1346,9 @@ main().catch(function (err) {
   // upstream-controlled bytes (HTTP headers, fetched JSON, env vars).
   // Strip ASCII control characters so the log line can't be forged.
   // Defends against CodeQL js/log-injection.
-  const safeMsg = typeof err.message === 'string'
-    ? err.message.replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500)
-    : String(err.message);
+  const safeMsg = String(err && err.message != null ? err.message : err)
+    .replace(/[\x00-\x1f\x7f]+/g, ' ')
+    .slice(0, 500);
   console.error('\nFATAL ERROR:', safeMsg);
   process.exit(1);
 });
