@@ -115,9 +115,42 @@ const CATEGORIES = {
   ]
 };
 
+// Allowlist of remote hosts this script may fetch from.
+// Defense against CodeQL js/file-access-to-http: even though icon
+// names from a config file flow into the URL, the host part is
+// restricted to a known Figma endpoint + the S3 bucket Figma uses
+// for SVG exports. Anything else is refused.
+const ALLOWED_REMOTE_HOSTS = new Set([
+  'api.figma.com',
+  'figma-alpha-api.s3.us-west-2.amazonaws.com',
+]);
+
+function assertAllowedRemoteUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Refused outbound request to malformed URL: ${url}`);
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Refused outbound request to non-HTTPS URL: ${url}`);
+  }
+  if (!ALLOWED_REMOTE_HOSTS.has(parsed.hostname)) {
+    throw new Error(
+      `Refused outbound request to disallowed host: ${parsed.hostname}`
+    );
+  }
+}
+
 // Helper: Make HTTPS request
 function httpsRequest(url, headers = {}) {
   return new Promise((resolve, reject) => {
+    try {
+      assertAllowedRemoteUrl(url);
+    } catch (err) {
+      reject(err);
+      return;
+    }
     const req = https.get(url, { headers }, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);

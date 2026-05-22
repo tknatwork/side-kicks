@@ -326,8 +326,10 @@ export class DesignSystemLearner {
       }
     }
 
-    // CSS format — contains custom properties
-    if (/--[a-zA-Z][\w-]*\s*:/.test(trimmed)) {
+    // CSS format — contains custom properties.
+    // Identifier is bounded to 128 chars to defend against ReDoS on
+    // pathological repetition of '--A...' (CodeQL js/polynomial-redos).
+    if (/--[a-zA-Z][\w-]{0,128}\s{0,8}:/.test(trimmed)) {
       return 'css-variables';
     }
 

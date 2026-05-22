@@ -183,11 +183,21 @@ function logWipeEvent(
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    // Append to existing log
+    // Append to existing log.
+    // Try to read directly; treat ENOENT as "no prior log".
+    // Folding the existence check into the read closes the TOCTOU
+    // window between existsSync and readFileSync.
+    // (Fixes CodeQL js/file-system-race.)
     let existingEntries: WipeLogEntry[] = [];
-    if (fs.existsSync(WIPE_LOG_PATH)) {
+    try {
       const content = fs.readFileSync(WIPE_LOG_PATH, 'utf-8');
       existingEntries = JSON.parse(content) as WipeLogEntry[];
+    } catch (err: unknown) {
+      if (!err || (err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        // Real error (corrupted JSON, permissions). Start fresh — the
+        // wipe still proceeds; this is a best-effort audit log.
+        existingEntries = [];
+      }
     }
 
     existingEntries.push(entry);

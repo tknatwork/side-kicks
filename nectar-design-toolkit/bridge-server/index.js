@@ -19,6 +19,22 @@ const HTTP_PORT = 9877;
 const COMMAND_TIMEOUT_MS = 60000; // 60s timeout for commands
 
 // ============================================================================
+// LOG SANITIZATION (defense against CodeQL js/log-injection)
+// ============================================================================
+// User-controlled values (request bodies, plugin file names, command names,
+// error messages) must be sanitized before logging. An attacker who controls
+// the input could otherwise insert CR/LF characters to forge fake log lines.
+// safeLog() strips CR, LF, and other ASCII control characters and truncates
+// to a reasonable length so a single log line can't be flooded.
+function safeLog(value) {
+  if (value === null || value === undefined) return String(value);
+  const str = typeof value === 'string' ? value : String(value);
+  // Strip ASCII control characters (incl. \r, \n, \t, ANSI escape prefix \x1b)
+  // and cap length so log forging via huge strings is also blocked.
+  return str.replace(/[\x00-\x1f\x7f]+/g, ' ').slice(0, 500);
+}
+
+// ============================================================================
 // STATE
 // ============================================================================
 
@@ -77,7 +93,7 @@ const httpServer = http.createServer(async (req, res) => {
         if (data.fileInfo) fileInfo = data.fileInfo;
         lastHeartbeat = Date.now();
 
-        console.log(`💓 Heartbeat from ${fileInfo?.name || 'Unknown'}`);
+        console.log(`💓 Heartbeat from ${safeLog(fileInfo?.name || 'Unknown')}`);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));
@@ -100,7 +116,7 @@ const httpServer = http.createServer(async (req, res) => {
     if (commandQueue.length > 0) {
       // FIFO: Get oldest command
       const cmd = commandQueue.shift();
-      console.log(`📤 Dispatching command to plugin: ${cmd.command} (${cmd.id})`);
+      console.log(`📤 Dispatching command to plugin: ${safeLog(cmd.command)} (${safeLog(cmd.id)})`);
 
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
@@ -136,7 +152,7 @@ const httpServer = http.createServer(async (req, res) => {
             console.log(`✅ Command success: ${id}`);
             pending.resolve(data);
           } else {
-            console.error(`❌ Command failed: ${id} - ${error}`);
+            console.error(`❌ Command failed: ${safeLog(id)} - ${safeLog(error)}`);
             pending.reject(new Error(error || 'Unknown error from plugin'));
           }
         }
@@ -163,7 +179,7 @@ const httpServer = http.createServer(async (req, res) => {
         const { command, payload } = JSON.parse(body);
         const id = `cmd-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-        console.log(`📥 Received command: ${command} (${id})`);
+        console.log(`📥 Received command: ${safeLog(command)} (${safeLog(id)})`);
 
         // Create Promise to wait for result
         const promise = new Promise((resolve, reject) => {

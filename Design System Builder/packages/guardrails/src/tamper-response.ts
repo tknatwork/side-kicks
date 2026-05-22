@@ -175,11 +175,19 @@ export function executeScramble(): void {
   for (const relativePath of filesToScramble) {
     const absolutePath = path.resolve(DSB_ROOT, relativePath);
     try {
-      if (fs.existsSync(absolutePath)) {
-        fs.writeFileSync(absolutePath, SCRAMBLE_PLACEHOLDER, 'utf-8');
+      // Open with 'r+' (read/write, fail if missing) to fold the
+      // existence check + write into a single syscall — closes the
+      // TOCTOU window between existsSync and writeFileSync.
+      // (Fixes CodeQL js/file-system-race.)
+      const fd = fs.openSync(absolutePath, 'r+');
+      try {
+        fs.ftruncateSync(fd, 0);
+        fs.writeSync(fd, SCRAMBLE_PLACEHOLDER, 0, 'utf-8');
+      } finally {
+        fs.closeSync(fd);
       }
     } catch {
-      // Continue scrambling even if one file fails
+      // File missing or unwritable — continue scrambling the rest.
     }
   }
 

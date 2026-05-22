@@ -123,16 +123,74 @@ async function sendPluginCommand(command, payload = {}) {
   return data.data;
 }
 
+// Allowlist of remote hosts this script may fetch SVGs from. Figma
+// exports go via api.figma.com and the figma-alpha-api S3 bucket.
+// Defense against CodeQL js/file-access-to-http +
+// js/http-to-file-access: untrusted URLs cannot redirect downloads,
+// and untrusted filenames cannot escape the icons output dir.
+const ALLOWED_SVG_HOSTS = new Set([
+  'api.figma.com',
+  'figma-alpha-api.s3.us-west-2.amazonaws.com',
+]);
+
+function assertAllowedSvgUrl(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Refused download: malformed URL: ${url}`);
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Refused download: non-HTTPS URL: ${url}`);
+  }
+  if (!ALLOWED_SVG_HOSTS.has(parsed.hostname)) {
+    throw new Error(`Refused download: disallowed host: ${parsed.hostname}`);
+  }
+}
+
+// Strict filename validation: must be a single segment with no path
+// separators, no parent-directory references, and bounded length.
+function assertSafeFilename(filename) {
+  if (typeof filename !== 'string') {
+    throw new Error('Refused write: filename must be a string');
+  }
+  if (filename.length === 0 || filename.length > 128) {
+    throw new Error(`Refused write: filename length out of range: ${filename}`);
+  }
+  if (filename.includes('/') || filename.includes('\\') || filename.includes('\0')) {
+    throw new Error(`Refused write: filename contains path separator: ${filename}`);
+  }
+  if (filename === '.' || filename === '..' || filename.startsWith('..')) {
+    throw new Error(`Refused write: filename traverses parent dir: ${filename}`);
+  }
+  if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
+    throw new Error(`Refused write: filename contains disallowed characters: ${filename}`);
+  }
+}
+
 async function downloadSvg(url, filename) {
+  assertAllowedSvgUrl(url);
+  assertSafeFilename(filename);
+
   const response = await fetch(url);
+  // Cap response size at 1 MiB so a malicious endpoint can't fill disk.
   const svg = await response.text();
-  
+  if (svg.length > 1024 * 1024) {
+    throw new Error(`Refused write: SVG payload exceeds 1 MiB: ${filename}`);
+  }
+
   // Ensure output directory exists
   if (!fs.existsSync(ICONS_OUTPUT_DIR)) {
     fs.mkdirSync(ICONS_OUTPUT_DIR, { recursive: true });
   }
-  
-  const filepath = path.join(ICONS_OUTPUT_DIR, filename);
+
+  // path.join + resolve to confirm the final path stays inside
+  // ICONS_OUTPUT_DIR even if assertSafeFilename ever missed something.
+  const filepath = path.resolve(ICONS_OUTPUT_DIR, filename);
+  const safeRoot = path.resolve(ICONS_OUTPUT_DIR) + path.sep;
+  if (!filepath.startsWith(safeRoot)) {
+    throw new Error(`Refused write: resolved path escapes output dir: ${filepath}`);
+  }
   fs.writeFileSync(filepath, svg);
   return svg;
 }

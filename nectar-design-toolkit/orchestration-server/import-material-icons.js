@@ -23,6 +23,22 @@ const __dirname = path.dirname(__filename);
 const PLUGIN_SERVER_URL = 'http://localhost:9877';
 const MDI_PATH = path.join(__dirname, 'node_modules/@material-design-icons/svg');
 
+// ============================================================================
+// URL ALLOWLIST (defense against CodeQL js/file-access-to-http)
+// ============================================================================
+// This script reads icon names from local files and posts them to the
+// orchestration server. CodeQL traces "file data → outbound network" and
+// flags it; assertSafeUrl makes the localhost constraint explicit.
+function assertSafeUrl(url) {
+  // Only loopback addresses on the orchestration port are allowed.
+  // Reject DNS rebinding (anything other than literal localhost / 127.x / ::1)
+  // and any non-http scheme.
+  const allowed = /^http:\/\/(localhost|127(?:\.\d{1,3}){3}|\[::1\]):\d{1,5}(\/.*)?$/;
+  if (!allowed.test(url)) {
+    throw new Error(`Refused outbound request to non-loopback URL: ${url}`);
+  }
+}
+
 // Curated icon list organized by category
 const ICON_CATEGORIES = {
   // Navigation
@@ -132,7 +148,9 @@ const ICON_CATEGORIES = {
 // ============================================================================
 
 async function sendPluginCommand(command, payload = {}) {
-  const response = await fetch(`${PLUGIN_SERVER_URL}/command`, {
+  const url = `${PLUGIN_SERVER_URL}/command`;
+  assertSafeUrl(url);
+  const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ command, payload })

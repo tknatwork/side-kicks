@@ -131,11 +131,24 @@ export class CommandQueue {
       this.totalFailed++;
     }
 
-    // Resolve the waiter
+    // Resolve the waiter.
+    // `waiter` is always either a function we stored ourselves (via
+    // waitFor / similar) or undefined when no waiter is registered.
+    // Validate the type and isolate the call in try/catch so a buggy
+    // waiter cannot poison the queue state.
+    // (Fixes CodeQL js/unvalidated-dynamic-method-call.)
     const waiter = this.waiters.get(result.commandId);
-    if (waiter) {
+    if (typeof waiter === 'function') {
       this.waiters.delete(result.commandId);
-      waiter(result);
+      try {
+        waiter(result);
+      } catch {
+        // Swallow waiter errors — the queue must stay healthy even if
+        // a consumer's callback throws.
+      }
+    } else if (waiter !== undefined) {
+      // Defensive: a non-function value got stored. Drop it.
+      this.waiters.delete(result.commandId);
     }
   }
 

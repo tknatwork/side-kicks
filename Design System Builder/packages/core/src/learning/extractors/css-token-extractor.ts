@@ -174,11 +174,15 @@ export class CssTokenExtractor extends FingerprintExtractor {
     const scopes: ScopeContext[] = [];
 
     // Match custom property declarations: --name: value;
-    const varRegex = /--([a-zA-Z0-9_-]+)\s*:\s*([^;]+);/g;
+    // Identifier capped at 128 chars, value capped at 2048 chars,
+    // whitespace capped at 8 chars (CodeQL js/polynomial-redos defense).
+    const varRegex = /--([a-zA-Z0-9_-]{1,128})\s{0,8}:\s{0,8}([^;]{1,2048});/g;
 
-    // Match scope blocks — simplified parser for :root, .dark, [data-theme], @media
-    // Leading \s* ensures @media is matched after inter-block whitespace
-    const scopeRegex = /\s*(?:(@media[^{]*)\{[^{]*|([^{]*?))\{([^}]*)\}/g;
+    // Match scope blocks — simplified parser for :root, .dark, [data-theme], @media.
+    // All unbounded character classes capped at 1024 chars; the lazy
+    // `[^{]*?` selector branch is replaced with a bounded greedy class
+    // to remove the polynomial-time backtracking path.
+    const scopeRegex = /\s{0,8}(?:(@media[^{]{0,1024})\{[^{]{0,4096}|([^{]{0,1024}))\{([^}]{0,16384})\}/g;
 
     let scopeMatch: RegExpExecArray | null;
     while ((scopeMatch = scopeRegex.exec(cssText)) !== null) {
@@ -201,9 +205,12 @@ export class CssTokenExtractor extends FingerprintExtractor {
           scopeName = mediaQuery;
         }
       } else if (selector) {
-        if (/\.dark|data-theme.*dark|dark-mode/i.test(selector)) {
+        // Bound `.*` to a length-capped class to avoid polynomial-time
+        // backtracking on attacker-controlled selectors like
+        // `data-theme...dark` (CodeQL js/polynomial-redos).
+        if (/\.dark|data-theme[^{]{0,256}dark|dark-mode/i.test(selector)) {
           scopeName = 'Dark';
-        } else if (/\.light|data-theme.*light|:root/i.test(selector)) {
+        } else if (/\.light|data-theme[^{]{0,256}light|:root/i.test(selector)) {
           scopeName = 'Light';
         } else if (selector === ':root') {
           scopeName = 'Light'; // Default :root = Light mode
@@ -214,7 +221,8 @@ export class CssTokenExtractor extends FingerprintExtractor {
 
       const variables: CssVariable[] = [];
       let varMatch: RegExpExecArray | null;
-      const localVarRegex = /--([a-zA-Z0-9_-]+)\s*:\s*([^;]+);/g;
+      // Same length bounds as `varRegex` above (CodeQL js/polynomial-redos defense).
+      const localVarRegex = /--([a-zA-Z0-9_-]{1,128})\s{0,8}:\s{0,8}([^;]{1,2048});/g;
 
       while ((varMatch = localVarRegex.exec(block)) !== null) {
         const name = varMatch[1] || '';

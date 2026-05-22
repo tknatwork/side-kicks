@@ -9,6 +9,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as crypto from 'node:crypto';
 import { Result } from './result';
 import { guardRead, guardWrite, guardOperation } from './operation-guard';
 import { auditLog } from './audit-log';
@@ -71,19 +72,41 @@ export function safeWriteFile(
   const guard = guardWrite(filePath);
   if (!guard.ok) return guard;
 
+  const safePath = guard.value.safePath;
+  const dir = path.dirname(safePath);
+
   try {
     // Ensure parent directory exists
-    const dir = path.dirname(guard.value.safePath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
 
-    fs.writeFileSync(guard.value.safePath, content, 'utf-8');
-    auditLog('WRITE', guard.value.safePath, 'OK');
-    return Result.ok(guard.value.safePath);
+    // Two-step atomic write: write to a uniquely-named temp file in the
+    // same directory, then rename onto the destination. This defends
+    // against symlink races + predictable-name attacks (CodeQL
+    // js/insecure-temporary-file) and against partial-write corruption
+    // if the process is killed mid-write.
+    //
+    // The temp file is opened with O_CREAT | O_EXCL ('wx') so we fail
+    // closed if a file with that random name somehow pre-exists (e.g.
+    // attacker won the race to create a symlink with that exact name).
+    const tmpName = `.tmp-${crypto.randomBytes(16).toString('hex')}`;
+    const tmpPath = path.join(dir, tmpName);
+    let fd: number | undefined;
+    try {
+      fd = fs.openSync(tmpPath, 'wx', 0o600);
+      fs.writeFileSync(fd, content, 'utf-8');
+      fs.fsyncSync(fd);
+    } finally {
+      if (fd !== undefined) fs.closeSync(fd);
+    }
+    fs.renameSync(tmpPath, safePath);
+
+    auditLog('WRITE', safePath, 'OK');
+    return Result.ok(safePath);
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    auditLog('WRITE', guard.value.safePath, 'ERROR', message);
+    auditLog('WRITE', safePath, 'ERROR', message);
     return Result.err(`Failed to write file: ${message}`);
   }
 }

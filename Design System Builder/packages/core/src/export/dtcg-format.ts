@@ -200,23 +200,72 @@ export function exportDtcgFormat(
  * Paths like "color/primary-500" become nested groups:
  * { color: { "primary-500": { $type: ..., $value: ... } } }
  */
+// Segment names that, if assigned, can alter Object.prototype and pollute
+// every object in the runtime. Reject them with a thrown error so the
+// caller can choose how to surface the problem.
+// Defends against CodeQL js/prototype-polluting-assignment.
+const FORBIDDEN_SEGMENTS = new Set(['__proto__', 'constructor', 'prototype']);
+
 function setDtcgPath(
   root: Record<string, unknown>,
   path: string,
   token: DtcgToken
 ): void {
   const segments = path.split('/');
+
+  // Validate every segment before mutating anything. A single bad segment
+  // aborts the write — partial mutation under attack input is worse than
+  // throwing.
+  for (const segment of segments) {
+    if (FORBIDDEN_SEGMENTS.has(segment)) {
+      throw new Error(
+        `setDtcgPath: refused prototype-polluting segment "${segment}" in path "${path}"`
+      );
+    }
+  }
+
   let current: Record<string, unknown> = root;
 
   for (let i = 0; i < segments.length - 1; i++) {
     const segment = segments[i]!;
-    if (!(segment in current) || typeof current[segment] !== 'object' || current[segment] === null) {
-      current[segment] = {};
+    // Defence-in-depth: re-check each segment locally so static analysers
+    // see the guard adjacent to the assignment.
+    if (FORBIDDEN_SEGMENTS.has(segment)) {
+      throw new Error(
+        `setDtcgPath: refused prototype-polluting segment "${segment}"`
+      );
+    }
+    if (!Object.prototype.hasOwnProperty.call(current, segment)
+        || typeof current[segment] !== 'object'
+        || current[segment] === null) {
+      // Use a null-prototype object for newly-created groups so a future
+      // tampered token name still cannot reach Object.prototype.
+      // Object.defineProperty creates an own, non-prototype property even
+      // on receivers that lack hasOwn semantics.
+      Object.defineProperty(current, segment, {
+        value: Object.create(null),
+        writable: true,
+        enumerable: true,
+        configurable: true,
+      });
     }
     current = current[segment] as Record<string, unknown>;
   }
 
-  current[segments[segments.length - 1]!] = token;
+  const finalSegment = segments[segments.length - 1]!;
+  if (FORBIDDEN_SEGMENTS.has(finalSegment)) {
+    throw new Error(
+      `setDtcgPath: refused prototype-polluting segment "${finalSegment}"`
+    );
+  }
+  // defineProperty bypasses any setter inherited from a tampered prototype
+  // and never assigns onto Object.prototype.
+  Object.defineProperty(current, finalSegment, {
+    value: token,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
 }
 
 // ============================================================================
