@@ -31,3 +31,10 @@ logs/
 # Claude session data (local only)
 .claude/
 .gcc/sessions/
+# Transient hook markers — do not commit
+.gcc/.session-dirty
+.gcc/.last-github-sync
+.gcc/.docs-generated-at
+**/.gcc/.session-dirty
+**/.gcc/.last-github-sync
+**/.gcc/.docs-generated-at

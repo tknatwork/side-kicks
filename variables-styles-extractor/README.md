@@ -1,28 +1,52 @@
 # ☕️ Variables & Styles Extractor
 
-[![Figma Plugin](https://img.shields.io/badge/Figma-Plugin-ff69b4)](https://www.figma.com/community/plugin/variables-styles-extractor)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Figma Plugin](https://img.shields.io/badge/Figma-Plugin-ff69b4)](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)
+[![Source: MIT](https://img.shields.io/badge/Source-MIT-yellow.svg)](./LICENSE)
+[![Distribution: CFRL](https://img.shields.io/badge/Figma%20Distribution-CFRL-blueviolet.svg)](https://www.figma.com/community-free-resource-license/)
 [![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](./package.json)
 
 **Export and import Figma variables and styles with full fidelity.**
 
-> 🔍 **Status:** v1.6.0 Published to Figma Community | v2.0.0 in development
+> 🔍 **Status:** v2.0.0 published to Figma Community (17 January 2026)
 
 ## Features
 
-- ✅ Export variable collections (COLOR, FLOAT, STRING, BOOLEAN)
-- ✅ Export all style types (Color, Text, Effect, Grid)
-- ✅ Preserves variable aliases and mode values
-- ✅ Maintains style-to-variable bindings
-- ✅ Smart plan validation (Starter/Pro/Org/Enterprise)
-- ✅ **NEW v2.0** Wide 4-column layout (1000x580px)
-- ✅ **NEW v2.0** Activity log with copy/clear controls
-- ✅ **NEW v2.0** Console shortcut button for debugging
+### Variables
+- ✅ Color, Number, String, Boolean variables
+- ✅ Variable collections with multiple modes (up to 20+)
+- ✅ Variable aliases and references
+- ✅ Library-linked variable detection
+
+### Styles
+- ✅ Color styles (solid, gradient, image fills)
+- ✅ Text styles (full typography settings)
+- ✅ Effect styles (shadows, blur)
+- ✅ Grid styles (rows, columns, grid)
+- ✅ Multi-paint color styles
+
+### Import safety
+- ✅ Automatic rollback on failure
+- ✅ One-click undo for last import
+- ✅ Pre-import snapshots
+- ✅ Smart merge / clean import / custom merge
+
+### Validation
+- ✅ Font availability checking
+- ✅ Library connection status
+- ✅ Plan compatibility (Starter/Pro/Org/Enterprise)
+- ✅ External dependency detection
+
+### Performance
+- ✅ Web Worker JSON parsing (handles 1MB+ files)
+- ✅ Result caching for repeated operations
+- ✅ Skeleton loaders during load
+- ✅ 4-column layout (1200×628 px)
+- ✅ Activity log with copy/clear controls
 
 ## Installation
 
 ### From Figma Community (Recommended)
-1. Visit the [plugin page](https://www.figma.com/community/plugin/variables-styles-extractor)
+1. Visit the [plugin page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)
 2. Click "Try it out" or "Save"
 3. Open any Figma file
 4. Run: Plugins → Variables & Styles Extractor
@@ -62,4 +86,15 @@
 
 ## License
 
-MIT License - see [LICENSE](./LICENSE) for details.
+This project uses a **two-surface license model**:
+
+| Surface | License | Governs |
+|---------|---------|---------|
+| Source code (this repository) | [MIT](./LICENSE) | Fork, modify, redistribute, relicense derivative source |
+| Figma Community distribution | [Community Free Resource License](https://www.figma.com/community-free-resource-license/) | End-user install + redistribution on Figma Community |
+
+The MIT license applies to the source code in this repository. When the plugin is installed from the [Figma Community listing](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor), the Figma Community Free Resource License (CFRL) governs that distribution channel — this is Figma's platform-level license and is automatically applied to free community resources.
+
+Forks may republish the plugin to Figma Community under their own listing; CFRL will apply to their listing independently. The MIT grant on the source is not affected.
+
+See [LICENSE](./LICENSE) for the full MIT text.

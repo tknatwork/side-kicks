@@ -1,0 +1,51 @@
+# Dependabot — automated dependency update PRs
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+#
+# Updates land as PRs targeting `main` with the `dependencies` label.
+# Branch protection still requires owner approval before merge — Dependabot
+# cannot self-merge unless explicitly granted, which is not configured here.
+
+version: 2
+updates:
+  # npm packages for the published Figma plugin
+  - package-ecosystem: "npm"
+    directory: "/variables-styles-extractor"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      # Group dev-only updates into a single PR to reduce noise
+      dev-dependencies:
+        dependency-type: "development"
+
+  # GitHub Actions used in workflows (pin updates including SHA bumps)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(actions)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/variables-styles-extractor"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "chore(actions)"

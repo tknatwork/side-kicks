@@ -19,3 +19,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Note on Figma Community distribution:
+
+The MIT license above governs this source code. When this plugin is
+published to and installed from the Figma Community
+(https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor),
+that distribution is governed by Figma's Community Free Resource License
+(https://www.figma.com/community-free-resource-license/), which is
+applied automatically by the Figma platform to free community resources.
+The CFRL is independent of and does not modify the MIT grant on this
+source code.

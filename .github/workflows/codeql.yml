@@ -1,0 +1,54 @@
+# CodeQL security scanning
+# https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/configuring-code-scanning
+#
+# Scans JavaScript/TypeScript for known vulnerability patterns (XSS,
+# injection, prototype pollution, etc.) and publishes findings to the
+# Security tab. Requires "Code scanning" to be enabled in
+# Settings -> Code security and analysis.
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly Monday 06:00 UTC - catches new CVE patterns even if no commits
+    - cron: "0 6 * * 1"
+
+# Minimum permissions for the workflow (defense in depth)
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      security-events: write   # required to upload scan results
+      packages: read           # required to fetch internal CodeQL packs
+      actions: read            # required for private repos
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # Use security-extended for stronger ruleset (default is "security")
+          queries: security-extended
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
