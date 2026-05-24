@@ -7,7 +7,9 @@
 
 version: 2
 updates:
-  # npm packages for the published Figma plugin
+  # ── npm / pnpm package ecosystems ──────────────────────────────────────────
+
+  # variables-styles-extractor — published Figma plugin
   - package-ecosystem: "npm"
     directory: "/variables-styles-extractor"
     schedule:
@@ -25,7 +27,87 @@ updates:
       dev-dependencies:
         dependency-type: "development"
 
-  # GitHub Actions used in workflows (pin updates including SHA bumps)
+  # Design System Builder — pnpm workspace (root lockfile covers all packages)
+  - package-ecosystem: "npm"
+    directory: "/Design System Builder"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "npm"
+      - "design-system-builder"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  # nectar-design-toolkit — each subproject ships its own package-lock.json
+  - package-ecosystem: "npm"
+    directory: "/nectar-design-toolkit/bridge-server"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "npm", "nectar-design-toolkit"]
+    commit-message: { prefix: "chore(deps)", include: "scope" }
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  - package-ecosystem: "npm"
+    directory: "/nectar-design-toolkit/figma-plugin"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "npm", "nectar-design-toolkit"]
+    commit-message: { prefix: "chore(deps)", include: "scope" }
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  - package-ecosystem: "npm"
+    directory: "/nectar-design-toolkit/mcp-server"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "npm", "nectar-design-toolkit"]
+    commit-message: { prefix: "chore(deps)", include: "scope" }
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  - package-ecosystem: "npm"
+    directory: "/nectar-design-toolkit/nds-builder"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "npm", "nectar-design-toolkit"]
+    commit-message: { prefix: "chore(deps)", include: "scope" }
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  - package-ecosystem: "npm"
+    directory: "/nectar-design-toolkit/nectar-style-generator"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "npm", "nectar-design-toolkit"]
+    commit-message: { prefix: "chore(deps)", include: "scope" }
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  - package-ecosystem: "npm"
+    directory: "/nectar-design-toolkit/orchestration-server"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "npm", "nectar-design-toolkit"]
+    commit-message: { prefix: "chore(deps)", include: "scope" }
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  # ── GitHub Actions ─────────────────────────────────────────────────────────
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

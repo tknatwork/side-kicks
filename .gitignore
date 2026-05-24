@@ -30,11 +30,10 @@ logs/
 
 # Claude session data (local only)
 .claude/
-.gcc/sessions/
-# Transient hook markers — do not commit
-.gcc/.session-dirty
-.gcc/.last-github-sync
-.gcc/.docs-generated-at
-**/.gcc/.session-dirty
-**/.gcc/.last-github-sync
-**/.gcc/.docs-generated-at
+
+# GCC project-local memory — never committed (per global CLAUDE.md)
+.gcc/
+**/.gcc/
+
+# Stale audit artifacts
+**/audit.log.old
