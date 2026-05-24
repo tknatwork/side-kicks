@@ -10,8 +10,8 @@
     "clean": "rm -f code.js"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "^1.99.0",
-    "typescript": "^5.3.3"
+    "@figma/plugin-typings": "^1.127.0",
+    "typescript": "^6.0.3"
   },
   "keywords": [
     "figma",
