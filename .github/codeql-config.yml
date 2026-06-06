@@ -1,0 +1,19 @@
+# CodeQL config for tknatwork/side-kicks
+# https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/customizing-your-advanced-setup-for-code-scanning
+#
+# Paired with .github/workflows/codeql.yml. The workflow sets
+# source-root: variables-styles-extractor so paths below are relative
+# to the plugin folder.
+
+name: "Side-Kicks CodeQL config"
+
+paths-ignore:
+  # Archived prior plugin versions. Already shipped; scanning them on
+  # every push would surface findings we can't act on without a new
+  # release of an old version.
+  - releases
+  # Pre-rewrite backups of the live source. Not part of the runtime.
+  - backup
+  # pnpm install artifacts, just in case CI ever populates them.
+  - node_modules
+  - .pnpm-store

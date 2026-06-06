@@ -47,6 +47,15 @@ jobs:
           languages: ${{ matrix.language }}
           # Use security-extended for stronger ruleset (default is "security")
           queries: security-extended
+          # Root extraction in the plugin folder so docs-only PRs still
+          # have JS/TS to extract. Without this, CodeQL's diff-informed
+          # autobuilder sees no source on YAML+MD diffs and exits with
+          # "no source code seen during build" (exit 32). After the
+          # 2026-06-06 deletion of Design System Builder/ and
+          # nectar-design-toolkit/, the plugin folder is the only
+          # location with JS/TS in the repo.
+          source-root: variables-styles-extractor
+          config-file: ./.github/codeql-config.yml
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
