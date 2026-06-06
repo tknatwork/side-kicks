@@ -17,7 +17,9 @@
 
 ## Workspace Context
 
-This folder is part of a **multi-project workspace** and contains **multiple tool/plugin projects**:
+This folder is part of a **multi-project workspace** that currently hosts
+**one** active tool/plugin project. The layout is preserved so additional
+projects can land alongside without restructuring.
 
 ```
 design-docs/                         ← Parent workspace root
@@ -28,10 +30,12 @@ design-docs/                         ← Parent workspace root
 │   └── Research Study/              ← Design system research (independent)
 └── Side-Kicks/                      ← THIS FOLDER (multi-project tools)
     ├── docs/                        ← Folder-level docs
-    ├── variables-styles-extractor/  ← Project: Figma plugin
-    ├── nectar-design-toolkit/       ← Project: Design system orchestration
+    ├── variables-styles-extractor/  ← Project: Figma plugin (only active)
     └── [future-projects]/           ← Future tools/plugins
 ```
+
+> Historical note: `nectar-design-toolkit/` and `Design System Builder/`
+> were removed on 2026-06-06. See [`CHANGELOG.md`](CHANGELOG.md).
 
 ### 🗑️ Bin Folder (Fail-Safe)
 
@@ -118,22 +122,9 @@ Each tool/plugin project lives in its **own subfolder** with a consistent struct
 - Figma: https://www.figma.com/community/plugin/1584331992332668732
 - GitHub: https://github.com/tknatwork/side-kicks
 
-### 2. nectar-design-toolkit/
-| Property | Value |
-|----------|-------|
-| **Purpose** | Multi-component suite for AI-controlled design system building in Figma |
-| **Status** | Active - Migrated from Portfolio archive |
-| **Version** | 1.0.0 |
-| **Context** | `nectar-design-toolkit/docs/AI_CONTEXT.md` |
-| **History** | `nectar-design-toolkit/docs/CHANGELOG.md` |
-
-**Components:**
-- **figma-plugin** - Main AI-controlled Figma plugin
-- **nds-builder** - Standalone NDS bootstrapper
-- **nectar-style-generator** - Style generation from variable modes
-- **orchestration-server** - HTTP polling server for AI communication
-- **bridge-server** - WebSocket bridge
-- **mcp-server** - VS Code MCP integration
+> Previously also: `nectar-design-toolkit/` (multi-component design-system
+> suite) and `Design System Builder/` (Claude-native Figma toolkit). Both
+> removed on 2026-06-06.
 
 ---
 
@@ -223,4 +214,4 @@ touch "Side-Kicks/[project-name]/.github/copilot-instructions.md"
 
 ---
 
-*Last updated: Multi-project restructure*
+*Last updated: 2026-06-06 (`nectar-design-toolkit/` and `Design System Builder/` removed; workspace collapsed to single active project)*

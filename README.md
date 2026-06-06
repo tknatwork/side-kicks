@@ -13,8 +13,8 @@ A multi-project workspace for Figma plugins and design tools.
 | Project | Folder | Status | Notes |
 |---------|--------|--------|-------|
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.0.0 (17 Jan 2026) | Figma plugin · [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
-| Nectar Design Toolkit | [`nectar-design-toolkit/`](nectar-design-toolkit/) | Active development | Multi-component design-system suite |
-| Design System Builder | [`Design System Builder/`](Design%20System%20Builder/) | Active development | Claude-native Figma design system toolkit |
+
+> The workspace previously hosted `nectar-design-toolkit/` and `Design System Builder/`. Both were removed on 2026-06-06 — see [`docs/CHANGELOG.md`](docs/CHANGELOG.md). The multi-project layout is retained so new projects can land later without restructuring.
 
 ---
 
@@ -43,21 +43,19 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 ├── docs/
 │   ├── AI_CONTEXT.md               ← Legacy folder context (PROTECTED)
 │   └── CHANGELOG.md                ← Workspace-level changelog (PROTECTED)
-├── variables-styles-extractor/     ← Project: Figma plugin
-│   ├── AGENTS.md                   ← Project AI rules (canonical)
-│   ├── CLAUDE.md                   ← Pointer to project AGENTS.md
-│   ├── README.md                   ← Public-facing plugin docs
-│   ├── LICENSE                     ← MIT + Figma CFRL distribution notice
-│   ├── manifest.json               ← Figma plugin manifest
-│   ├── code.js                     ← Compiled output (CHECKED IN — no CI builds it)
-│   ├── ui.html                     ← UI source
-│   ├── src/code.ts                 ← Backend source (Figma QuickJS VM)
-│   ├── .gcc/                       ← Project session memory + build log
-│   ├── .github/copilot-instructions.md
-│   ├── docs/                       ← AI_CONTEXT, CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
-│   └── releases/
-├── nectar-design-toolkit/          ← Project: Design system toolkit (in development)
-└── Design System Builder/          ← Project: Design system toolkit (in development)
+└── variables-styles-extractor/     ← Project: Figma plugin (only active project)
+    ├── AGENTS.md                   ← Project AI rules (canonical)
+    ├── CLAUDE.md                   ← Pointer to project AGENTS.md
+    ├── README.md                   ← Public-facing plugin docs
+    ├── LICENSE                     ← MIT + Figma CFRL distribution notice
+    ├── manifest.json               ← Figma plugin manifest
+    ├── code.js                     ← Compiled output (CHECKED IN — no CI builds it)
+    ├── ui.html                     ← UI source
+    ├── src/code.ts                 ← Backend source (Figma QuickJS VM)
+    ├── .gcc/                       ← Project session memory + build log
+    ├── .github/copilot-instructions.md
+    ├── docs/                       ← AI_CONTEXT, CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
+    └── releases/
 ```
 
 ---
@@ -147,4 +145,4 @@ Then update:
 
 ---
 
-*Last updated: 2026-05-22 (Portfolio-style AI structure adopted)*
+*Last updated: 2026-06-06 (`nectar-design-toolkit/` and `Design System Builder/` removed; workspace now hosts a single project)*

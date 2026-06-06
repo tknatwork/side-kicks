@@ -4,7 +4,7 @@ Updated by: manual + commits referencing structural changes
 Pairs with: CLAUDE.md (pointer), docs/AI_CONTEXT.md (legacy folder context, protected),
             per-project AGENTS.md (e.g. variables-styles-extractor/AGENTS.md)
 Update trigger: structural change (new project, new convention, security policy update)
-Last verified: 2026-05-22 (initial Portfolio-style AI structure)
+Last verified: 2026-06-06 (after `nectar-design-toolkit/` and `Design System Builder/` deletion)
 Index: README.md → table of projects
 === END PAIRING === -->
 
@@ -25,8 +25,11 @@ shipping:
 | Project | Folder | Status |
 |---------|--------|--------|
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published on Figma Community ([1584331992332668732](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)) |
-| Nectar Design Toolkit | [`nectar-design-toolkit/`](nectar-design-toolkit/) | Active development |
-| Design System Builder | [`Design System Builder/`](Design%20System%20Builder/) | Active development |
+
+> Historical: `nectar-design-toolkit/` and `Design System Builder/` were
+> removed on 2026-06-06 (see [`docs/CHANGELOG.md`](docs/CHANGELOG.md)).
+> The workspace layout is preserved so future projects can land alongside
+> the plugin without restructuring.
 
 ---
 
@@ -56,9 +59,7 @@ banned without explicit user permission.
 
 | You're editing | You may also touch | You must NOT touch |
 |----------------|--------------------|--------------------|
-| `variables-styles-extractor/**` | Root `README.md`, `.github/` if it's a security/CI change you've been asked for | Other project folders |
-| `nectar-design-toolkit/**` | Same | Other project folders |
-| `Design System Builder/**` | Same | Other project folders |
+| `variables-styles-extractor/**` | Root `README.md`, `.github/` if it's a security/CI change you've been asked for | Future sibling project folders if/when they land |
 | Workspace root files (this file, README, `.gcc/`) | Any project's README if cross-cutting | Per-project source unless explicitly asked |
 
 If a single change genuinely spans two project folders (e.g. extracting
@@ -184,4 +185,4 @@ Then update this file's "What this repo is" table.
 
 ---
 
-*Last updated: 2026-05-22 (initial Portfolio-style structure)*
+*Last updated: 2026-06-06 (`nectar-design-toolkit/` and `Design System Builder/` removed; project scope rules collapsed to single-project)*

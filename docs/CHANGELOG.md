@@ -7,8 +7,37 @@
 This changelog tracks **folder-level structure changes only**.
 
 For project-specific changes, see each project's `CHANGELOG.md`:
-- `variables-styles-extractor/CHANGELOG.md`
-- `nectar-design-toolkit/CHANGELOG.md`
+- `variables-styles-extractor/docs/CHANGELOG.md`
+
+---
+
+## [3.0.0] - 2026-06-06
+
+### Removed
+- **Project deletion**: `nectar-design-toolkit/` removed from the workspace.
+  Multi-component design-system orchestration suite (figma-plugin,
+  nds-builder, nectar-style-generator, orchestration-server, bridge-server,
+  mcp-server). Discontinued before reaching a published release.
+- **Project deletion**: `Design System Builder/` removed from the workspace.
+  Claude-native Figma design system toolkit (pnpm workspace with
+  builder-plugin and installer). Discontinued before reaching a published
+  release.
+
+### Changed
+- Workspace collapses from three projects to one. `variables-styles-extractor/`
+  is now the sole active project. The multi-project layout (subfolder per
+  project, isolated lifecycles) is retained so future projects can land
+  without restructuring.
+- `README.md`, `AGENTS.md`, `docs/AI_CONTEXT.md` updated to reflect the
+  single-project state and to record what was removed.
+- `.github/dependabot.yml` cleaned: the 7 update entries scoped to the
+  deleted projects were removed.
+
+### Migration notes
+- No data loss for active users — neither deleted project shipped a public
+  release. Source remains in git history (commits `6ccb455`, `b83cce2`).
+- Anyone with local clones should `git pull` to drop the deleted folders;
+  no manual cleanup is required.
 
 ---
 
@@ -18,6 +47,7 @@ For project-specific changes, see each project's `CHANGELOG.md`:
 - **New Project**: `nectar-design-toolkit/` - Multi-component design system orchestration suite
   - Migrated from `Portfolio/My Portfolio/_archive/NDS (planned)/AI_TOOLING/`
   - Components: figma-plugin, nds-builder, nectar-style-generator, orchestration-server, bridge-server, mcp-server
+- *Reverted by [3.0.0] on 2026-06-06 — project deleted.*
 
 ---
 
