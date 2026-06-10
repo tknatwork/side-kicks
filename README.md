@@ -12,9 +12,7 @@ A multi-project workspace for Figma plugins and design tools.
 
 | Project | Folder | Status | Notes |
 |---------|--------|--------|-------|
-| Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.0.0 (17 Jan 2026) | Figma plugin · [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
-| Nectar Design Toolkit | [`nectar-design-toolkit/`](nectar-design-toolkit/) | Active development | Multi-component design-system suite |
-| Design System Builder | [`Design System Builder/`](Design%20System%20Builder/) | Active development | Claude-native Figma design system toolkit |
+| Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.1.0 · first published 17 Jan 2026 | Figma plugin · [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
 
 ---
 
@@ -53,10 +51,11 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── ui.html                     ← UI source
 │   ├── src/code.ts                 ← Backend source (Figma QuickJS VM)
 │   ├── .gcc/                       ← Project session memory + build log
+│   ├── START_HERE.md               ← Boot check (constraints, build, danger zones)
+│   ├── assets/                     ← Plugin logo (SVG) + icon
 │   ├── .github/copilot-instructions.md
 │   └── docs/                       ← AI_CONTEXT, CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
-├── nectar-design-toolkit/          ← Project: Design system toolkit (in development)
-└── Design System Builder/          ← Project: Design system toolkit (in development)
+└── (single active project: variables-styles-extractor)
 ```
 
 ---
