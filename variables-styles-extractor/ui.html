@@ -5988,7 +5988,7 @@
             <span class="library-status-title">Asset Sources Detected!</span>
           </div>
           <div class="library-status-message">
-            ${varCount} variables reference team library collections that are <strong>connected to this file</strong>.
+            ${escapeHtml(varCount)} variables reference team library collections that are <strong>connected to this file</strong>.
             Library links will be restored during import.
           </div>
           <div class="library-collection-list">
@@ -6012,7 +6012,7 @@
             <span class="library-status-title">Partial Asset Sources</span>
           </div>
           <div class="library-status-message">
-            ${varCount} variables reference team library collections. Some libraries are connected, but others are missing.
+            ${escapeHtml(varCount)} variables reference team library collections. Some libraries are connected, but others are missing.
           </div>
           <div class="library-collection-list">
             ${availableCollections.map(col => `
@@ -6048,7 +6048,7 @@
             <span class="library-status-title">Asset Sources Not Connected</span>
           </div>
           <div class="library-status-message">
-            ${varCount} variables reference team library collections that are <strong>not connected</strong> to this file.
+            ${escapeHtml(varCount)} variables reference team library collections that are <strong>not connected</strong> to this file.
             Variables will be imported with their <strong>fallback resolved values</strong>.
           </div>
           <div class="library-collection-list">
