@@ -3264,6 +3264,40 @@
       min-height: 0;
     }
 
+    /* The column header already names each Simple section, so the yellow cards
+       carry no inner header and expand to the full section space. */
+    .simple-layout .column-body {
+      padding: 8px;
+    }
+    .simple-layout .simple-fill-card {
+      width: 100%;
+    }
+
+    /* External-library dependency flag (Simple mode) with a path to Advanced */
+    .simple-dep-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      background: #FFF3CD;
+      font-size: 11px;
+      flex-shrink: 0;
+      margin-bottom: 8px;
+    }
+    .simple-dep-banner.hidden {
+      display: none;
+    }
+    .simple-dep-banner-text {
+      flex: 1;
+      min-width: 0;
+    }
+    .simple-dep-banner .btn {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
     /* ========== HEAVY-LOAD OPERATION PROGRESS (Phase D) ========== */
     .op-progress {
       display: flex;
@@ -3657,10 +3691,11 @@
             <button class="btn btn-small btn-icon" id="simple-export-refresh-btn" title="Refresh">🔄</button>
           </div>
           <div class="column-body" style="display: flex; flex-direction: column;">
+            <div id="simple-export-dep-banner" class="simple-dep-banner hidden">
+              <span class="simple-dep-banner-text">⚠️ This file references external library tokens — library-aware export options live in the Advanced tab.</span>
+              <button class="btn btn-small btn-secondary" data-action="switch-advanced">Open Advanced</button>
+            </div>
             <div class="section-card section-card-yellow simple-fill-card">
-              <div class="section-card-header">
-                <span>Variables Collections</span>
-              </div>
               <div class="section-card-actions">
                 <button class="btn btn-secondary btn-small" data-action="vars-select-all">✅ Select All</button>
                 <button class="btn btn-secondary btn-small" data-action="vars-select-none">✕ None</button>
@@ -3677,9 +3712,6 @@
           </div>
           <div class="column-body" style="display: flex; flex-direction: column;">
             <div class="section-card section-card-yellow simple-fill-card">
-              <div class="section-card-header">
-                <span>Styles</span>
-              </div>
               <div class="section-card-actions">
                 <button class="btn btn-secondary btn-small" data-action="styles-select-all">✅ Select All</button>
                 <button class="btn btn-secondary btn-small" data-action="styles-select-none">✕ None</button>
@@ -4194,9 +4226,6 @@
           </div>
           <div class="column-body" style="display: flex; flex-direction: column;">
             <div class="section-card section-card-yellow simple-fill-card">
-              <div class="section-card-header">
-                <span>Load JSON Data</span>
-              </div>
               <div class="section-card-actions">
                 <button class="btn btn-secondary btn-small" id="simple-import-clear-btn">🗑️ Clear</button>
                 <button class="btn btn-secondary btn-small" id="simple-import-upload-btn">📂 Upload</button>
@@ -4217,10 +4246,11 @@
             <span class="column-title">🧩 Import Contents</span>
           </div>
           <div class="column-body" style="display: flex; flex-direction: column;">
+            <div id="simple-import-dep-banner" class="simple-dep-banner hidden">
+              <span class="simple-dep-banner-text">⚠️ This JSON references external library tokens — review library mapping in the Advanced tab.</span>
+              <button class="btn btn-small btn-secondary" data-action="switch-advanced">Open Advanced</button>
+            </div>
             <div class="section-card section-card-yellow simple-fill-card">
-              <div class="section-card-header">
-                <span>Import Contents</span>
-              </div>
               <div class="section-card-actions">
                 <button class="btn btn-secondary btn-small" data-action="import-select-all">✅ Select All</button>
                 <button class="btn btn-secondary btn-small" data-action="import-select-none">✕ None</button>
@@ -5557,6 +5587,7 @@
     let expandedSimpleExport = new Set(); // keys 'col:<name>' / 'style:<type>'
     let expandedSimpleImport = new Set();
     let simpleExportPendingAction = null; // 'download' | 'copy' | null
+    let simpleImportHasLibraryRefs = false; // pasted JSON contains $libraryRef tokens
 
     // Plan limits (mirror of backend constants)
     const PLAN_LIMITS = {
@@ -6739,7 +6770,8 @@
           
           // Store library deps globally for export
           window.detectedLibraryDeps = libraryDeps;
-          
+          updateSimpleDepBanners();
+
           if (libraryDeps.length > 0) {
             warningBanner.classList.remove('hidden');
             depsList.innerHTML = libraryDeps.map(name => `<span class="alert-item">📚 ${name}</span>`).join('');
@@ -8198,9 +8230,11 @@
         parent.postMessage({ pluginMessage: { type: 'detect_plan' } }, '*');
 
         // Simple mode: rebuild group index + default-select everything (stage 3 wiring)
+        simpleImportHasLibraryRefs = data.indexOf('"$libraryRef"') !== -1;
         computeImportGroupsIndex();
         initSimpleImportSelectionAll();
         renderSimpleImportContents();
+        updateSimpleDepBanners();
 
       } catch (e) {
         // Hide skeletons on error
@@ -9558,8 +9592,33 @@
       importGroupsIndex = new Map();
       selectedImportStyleGroups = { color: new Set(), text: new Set(), effect: new Set(), grid: new Set() };
       importStyleGroupsIndex = { color: [], text: [], effect: [], grid: [] };
+      simpleImportHasLibraryRefs = false;
       renderSimpleImportContents();
       updateSimpleImportButtonState();
+      updateSimpleDepBanners();
+    }
+
+    // External-library dependency flags (Simple mode): the column headers name the
+    // sections, but library-aware handling (refs option, mapping review) lives in
+    // Advanced — flag deps and offer the switch.
+    function updateSimpleDepBanners() {
+      const exportBanner = document.getElementById('simple-export-dep-banner');
+      if (exportBanner) {
+        const hasDeps = !!(window.detectedLibraryDeps && window.detectedLibraryDeps.length > 0);
+        exportBanner.classList.toggle('hidden', !hasDeps);
+      }
+      const importBanner = document.getElementById('simple-import-dep-banner');
+      if (importBanner) {
+        importBanner.classList.toggle('hidden', !simpleImportHasLibraryRefs);
+      }
+    }
+
+    function switchToAdvancedMode() {
+      const radio = document.getElementById('mode-advanced');
+      if (radio && !radio.checked) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event('change', { bubbles: true }));
+      }
     }
 
     // Clear the Simple input mirror (textarea + loaded-file indicator).
@@ -9769,6 +9828,11 @@
       wireSimpleSelectButton('import-select-none', () => {
         importGroupsIndex.forEach((groups, name) => setImportCollectionAll(name, false));
         STYLE_TYPES.forEach(st => setImportStyleTypeAll(st.type, false));
+      });
+
+      // Library-dependency banners: one-click switch to the Advanced tab
+      document.querySelectorAll('[data-action="switch-advanced"]').forEach(btn => {
+        btn.addEventListener('click', switchToAdvancedMode);
       });
 
       // Body starts in Simple mode (no saved-prefs restore exists; only the
