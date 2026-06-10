@@ -208,6 +208,19 @@ interface StyleOptions {
   readonly gridStyles: boolean;
 }
 
+// Group summaries for Simple-mode group pickers
+interface GroupSummary {
+  name: string;
+  count: number;
+}
+
+interface StyleGroupSummaries {
+  color: GroupSummary[];
+  text: GroupSummary[];
+  effect: GroupSummary[];
+  grid: GroupSummary[];
+}
+
 type ExportFormat = (CollectionExport | { _styles: StylesExport })[];
 
 // Naming conventions for code-friendly export
@@ -2386,6 +2399,23 @@ async function computeStylesDiff(stylesData: StylesExport, result: ImportDiffRes
 // SECTION 11: EXPORT ORCHESTRATOR
 // ============================================================================
 
+// Selected style groups for export filtering (Simple mode)
+interface SelectedStyleGroups {
+  color?: string[];
+  text?: string[];
+  effect?: string[];
+  grid?: string[];
+}
+
+// Filter style-processor export results down to allowed group keys.
+// allowed === undefined means "no filtering — keep everything".
+function filterStylesByGroup<T extends { name: string }>(items: T[], allowed: string[] | undefined): T[] {
+  if (!allowed) {
+    return items;
+  }
+  return items.filter(function (s) { return allowed.indexOf(getGroupKey(s.name)) !== -1; });
+}
+
 interface ExportOptions {
   selectedCollections?: string[];
   selectedModes?: Record<string, string[]>; // { collectionName: ['Mode1', 'Mode2'] }
@@ -2405,7 +2435,9 @@ async function exportVariables(
   namingConvention: NamingConvention = 'original',
   exportFormat: ExportFormatType = 'figma',
   selectedModes?: Record<string, string[]>,
-  resolveAliases: boolean = false
+  resolveAliases: boolean = false,
+  selectedGroups?: Record<string, string[]>,
+  selectedStyleGroups?: SelectedStyleGroups
 ): Promise<void> {
   Logger.log('📤 Starting export...');
   Logger.log(`  preserveLibraryRefs: ${preserveLibraryRefs}`);
@@ -2462,7 +2494,14 @@ async function exportVariables(
       for (const variableId of collection.variableIds) {
         const variable = await figma.variables.getVariableByIdAsync(variableId);
         if (!variable) continue;
-        
+
+        // Group filtering (Simple mode): key absent for a collection => export ALL its variables
+        if (selectedGroups && selectedGroups[collection.name]) {
+          if (selectedGroups[collection.name].indexOf(getGroupKey(variable.name)) === -1) {
+            continue;
+          }
+        }
+
         totalVariables++;
         
         // Convert variable path parts based on naming convention
@@ -2575,10 +2614,34 @@ async function exportVariables(
     let stylesExported: StylesExport | null = null;
     if (styleOptions) {
       stylesExported = {};
-      if (styleOptions.colorStyles) stylesExported.colorStyles = await ColorStyleProcessor.export({ includeImages });
-      if (styleOptions.textStyles) stylesExported.textStyles = await TextStyleProcessor.export();
-      if (styleOptions.effectStyles) stylesExported.effectStyles = await EffectStyleProcessor.export();
-      if (styleOptions.gridStyles) stylesExported.gridStyles = await GridStyleProcessor.export();
+      if (styleOptions.colorStyles) {
+        const colorAllowed = selectedStyleGroups ? selectedStyleGroups.color : undefined;
+        stylesExported.colorStyles = filterStylesByGroup(await ColorStyleProcessor.export({ includeImages }), colorAllowed);
+        if (colorAllowed && stylesExported.colorStyles.length === 0) {
+          delete stylesExported.colorStyles;
+        }
+      }
+      if (styleOptions.textStyles) {
+        const textAllowed = selectedStyleGroups ? selectedStyleGroups.text : undefined;
+        stylesExported.textStyles = filterStylesByGroup(await TextStyleProcessor.export(), textAllowed);
+        if (textAllowed && stylesExported.textStyles.length === 0) {
+          delete stylesExported.textStyles;
+        }
+      }
+      if (styleOptions.effectStyles) {
+        const effectAllowed = selectedStyleGroups ? selectedStyleGroups.effect : undefined;
+        stylesExported.effectStyles = filterStylesByGroup(await EffectStyleProcessor.export(), effectAllowed);
+        if (effectAllowed && stylesExported.effectStyles.length === 0) {
+          delete stylesExported.effectStyles;
+        }
+      }
+      if (styleOptions.gridStyles) {
+        const gridAllowed = selectedStyleGroups ? selectedStyleGroups.grid : undefined;
+        stylesExported.gridStyles = filterStylesByGroup(await GridStyleProcessor.export(), gridAllowed);
+        if (gridAllowed && stylesExported.gridStyles.length === 0) {
+          delete stylesExported.gridStyles;
+        }
+      }
       
       if (Object.keys(stylesExported).length > 0) {
         exportData.push({ _styles: stylesExported });
@@ -3026,6 +3089,63 @@ function setRawValue(variable: Variable, modeId: string, value: ExportVariableVa
 // SECTION 13: COLLECTION INFO
 // ============================================================================
 
+// Group key = text before the first '/' in a variable/style name; '' = ungrouped
+function getGroupKey(name: string): string {
+  const slashIndex = name.indexOf('/');
+  if (slashIndex === -1) {
+    return '';
+  }
+  return name.substring(0, slashIndex);
+}
+
+// Count names per group key, sorted alphabetically with '' (ungrouped) last
+function summarizeGroups(names: string[]): GroupSummary[] {
+  // Null-prototype object: group keys come from user-named variables/styles
+  // (e.g. a group literally named "__proto__" must behave as a plain key)
+  const counts: Record<string, number> = Object.create(null);
+  const keys: string[] = [];
+  for (let i = 0; i < names.length; i++) {
+    const key = getGroupKey(names[i]);
+    if (typeof counts[key] !== 'number') {
+      counts[key] = 0;
+      keys.push(key);
+    }
+    counts[key] = counts[key] + 1;
+  }
+  keys.sort(function (a, b) {
+    if (a === b) { return 0; }
+    if (a === '') { return 1; }
+    if (b === '') { return -1; }
+    return a < b ? -1 : 1;
+  });
+  const result: GroupSummary[] = [];
+  for (let i = 0; i < keys.length; i++) {
+    result.push({ name: keys[i], count: counts[keys[i]] });
+  }
+  return result;
+}
+
+// A paint style is exportable when it has at least one SOLID, GRADIENT, or IMAGE paint
+function isExportablePaintStyle(style: PaintStyle): boolean {
+  if (style.paints.length === 0) {
+    return false;
+  }
+  for (let i = 0; i < style.paints.length; i++) {
+    const p = style.paints[i];
+    if (
+      p.type === 'SOLID' ||
+      p.type === 'GRADIENT_LINEAR' ||
+      p.type === 'GRADIENT_RADIAL' ||
+      p.type === 'GRADIENT_ANGULAR' ||
+      p.type === 'GRADIENT_DIAMOND' ||
+      p.type === 'IMAGE'
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function getCollections(): Promise<void> {
   const collections = await figma.variables.getLocalVariableCollectionsAsync();
   
@@ -3046,10 +3166,12 @@ async function getCollections(): Promise<void> {
   for (let index = 0; index < collections.length; index++) {
     const c = collections[index];
     const types = { color: 0, float: 0, boolean: 0, string: 0 };
-    
+    const variableNames: string[] = [];
+
     for (const varId of c.variableIds) {
       const variable = await figma.variables.getVariableByIdAsync(varId);
       if (variable) {
+        variableNames.push(variable.name);
         const typeStr = TypeMapper.toExportType(variable.resolvedType);
         types[typeStr as keyof typeof types]++;
         
@@ -3081,7 +3203,8 @@ async function getCollections(): Promise<void> {
       name: c.name,
       modes: c.modes.map(m => m.name),
       variableCount: c.variableIds.length,
-      types
+      types,
+      groups: summarizeGroups(variableNames)
     });
   }
   
@@ -3096,24 +3219,41 @@ async function getCollections(): Promise<void> {
   
   // Count only exportable paint styles (those with SOLID, GRADIENT, or IMAGE paints)
   let exportablePaintStylesCount = 0;
-  for (const style of paintStyles) {
-    if (style.paints.length === 0) continue;
-    const hasExportablePaint = style.paints.some(p => 
-      p.type === 'SOLID' || 
-      p.type === 'GRADIENT_LINEAR' || 
-      p.type === 'GRADIENT_RADIAL' || 
-      p.type === 'GRADIENT_ANGULAR' || 
-      p.type === 'GRADIENT_DIAMOND' || 
-      p.type === 'IMAGE'
-    );
-    if (hasExportablePaint) exportablePaintStylesCount++;
+  const exportablePaintStyleNames: string[] = [];
+  for (let i = 0; i < paintStyles.length; i++) {
+    if (isExportablePaintStyle(paintStyles[i])) {
+      exportablePaintStylesCount++;
+      exportablePaintStyleNames.push(paintStyles[i].name);
+    }
   }
-  
+
   const styles = {
     colorStyles: exportablePaintStylesCount,
     textStyles: textStyles.length,
     effectStyles: effectStyles.length,
     gridStyles: gridStyles.length
+  };
+
+  // Group summaries per style type (color uses only exportable paint styles,
+  // so group counts sum to the same totals as the counts above)
+  const textStyleNames: string[] = [];
+  for (let i = 0; i < textStyles.length; i++) {
+    textStyleNames.push(textStyles[i].name);
+  }
+  const effectStyleNames: string[] = [];
+  for (let i = 0; i < effectStyles.length; i++) {
+    effectStyleNames.push(effectStyles[i].name);
+  }
+  const gridStyleNames: string[] = [];
+  for (let i = 0; i < gridStyles.length; i++) {
+    gridStyleNames.push(gridStyles[i].name);
+  }
+
+  const styleGroups: StyleGroupSummaries = {
+    color: summarizeGroups(exportablePaintStyleNames),
+    text: summarizeGroups(textStyleNames),
+    effect: summarizeGroups(effectStyleNames),
+    grid: summarizeGroups(gridStyleNames)
   };
   
   // Extract font info from text styles
@@ -3140,9 +3280,10 @@ async function getCollections(): Promise<void> {
     }
   }
   
-  Logger.send('collections', { 
-    collections: data, 
+  Logger.send('collections', {
+    collections: data,
     styles,
+    styleGroups,
     libraryDependencies: Array.from(libraryDependencies),
     fontsUsed: fontsList,
     stats: {
@@ -3441,7 +3582,9 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
         (msg.namingConvention as NamingConvention) || 'original',
         (msg.exportFormat as ExportFormatType) || 'figma',
         msg.selectedModes as Record<string, string[]> | undefined,
-        (msg.resolveAliases as boolean) || false
+        (msg.resolveAliases as boolean) || false,
+        msg.selectedGroups as Record<string, string[]> | undefined,
+        msg.selectedStyleGroups as SelectedStyleGroups | undefined
       );
       break;
       
