@@ -1,5 +1,5 @@
 <!--
-  ☕️ Variables & Styles Extractor - Figma Plugin v2.0.0
+  Variables & Styles Extractor - Figma Plugin v2.1.0
   Export and import Figma variables and styles with full fidelity
   
   Copyright (c) 2025 Tushar Kant Naik / The Keep Collective
@@ -8,7 +8,7 @@
   Author: Tushar Kant Naik <hi@tusharkantnaik.com>
   Website: https://tusharkantnaik.com
   
-  v2.0.0: Wide 4-column layout (1200×628px)
+  v2.1.0: Simple 3-column (905×628) / Advanced 4-column (1200×628)
   Design: Neo-brutalist + HIG spacing principles
 -->
 <!DOCTYPE html>
@@ -16,10 +16,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Variables and Styles Extractor v2.0.0</title>
+  <title>Variables and Styles Extractor v2.1.0</title>
   <style>
     /* ==========================================================================
-       VARIABLES EXTRACTOR v2.0.0 - NEO-BRUTALIST DESIGN SYSTEM
+       VARIABLES EXTRACTOR v2.1.0 - NEO-BRUTALIST DESIGN SYSTEM
        
        Layout (from Figma):
        - Content: 1200×628px (Figma title bar is separate 52px)
@@ -217,6 +217,25 @@
     /* Spacer to balance header */
     .header-spacer {
       width: 140px;
+    }
+    .header-brand {
+      width: 140px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      user-select: none;
+    }
+    .header-brand .brand-mark {
+      flex-shrink: 0;
+      filter: drop-shadow(2px 2px 0 rgba(17, 17, 17, 0.9));
+    }
+    .header-brand-name {
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--color-text);
     }
 
     /* Import Behavior Toggle */
@@ -3394,8 +3413,19 @@
        HEADER - 56px centered tab switcher
        ============================================================ -->
   <header class="plugin-header">
-    <!-- Spacer to balance header layout -->
-    <div class="header-spacer"></div>
+    <!-- Brand lockup (same 140px footprint as the old spacer keeps the tabs centered) -->
+    <div class="header-brand" title="Variables &amp; Styles Extractor">
+      <svg class="brand-mark" width="24" height="24" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg" aria-label="Variables &amp; Styles Extractor">
+        <rect x="10" y="10" width="112" height="112" rx="26" fill="#111"/>
+        <rect x="6" y="6" width="112" height="112" rx="26" fill="#FFD93D" stroke="#111" stroke-width="5"/>
+        <path d="M30 78 h64 v18 a8 8 0 0 1 -8 8 H38 a8 8 0 0 1 -8 -8 z" fill="#fff" stroke="#111" stroke-width="5" stroke-linejoin="round"/>
+        <circle cx="44" cy="64" r="11" fill="#FF90E8" stroke="#111" stroke-width="5"/>
+        <rect x="55" y="32" width="20" height="20" rx="5" fill="#87CEEB" stroke="#111" stroke-width="5"/>
+        <path d="M88 50 l9 9 -9 9 -9 -9 z" fill="#90EE90" stroke="#111" stroke-width="5" stroke-linejoin="round"/>
+        <path d="M36 44 l-7 -7 M96 32 l7 -7" stroke="#111" stroke-width="5" stroke-linecap="round"/>
+      </svg>
+      <span class="header-brand-name">Variables<br>&amp; Styles</span>
+    </div>
     <div class="tab-switcher">
       <button class="tab-btn active" data-tab="export">↗️ Export</button>
       <button class="tab-btn" data-tab="import">↙️ Import</button>
@@ -3699,7 +3729,7 @@
           <div class="log-area" id="log-area-export" style="flex: 1; min-height: 120px;">
             <div class="log-entry">
               <span class="log-time">--:--:--</span>
-              <span>Variables Extractor v2.0 ready</span>
+              <span>Variables & Styles Extractor v2.1 ready</span>
             </div>
           </div>
           <!-- JSON Preview Section (appears after export) -->

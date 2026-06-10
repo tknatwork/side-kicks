@@ -21,7 +21,7 @@ figma.showUI(__html__, {
   width: UI_SIZE.simple.width,
   height: UI_SIZE.simple.height,
   themeColors: true,
-  title: '☕️ Variables & Styles Extractor v2.0.0'
+  title: 'Variables & Styles Extractor v2.1.0'
 });
 
 // ============================================================================
