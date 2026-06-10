@@ -1,0 +1,21 @@
+# CodeQL configuration for Side-Kicks
+#
+# The repository ships a single-file Figma plugin: the analyzable source is
+# src/code.ts (TypeScript) and the inline script in ui.html. code.js is the
+# MINIFIED, checked-in build artifact (terser output) — CodeQL classifies it as
+# generated and skips it, which previously left "no source code seen" and failed
+# the run. Scope analysis to the real source and ignore build/output artifacts.
+
+name: "Side-Kicks CodeQL config"
+
+paths:
+  - variables-styles-extractor/src
+  - variables-styles-extractor/ui.html
+
+paths-ignore:
+  - "**/code.js"
+  - "**/*.min.js"
+  - "**/releases/**"
+  - "**/backup/**"
+  - "**/marketing-assets/**"
+  - "**/node_modules/**"
