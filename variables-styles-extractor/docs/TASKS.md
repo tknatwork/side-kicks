@@ -154,4 +154,22 @@ Use this file for comprehensive testing.
 
 ---
 
-*Last updated: 2026-01-16*
+## 🔁 v2.1.0 Overhaul — Session 2026-06-10
+
+Five-phase overhaul completed on branch `claude/nostalgic-euclid-d86723` (worktree; not yet pushed/merged).
+
+### ✅ Completed Phases
+- [x] **Phase A — Cleanup** (`7114047`): removed ~850KB dead weight (backup/, releases/, duplicate PNGs) and dead code; fixed showToast ReferenceError; dropped unused `currentuser` manifest permission
+- [x] **Phase B — CSS consolidation** (`fd39565`): −279 net lines; `.scrollable` utility + shared scroll-fade pattern; 7 conflicting selector pairs resolved; removed CSP-blocked Google Fonts link; `rel=noopener` on external links
+- [x] **Phase C — Simple-mode 3-section UI** (`cca5893`): Export/Import tabs rebuilt with collection → name-prefix group selection; group-selection Maps as source of truth; XSS-verified rendering; Advanced mode pixel-identical
+- [x] **Phase D — Heavy-load handling** (`79fc9c8`): batched processing with progress bars + Cancel (both modes); cooperative cancellation + operation lock; single cache scan per import; snapshot validated before clearing; native Cmd+Z bracketing via `figma.commitUndo()`; chunked export delivery
+- [x] **Phase E — Tokens Studio export** (`b2b2d42`): additive third export format — DTCG keys, token sets per Collection/Mode, `$themes` + `$metadata.tokenSetOrder`, `{dot.path}` aliases, `tokens.json` filename
+
+### 🔜 Open Items
+- [ ] Run the Figma Desktop manual test matrix (hot-reload dev plugin; both modes; large-file import/export with progress + cancel; corrupt-snapshot undo refuses to clear; Tokens Studio plugin imports the exported tokens.json)
+- [ ] Bump plugin version 2.0.0 → 2.1.0 (package.json, ui.html footer, code.ts showUI title) + set CHANGELOG.md release date; push branch + PR to tknatwork/side-kicks main
+- [ ] Publish to Figma Community
+
+---
+
+*Last updated: 2026-06-10*
