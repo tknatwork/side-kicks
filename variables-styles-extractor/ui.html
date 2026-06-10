@@ -3278,6 +3278,38 @@
       min-height: 0;
     }
 
+    /* Custom dropdown panel — replaces the native <select> popup so options
+       always appear BELOW the control (never clipped by column overflow:
+       the panel is fixed-position and attached to <body>). */
+    .dd-panel {
+      position: fixed;
+      z-index: 10000;
+      background: var(--color-bg);
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+      overflow-y: auto;
+      font-size: 11px;
+    }
+    .dd-option {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .dd-option:hover {
+      background: var(--color-bg-secondary);
+    }
+    .dd-option.selected {
+      font-weight: 700;
+    }
+    .dd-check {
+      width: 12px;
+      flex-shrink: 0;
+    }
+
     /* External-library dependency flag (Simple mode) with a path to Advanced */
     .simple-dep-banner {
       display: flex;
@@ -4363,6 +4395,17 @@
     // and shows/hides every [data-progress-host]. Pass null to clear.
     function setOperationInFlight(op) {
       operationInFlight = op || null;
+      if (op) {
+        // Collapse any open accordion sharing a footer with a progress host —
+        // the progress component needs that vertical space, otherwise the
+        // footer content spills past the column boundary.
+        document.querySelectorAll('[data-progress-host]').forEach(h => {
+          const footer = h.closest('.column-footer');
+          if (footer) {
+            footer.querySelectorAll('details[open]').forEach(d => { d.open = false; });
+          }
+        });
+      }
       const disableEls = document.querySelectorAll('[data-op-disable]');
       disableEls.forEach(el => {
         if (op) {
@@ -9696,6 +9739,87 @@
       const btn = document.getElementById('simple-import-btn');
       if (btn) btn.disabled = true;
     }
+
+    // ===== Custom dropdown panels =====
+    // Native <select> popups open upward when the OS decides there is more room
+    // above — the plugin wants every dropdown to open BELOW its control. A
+    // document-level delegate intercepts ALL selects (incl. dynamically
+    // rendered ones) and shows a fixed-position panel under the control.
+    let ddOpenPanel = null;
+    let ddOpenFor = null;
+
+    function closeDropdownPanel() {
+      if (ddOpenPanel) {
+        ddOpenPanel.remove();
+        ddOpenPanel = null;
+        ddOpenFor = null;
+      }
+    }
+
+    function openDropdownPanel(sel) {
+      closeDropdownPanel();
+      const r = sel.getBoundingClientRect();
+      const panel = document.createElement('div');
+      panel.className = 'dd-panel';
+      for (let i = 0; i < sel.options.length; i++) {
+        const opt = sel.options[i];
+        const row = document.createElement('div');
+        row.className = 'dd-option' + (i === sel.selectedIndex ? ' selected' : '');
+        const check = document.createElement('span');
+        check.className = 'dd-check';
+        check.textContent = i === sel.selectedIndex ? '✓' : '';
+        const label = document.createElement('span');
+        label.textContent = opt.textContent; // textContent — no HTML injection
+        row.appendChild(check);
+        row.appendChild(label);
+        row.addEventListener('mousedown', ev => ev.preventDefault());
+        ((index) => {
+          row.addEventListener('click', () => {
+            const changed = sel.selectedIndex !== index;
+            sel.selectedIndex = index;
+            closeDropdownPanel();
+            if (changed) sel.dispatchEvent(new Event('change', { bubbles: true }));
+          });
+        })(i);
+        panel.appendChild(row);
+      }
+      panel.style.left = Math.round(r.left) + 'px';
+      panel.style.top = Math.round(r.bottom + 2) + 'px';
+      panel.style.minWidth = Math.round(r.width) + 'px';
+      const room = window.innerHeight - r.bottom - 10;
+      panel.style.maxHeight = Math.max(60, Math.min(240, room)) + 'px';
+      document.body.appendChild(panel);
+      ddOpenPanel = panel;
+      ddOpenFor = sel;
+    }
+
+    document.addEventListener('mousedown', (e) => {
+      const t = e.target;
+      if (t && t.tagName === 'SELECT' && !t.disabled) {
+        e.preventDefault(); // suppress the native popup
+        if (ddOpenFor === t) { closeDropdownPanel(); } else { openDropdownPanel(t); }
+        return;
+      }
+      if (ddOpenPanel && !ddOpenPanel.contains(t)) closeDropdownPanel();
+    }, true);
+
+    document.addEventListener('keydown', (e) => {
+      const t = e.target;
+      if (e.key === 'Escape' && ddOpenPanel) {
+        closeDropdownPanel();
+      } else if (t && t.tagName === 'SELECT' && !t.disabled && !ddOpenPanel &&
+                 (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        openDropdownPanel(t);
+      }
+    }, true);
+
+    window.addEventListener('resize', closeDropdownPanel);
+    document.addEventListener('scroll', (e) => {
+      if (ddOpenPanel && e.target !== ddOpenPanel && !ddOpenPanel.contains(e.target)) {
+        closeDropdownPanel();
+      }
+    }, true);
 
     // Paste interceptor: very large clipboard payloads bypass the textarea DOM
     // entirely (inserting multi-MB text is what makes paste feel frozen).
