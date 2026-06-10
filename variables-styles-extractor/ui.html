@@ -3220,6 +3220,25 @@
       flex-shrink: 0;
     }
 
+    .simple-export-format-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .simple-export-format-label {
+      font-size: 11px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .simple-export-format-row .form-select {
+      flex: 1;
+      font-size: 11px;
+      padding: 4px 6px;
+    }
+
     .simple-log-slot {
       display: flex;
       flex-direction: column;
@@ -3552,6 +3571,7 @@
                   <label class="naming-label">📄 Format:</label>
                   <select id="export-format" class="naming-dropdown" onchange="updateFormatHelp()">
                     <option value="figma">Figma JSON</option>
+                    <option value="tokens-studio">Tokens Studio</option>
                     <option value="w3c">W3C Design Tokens</option>
                   </select>
                 </div>
@@ -3678,6 +3698,14 @@
               <button class="btn btn-small btn-secondary op-progress-cancel">✕ Cancel</button>
             </div>
             <div class="simple-log-slot" id="simple-export-log-slot"></div>
+            <div class="simple-export-format-row">
+              <label class="simple-export-format-label" for="simple-export-format">Format</label>
+              <select id="simple-export-format" class="form-select" data-op-disable>
+                <option value="figma" selected>Figma JSON (default)</option>
+                <option value="tokens-studio">Tokens Studio</option>
+                <option value="w3c">W3C Design Tokens</option>
+              </select>
+            </div>
             <div class="simple-actions-row">
               <button class="btn btn-export btn-full" id="simple-export-btn" data-op-disable>↗️ Export</button>
               <button class="btn btn-secondary btn-full" id="simple-copy-json-btn" data-op-disable>📋 Copy JSON</button>
@@ -5495,6 +5523,7 @@
     let stylesInfo = { colorStyles: 0, textStyles: 0, effectStyles: 0, gridStyles: 0 };
     let importData = null;
     let exportData = '';
+    let lastExportFormat = 'figma'; // Format of the last completed export (drives download filename)
     let selectedExportCollections = new Set();
     let selectedImportCollections = new Set();
     let selectedPlan = 'professional'; // Default plan
@@ -6819,6 +6848,7 @@
           }
 
           exportData = chunks.join('');
+          lastExportFormat = typeof msg.format === 'string' ? msg.format : 'figma';
 
           if (typeof msg.totalLength === 'number' && exportData.length !== msg.totalLength) {
             addLog('❌ Export failed: data length mismatch', 'error');
@@ -7622,7 +7652,7 @@
         : 'original'; // Always original in Simple mode
       const exportFormat = isAdvancedMode()
         ? (document.getElementById('export-format')?.value || 'figma')
-        : 'figma'; // Always Figma JSON in Simple mode
+        : (document.getElementById('simple-export-format')?.value || 'figma'); // Simple mode: compact format select
       const resolveAliases = isAdvancedMode()
         ? (document.getElementById('export-resolve-aliases')?.checked || false)
         : false; // Keep aliases in Simple mode
@@ -7663,6 +7693,8 @@
       
       if (exportFormat === 'w3c') {
         addLog(`📄 Using W3C Design Tokens format`, 'info');
+      } else if (exportFormat === 'tokens-studio') {
+        addLog(`📄 Using Tokens Studio format (DTCG)`, 'info');
       }
       
       if (resolveAliases) {
@@ -7694,6 +7726,8 @@
       if (helpEl) {
         if (format === 'w3c') {
           helpEl.textContent = 'Export to W3C Design Tokens (Style Dictionary compatible)';
+        } else if (format === 'tokens-studio') {
+          helpEl.textContent = 'Tokens Studio–compatible format (DTCG)';
         } else {
           helpEl.textContent = 'Export to Figma JSON Format';
         }
@@ -7739,10 +7773,12 @@
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'export.json';
+      // Tokens Studio convention: the plugin expects a file named tokens.json
+      const filename = lastExportFormat === 'tokens-studio' ? 'tokens.json' : 'export.json';
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
-      addLog('💾 Downloaded export.json', 'success');
+      addLog('💾 Downloaded ' + filename, 'success');
     }
 
     // ========== IMPORT ==========
