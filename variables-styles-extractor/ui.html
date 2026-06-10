@@ -8820,18 +8820,22 @@
         const newModes = Object.create(null);
         const modesObj = colData.modes || {};
         Object.keys(modesObj).forEach(modeName => {
+          // Barrier guard: never write a prototype-polluting key (also a no-op
+          // for the null-prototype target below, but recognised by static analysis).
+          if (modeName === '__proto__' || modeName === 'constructor' || modeName === 'prototype') return;
           const modeVars = modesObj[modeName];
           const newMode = Object.create(null);
           if (modeVars && typeof modeVars === 'object') {
             Object.keys(modeVars).forEach(k => {
+              if (k === '__proto__' || k === 'constructor' || k === 'prototype') return;
               const v = modeVars[k];
               // Leaf test matches flattenObject/computeImportGroupsIndex:
               // top-level leaves live under the '' (ungrouped) key
               const isLeaf = v && typeof v === 'object' && ('$value' in v || '$type' in v || '$alias' in v);
-              if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype' && sel.has(isLeaf ? '' : k)) newMode[k] = v;
+              if (sel.has(isLeaf ? '' : k)) newMode[k] = v;
             });
           }
-          if (modeName !== '__proto__' && modeName !== 'constructor' && modeName !== 'prototype') newModes[modeName] = newMode;
+          newModes[modeName] = newMode;
         });
         newCol.modes = newModes;
         return { [colName]: newCol };
