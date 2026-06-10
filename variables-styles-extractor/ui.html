@@ -3237,6 +3237,59 @@
       flex: 1;
       min-height: 0;
     }
+
+    /* ========== HEAVY-LOAD OPERATION PROGRESS (Phase D) ========== */
+    .op-progress {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 8px;
+      border: 1px solid var(--color-border);
+      border-radius: 6px;
+      background: var(--color-bg);
+    }
+    .op-progress.hidden { display: none; }
+    .op-progress-header {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+    }
+    .op-progress-count {
+      margin-left: auto;
+      font-family: var(--font-mono);
+    }
+    .op-progress-track {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--color-border);
+      overflow: hidden;
+    }
+    .op-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: #4CAF50;
+      transition: width 120ms linear;
+    }
+    .op-progress.indeterminate .op-progress-fill {
+      width: 30%;
+      animation: op-indet 1.1s ease-in-out infinite;
+    }
+    .op-progress.indeterminate .op-progress-count { visibility: hidden; }
+    .op-progress-spinner {
+      width: 10px;
+      height: 10px;
+      border: 2px solid var(--color-border);
+      border-top-color: #4CAF50;
+      border-radius: 50%;
+      animation: op-spin 0.8s linear infinite;
+    }
+    .op-progress.cancel-hidden .op-progress-cancel { display: none; }
+    @keyframes op-spin { to { transform: rotate(360deg); } }
+    @keyframes op-indet {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(420%); }
+    }
   </style>
 </head>
 <body>
@@ -3524,7 +3577,12 @@
               </div>
             </div>
           </details>
-          <button class="btn btn-export btn-full" onclick="exportVariables()" id="export-btn">
+          <div class="op-progress hidden" id="progress-host-export-advanced" data-progress-host>
+            <div class="op-progress-header"><span class="op-progress-spinner" aria-hidden="true"></span><span class="op-progress-label">Working…</span><span class="op-progress-count"></span></div>
+            <div class="op-progress-track"><div class="op-progress-fill"></div></div>
+            <button class="btn btn-small btn-secondary op-progress-cancel">✕ Cancel</button>
+          </div>
+          <button class="btn btn-export btn-full" onclick="exportVariables()" id="export-btn" data-op-disable>
             ↗️ Export Selected
           </button>
         </div>
@@ -3614,11 +3672,15 @@
             </div>
           </div>
           <div class="column-body" style="display: flex; flex-direction: column; gap: 8px;">
-            <div class="simple-progress-area hidden" id="progress-host-export-simple" data-progress-host></div>
+            <div class="simple-progress-area op-progress hidden" id="progress-host-export-simple" data-progress-host>
+              <div class="op-progress-header"><span class="op-progress-spinner" aria-hidden="true"></span><span class="op-progress-label">Working…</span><span class="op-progress-count"></span></div>
+              <div class="op-progress-track"><div class="op-progress-fill"></div></div>
+              <button class="btn btn-small btn-secondary op-progress-cancel">✕ Cancel</button>
+            </div>
             <div class="simple-log-slot" id="simple-export-log-slot"></div>
             <div class="simple-actions-row">
-              <button class="btn btn-export btn-full" id="simple-export-btn">↗️ Export</button>
-              <button class="btn btn-secondary btn-full" id="simple-copy-json-btn">📋 Copy JSON</button>
+              <button class="btn btn-export btn-full" id="simple-export-btn" data-op-disable>↗️ Export</button>
+              <button class="btn btn-secondary btn-full" id="simple-copy-json-btn" data-op-disable>📋 Copy JSON</button>
             </div>
           </div>
         </div>
@@ -3648,7 +3710,7 @@
                   <span>📥 Load JSON Data</span>
                 </div>
                 <div class="section-card-actions">
-                  <button class="btn btn-secondary btn-small" id="import-clear-btn" onclick="clearImportInput()" style="flex: 1;" disabled>🗑️ Clear</button>
+                  <button class="btn btn-secondary btn-small" id="import-clear-btn" onclick="clearImportInput()" style="flex: 1;" disabled data-op-disable>🗑️ Clear</button>
                   <button class="btn btn-secondary btn-small" onclick="document.getElementById('file-input').click()" style="flex: 1;">📁 Upload</button>
                 </div>
                 <input type="file" id="file-input" accept=".json" style="display: none;">
@@ -4038,7 +4100,12 @@
               <span>Restore library links (if connected)</span>
             </label>
           </div>
-          <button class="btn btn-import btn-full" onclick="importVariables()" id="import-btn" disabled>
+          <div class="op-progress hidden" id="progress-host-import-advanced" data-progress-host>
+            <div class="op-progress-header"><span class="op-progress-spinner" aria-hidden="true"></span><span class="op-progress-label">Working…</span><span class="op-progress-count"></span></div>
+            <div class="op-progress-track"><div class="op-progress-fill"></div></div>
+            <button class="btn btn-small btn-secondary op-progress-cancel">✕ Cancel</button>
+          </div>
+          <button class="btn btn-import btn-full" onclick="importVariables()" id="import-btn" disabled data-op-disable>
             📥 Import Selected
           </button>
           <p class="help-text" id="import-status" style="margin-top: 6px; text-align: center; font-family: var(--font-mono);">Load a JSON file to begin</p>
@@ -4074,7 +4141,7 @@
           </div>
           <!-- Undo Import Section (appears after successful import) -->
           <div id="import-undo-section" class="import-undo-section hidden">
-            <button class="btn btn-danger btn-full undo-import-btn" id="undo-import-btn" onclick="undoLastImport()">
+            <button class="btn btn-danger btn-full undo-import-btn" id="undo-import-btn" onclick="undoLastImport()" data-op-disable>
               <span class="undo-icon">↩️</span> Undo Import
             </button>
             <span class="undo-hint">Restores file to state before import</span>
@@ -4138,10 +4205,14 @@
             </div>
           </div>
           <div class="column-body" style="display: flex; flex-direction: column; gap: 8px;">
-            <div class="simple-progress-area hidden" id="progress-host-import-simple" data-progress-host></div>
+            <div class="simple-progress-area op-progress hidden" id="progress-host-import-simple" data-progress-host>
+              <div class="op-progress-header"><span class="op-progress-spinner" aria-hidden="true"></span><span class="op-progress-label">Working…</span><span class="op-progress-count"></span></div>
+              <div class="op-progress-track"><div class="op-progress-fill"></div></div>
+              <button class="btn btn-small btn-secondary op-progress-cancel">✕ Cancel</button>
+            </div>
             <div class="simple-log-slot" id="simple-import-log-slot"></div>
             <div class="simple-actions-row">
-              <button class="btn btn-import btn-full" id="simple-import-btn" disabled>📥 Import</button>
+              <button class="btn btn-import btn-full" id="simple-import-btn" disabled data-op-disable>📥 Import</button>
               <div id="simple-import-undo-slot"></div>
             </div>
           </div>
@@ -4203,7 +4274,95 @@
         callback();
       });
     }
-    
+
+    // ========== HEAVY-LOAD OPERATION PROGRESS (Phase D) ==========
+    // Single-operation gate: only one export/import/clear/undo runs at a time.
+    // Progress messages from the plugin are coalesced to one RAF (latest-wins).
+    let operationInFlight = null;
+    let pendingProgress = null;
+    let progressRafScheduled = false;
+    let lastProgressPhase = null;
+
+    // Toggle the in-flight operation. Disables/restores [data-op-disable] controls
+    // and shows/hides every [data-progress-host]. Pass null to clear.
+    function setOperationInFlight(op) {
+      operationInFlight = op || null;
+      const disableEls = document.querySelectorAll('[data-op-disable]');
+      disableEls.forEach(el => {
+        if (op) {
+          // Remember the prior enabled state once, then disable.
+          if (el.dataset.opWasEnabled === undefined) {
+            el.dataset.opWasEnabled = el.disabled ? '0' : '1';
+          }
+          el.disabled = true;
+        } else {
+          // Restore prior enabled state.
+          if (el.dataset.opWasEnabled !== undefined) {
+            el.disabled = el.dataset.opWasEnabled === '0';
+            delete el.dataset.opWasEnabled;
+          }
+        }
+      });
+
+      const hosts = document.querySelectorAll('[data-progress-host]');
+      hosts.forEach(host => {
+        host.classList.toggle('hidden', !op);
+        host.classList.remove('cancel-hidden');
+      });
+
+      if (!op) {
+        lastProgressPhase = null;
+        pendingProgress = null;
+        document.querySelectorAll('.op-progress-fill').forEach(fill => {
+          fill.style.width = '0%';
+        });
+      }
+    }
+
+    // Paint the latest progress snapshot into every progress host (latest-wins).
+    function renderProgressFrame() {
+      const p = pendingProgress;
+      if (!p) return;
+      const total = Number(p.total) || 0;
+      const current = Number(p.current) || 0;
+      const indeterminate = !total;
+      const pct = total ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
+      const countText = total
+        ? current.toLocaleString() + ' / ' + total.toLocaleString()
+        : '';
+      const labelText = p.label || 'Working…';
+
+      document.querySelectorAll('[data-progress-host]').forEach(host => {
+        host.classList.toggle('indeterminate', indeterminate);
+        const labelEl = host.querySelector('.op-progress-label');
+        if (labelEl) labelEl.textContent = labelText;
+        const countEl = host.querySelector('.op-progress-count');
+        if (countEl) countEl.textContent = countText;
+        const fillEl = host.querySelector('.op-progress-fill');
+        if (fillEl) fillEl.style.width = pct + '%';
+      });
+    }
+
+    // Request cancellation of the current operation from the plugin side.
+    function cancelCurrentOperation() {
+      if (!operationInFlight) return;
+      parent.postMessage({ pluginMessage: { type: 'cancel_operation' } }, '*');
+      document.querySelectorAll('.op-progress-cancel').forEach(btn => {
+        btn.disabled = true;
+        btn.textContent = 'Cancelling…';
+      });
+    }
+
+    // Schedule a coalesced progress repaint (latest-wins, one RAF max).
+    function scheduleProgressFrame() {
+      if (progressRafScheduled) return;
+      progressRafScheduled = true;
+      requestAnimationFrame(() => {
+        progressRafScheduled = false;
+        renderProgressFrame();
+      });
+    }
+
     // Schedule work during idle time (or fallback to setTimeout)
     const scheduleIdle = window.requestIdleCallback 
       ? (cb, opts) => window.requestIdleCallback(cb, opts)
@@ -4387,6 +4546,11 @@
           // Set timeout for worker response
           setTimeout(() => {
             if (jsonWorkerCallbacks.has(id)) {
+              // Kill the stalled worker so its eventual reply can't double-parse.
+              if (jsonWorker) {
+                jsonWorker.terminate();
+                jsonWorker = null;
+              }
               jsonWorkerCallbacks.delete(id);
               // Fallback to main thread
               scheduleIdle(() => {
@@ -4400,7 +4564,7 @@
               }, { timeout: 200 });
             }
           }, 5000);
-          
+
           worker.postMessage({ id, type: 'parse', data: jsonString });
         } else {
           // Fallback: use idle callback
@@ -4417,12 +4581,44 @@
       });
     }
     
+    // Iterative (stack-based) node-count walk to estimate payload weight without
+    // recursion blowing the call stack on deep/large structures. Counts object
+    // keys + array items, and adds (long-string length / 100) so a few huge
+    // strings also tip a payload into "large". Early-exits once the threshold is hit.
+    function isLargePayload(data) {
+      const THRESHOLD = 1000;
+      let count = 0;
+      const stack = [data];
+      while (stack.length > 0) {
+        const node = stack.pop();
+        if (node === null || node === undefined) continue;
+        const t = typeof node;
+        if (t === 'string') {
+          if (node.length > 100) count += Math.floor(node.length / 100);
+          if (count > THRESHOLD) return true;
+          continue;
+        }
+        if (t !== 'object') continue;
+        if (Array.isArray(node)) {
+          count += node.length;
+          if (count > THRESHOLD) return true;
+          for (let i = 0; i < node.length; i++) stack.push(node[i]);
+        } else {
+          const keys = Object.keys(node);
+          count += keys.length;
+          if (count > THRESHOLD) return true;
+          for (let i = 0; i < keys.length; i++) stack.push(node[keys[i]]);
+        }
+      }
+      return count > THRESHOLD;
+    }
+
     // Async JSON stringify using Web Worker for large data
     async function stringifyJSONAsync(data) {
       return new Promise((resolve, reject) => {
-        // Quick size estimation
-        const isLarge = Array.isArray(data) && data.length > 100;
-        
+        // Quick size estimation (iterative node-count walk)
+        const isLarge = isLargePayload(data);
+
         // For small data, stringify directly
         if (!isLarge) {
           try {
@@ -4442,6 +4638,11 @@
           // Set timeout for worker response
           setTimeout(() => {
             if (jsonWorkerCallbacks.has(id)) {
+              // Kill the stalled worker so its eventual reply can't double-stringify.
+              if (jsonWorker) {
+                jsonWorker.terminate();
+                jsonWorker = null;
+              }
               jsonWorkerCallbacks.delete(id);
               // Fallback to main thread
               try {
@@ -4451,7 +4652,7 @@
               }
             }
           }, 5000);
-          
+
           worker.postMessage({ id, type: 'stringify', data });
         } else {
           // Fallback: stringify on main thread with idle callback
@@ -6572,23 +6773,82 @@
           renderSimpleExportStyles();
           break;
 
-        case 'export_complete':
-          exportData = msg.data.data;
-          document.getElementById('export-output').value = exportData;
-          
+        case 'operation_progress': {
+          // Per-phase log line (only when phase changes) + coalesced progress paint.
+          if (msg.phase !== lastProgressPhase) {
+            lastProgressPhase = msg.phase;
+            addLog('⏳ ' + msg.label + '…', 'info', msg.operation === 'export' ? 'export' : 'import');
+          }
+          pendingProgress = msg;
+          scheduleProgressFrame();
+          break;
+        }
+        case 'export_chunk': {
+          // Accumulate streamed export chunks (init on first chunk / seq 0).
+          if (msg.seq === 0 || !window._exportChunks) {
+            window._exportChunks = [];
+          }
+          window._exportChunks[msg.seq] = msg.data;
+          pendingProgress = {
+            operation: 'export',
+            phase: 'export_deliver',
+            label: 'Receiving export data',
+            current: msg.seq + 1,
+            total: msg.total
+          };
+          scheduleProgressFrame();
+          break;
+        }
+        case 'export_done': {
+          const chunks = window._exportChunks || [];
+          window._exportChunks = null;
+
+          // Validate the reassembled stream before consuming it.
+          const chunksValid = Array.isArray(chunks)
+            && chunks.length === msg.chunkCount
+            && chunks.every(c => typeof c === 'string');
+
+          // Clear the operation gate FIRST so controls re-enable regardless of outcome.
+          setOperationInFlight(null);
+
+          if (!chunksValid) {
+            addLog('❌ Export failed: incomplete or corrupt data stream', 'error');
+            simpleExportPendingAction = null;
+            setSimpleExportButtonsDisabled(false);
+            break;
+          }
+
+          exportData = chunks.join('');
+
+          if (typeof msg.totalLength === 'number' && exportData.length !== msg.totalLength) {
+            addLog('❌ Export failed: data length mismatch', 'error');
+            exportData = '';
+            simpleExportPendingAction = null;
+            setSimpleExportButtonsDisabled(false);
+            break;
+          }
+
+          // Avoid pushing very large payloads into the textarea (>2MB) to keep the UI responsive.
+          if (exportData.length <= 2 * 1024 * 1024) {
+            document.getElementById('export-output').value = exportData;
+          } else {
+            document.getElementById('export-output').value = '';
+          }
+
+          // ----- Moved from the former export_complete case -----
           // Show JSON preview in Activity Log column
           const jsonPreviewSection = document.getElementById('export-json-preview-section');
           const jsonPreviewContent = document.getElementById('export-json-preview');
           if (jsonPreviewSection && jsonPreviewContent) {
             jsonPreviewSection.classList.remove('hidden');
             // Show truncated preview (first 2000 chars with ellipsis)
-            const previewText = exportData.length > 2000 
+            const previewText = exportData.length > 2000
               ? exportData.substring(0, 2000) + '\n\n... (truncated - use Copy/Download for full data)'
               : exportData;
             jsonPreviewContent.textContent = previewText;
           }
-          
-          const stats = msg.data.stats;
+
+          const stats = msg.stats;
           let logMsg = `✅ Export: ${stats.collections} collections, ${stats.variables} vars`;
           if (stats.styles) {
             const styleTotal = (stats.styles.color || 0) + (stats.styles.text || 0) + (stats.styles.effect || 0) + (stats.styles.grid || 0);
@@ -6597,21 +6857,21 @@
             }
           }
           addLog(logMsg, 'success');
-          
+
           // Show external collections warning if present
-          const extColls = msg.data.externalCollections;
+          const extColls = msg.externalCollections;
           if (extColls && extColls.length > 0) {
             addLog(`📚 ${extColls.length} library collection(s) referenced but not exported: ${extColls.join(', ')}`, 'warning');
             addLog(`⚠️ Aliases to library tokens will use raw values on import`, 'warning');
           }
-          
+
           // Show font requirements in Status Check
-          const reqFonts = msg.data.requiredFonts;
+          const reqFonts = msg.requiredFonts;
           const fontBanner = document.getElementById('font-requirements-banner');
           const fontList = document.getElementById('font-requirements-list');
           if (reqFonts && reqFonts.length > 0) {
             fontBanner.classList.remove('hidden');
-            fontList.innerHTML = reqFonts.map(f => 
+            fontList.innerHTML = reqFonts.map(f =>
               `<span class="alert-item">🔤 ${f.family} ${f.style}</span>`
             ).join('');
             addLog(`🔤 Required fonts for import: ${reqFonts.map(f => `${f.family} ${f.style}`).join(', ')}`, 'info');
@@ -6633,7 +6893,36 @@
             }
           }
           break;
+        }
+        case 'operation_cancelled':
+          setOperationInFlight(null);
+          addLog('🛑 ' + msg.message, 'warning', msg.operation === 'export' ? 'export' : 'import');
+          if (msg.operation === 'clear' || (msg.operation === 'import' && msg.rolledBack)) {
+            loadCollections();
+          }
+          if (msg.operation === 'import') {
+            const importBtnCancel = document.getElementById('import-btn');
+            if (importBtnCancel) importBtnCancel.textContent = '📥 Import Selected';
+          }
+          // Release Simple-mode export action latch + re-enable its buttons.
+          simpleExportPendingAction = null;
+          setSimpleExportButtonsDisabled(false);
+          resetSimpleImportButton();
+          break;
+        case 'operation_denied':
+          console.warn('Operation denied:', msg.requested, 'while', msg.running);
+          // Defensive self-heal: the backend rejected a request because another
+          // operation holds the lock. The UI normally gates on operationInFlight
+          // before posting, so this is unreachable today — but if a sender ever
+          // sets the flag before a denial, clear it so controls don't stay
+          // permanently gated. Harmless no-op when already idle.
+          setOperationInFlight(null);
+          break;
         case 'import_complete':
+          setOperationInFlight(null);
+          // Snapshot unification: the plugin now returns the pre-import snapshot
+          // alongside the completion message (no separate create_undo_snapshot round-trip).
+          lastImportSnapshot = msg.data.snapshot || null;
           const s = msg.data.stats;
           let importMsg = `✅ Import: ${s.collectionsCreated} collections, ${s.variablesCreated} vars created`;
           if (s.variablesUpdated > 0) {
@@ -6691,28 +6980,8 @@
           resetSimpleImportButton();
           clearSimpleImportSelectionState();
           break;
-        case 'snapshot_created':
-          // Snapshot created, now proceed with actual import
-          lastImportSnapshot = msg.data.snapshot;
-          addLog('✅ Snapshot saved, proceeding with import...', 'success', 'import');
-          
-          if (window._pendingImportAfterSnapshot) {
-            const { data, options } = window._pendingImportAfterSnapshot;
-            window._pendingImportAfterSnapshot = null;
-            executeImportAfterSnapshot(data, options);
-          }
-          break;
-        case 'snapshot_error':
-          addLog('⚠️ Could not create snapshot, proceeding anyway...', 'warning', 'import');
-          lastImportSnapshot = null;
-          
-          if (window._pendingImportAfterSnapshot) {
-            const { data, options } = window._pendingImportAfterSnapshot;
-            window._pendingImportAfterSnapshot = null;
-            executeImportAfterSnapshot(data, options);
-          }
-          break;
         case 'undo_complete':
+          setOperationInFlight(null);
           addLog('✅ Import undone successfully! File restored to previous state.', 'success', 'import');
           hideUndoSection();
           loadCollections();
@@ -6725,6 +6994,7 @@
           }
           break;
         case 'undo_error':
+          setOperationInFlight(null);
           addLog(`❌ Undo failed: ${msg.data.error}`, 'error', 'import');
           
           // Reset undo button
@@ -6735,12 +7005,16 @@
           }
           break;
         case 'import_rolling_back':
-          // Import failed, automatic rollback in progress
+          // Import failed, automatic rollback in progress.
+          // The operation is still in flight (rollback running) but cancellation
+          // is no longer possible, so hide the cancel control on every host.
+          document.querySelectorAll('[data-progress-host]').forEach(h => h.classList.add('cancel-hidden'));
           addLog(`⚠️ Import failed: ${msg.data.error}`, 'error', 'import');
           addLog('🔄 Automatic rollback in progress...', 'info', 'import');
           document.getElementById('import-status').textContent = 'Rolling back changes...';
           break;
         case 'import_rollback_complete':
+          setOperationInFlight(null);
           // Automatic rollback succeeded
           addLog('✅ ' + msg.data.message, 'success', 'import');
           document.getElementById('import-status').textContent = 'Import failed - file restored';
@@ -6753,6 +7027,7 @@
           updateSimpleImportButtonState();
           break;
         case 'import_rollback_failed':
+          setOperationInFlight(null);
           // Automatic rollback failed
           addLog(`❌ Rollback failed: ${msg.data.rollbackError}`, 'error', 'import');
           addLog('⚠️ ' + msg.data.message, 'warning', 'import');
@@ -6765,6 +7040,7 @@
           updateSimpleImportButtonState();
           break;
         case 'clear_complete':
+          setOperationInFlight(null);
           addLog(`✅ Cleared: ${msg.data.message}`, 'success');
           loadCollections();
           break;
@@ -6816,6 +7092,7 @@
           displayImportDiff(msg.data);
           break;
         case 'error':
+          setOperationInFlight(null);
           addLog('❌ ' + msg.data.message, 'error');
           // Simple mode: release the action buttons on backend failure (stage 3 wiring)
           simpleExportPendingAction = null;
@@ -7309,11 +7586,12 @@
     }
 
     function exportVariables() {
+      if (operationInFlight) return; // single-operation gate (Phase D)
       if (selectedExportCollections.size === 0) {
         addLog('❌ Please select at least one collection', 'error');
         return;
       }
-      
+
       // Advanced: read the style checkboxes; Simple: derive from group-level state
       const styleOptions = isAdvancedMode()
         ? {
@@ -7390,9 +7668,10 @@
       if (resolveAliases) {
         addLog(`🔓 Resolving aliases to raw values`, 'info');
       }
-      
-      parent.postMessage({ 
-        pluginMessage: { 
+
+      setOperationInFlight('export');
+      parent.postMessage({
+        pluginMessage: {
           type: 'export',
           collections: Array.from(selectedExportCollections),
           styleOptions: styleOptions,
@@ -8124,26 +8403,32 @@
     }
 
     function clearAllVariables() {
+      if (operationInFlight) return; // single-operation gate (Phase D)
       if (!confirm('⚠️ This will delete ALL variable collections and variables in this file. This cannot be undone. Continue?')) {
         return;
       }
       addLog('🗑️ Clearing all variables...');
+      setOperationInFlight('clear');
       parent.postMessage({ pluginMessage: { type: 'clear_variables' } }, '*');
     }
 
     function clearAllStyles() {
+      if (operationInFlight) return; // single-operation gate (Phase D)
       if (!confirm('⚠️ This will delete ALL local styles (color, text, effect, grid) in this file. This cannot be undone. Continue?')) {
         return;
       }
       addLog('🗑️ Clearing all styles...');
+      setOperationInFlight('clear');
       parent.postMessage({ pluginMessage: { type: 'clear_styles' } }, '*');
     }
 
     function clearAll() {
+      if (operationInFlight) return; // single-operation gate (Phase D)
       if (!confirm('⚠️ This will delete ALL variables AND styles in this file. This cannot be undone. Continue?')) {
         return;
       }
       addLog('🗑️ Clearing everything...');
+      setOperationInFlight('clear');
       parent.postMessage({ pluginMessage: { type: 'clear_all' } }, '*');
     }
 
@@ -8152,11 +8437,12 @@
     let pendingImportOptions = null;
 
     function importVariables() {
+      if (operationInFlight) return; // single-operation gate (Phase D)
       if (!importData || selectedImportCollections.size === 0) {
         addLog('❌ Please select collections to import', 'error');
         return;
       }
-      
+
       // Disable import button immediately to prevent double-clicks
       const importBtn = document.getElementById('import-btn');
       if (importBtn) {
@@ -8431,24 +8717,18 @@
     function executeImport(data, options) {
       // Hide undo section from previous import since we're starting a new one
       hideUndoSection();
-      
-      // First, take a snapshot of current state for undo capability
-      addLog('📸 Capturing current state for undo...', 'info', 'import');
-      
-      // Store import data and options for after snapshot
-      window._pendingImportAfterSnapshot = { data, options };
-      
-      parent.postMessage({
-        pluginMessage: {
-          type: 'create_undo_snapshot'
-        }
-      }, '*');
+
+      // Snapshot unification (Phase D): the plugin now captures the undo snapshot
+      // as part of the import op and returns it on import_complete. No separate
+      // create_undo_snapshot pre-send round-trip is needed — send 'import' directly.
+      executeImportAfterSnapshot(data, options);
     }
-    
-    // Actually execute import after snapshot is captured (async for large data)
+
+    // Stringify + post the import message (async for large data)
     async function executeImportAfterSnapshot(data, options) {
       try {
         const dataString = await stringifyJSONAsync(data);
+        setOperationInFlight('import');
         parent.postMessage({
           pluginMessage: {
             type: 'import',
@@ -8465,24 +8745,26 @@
     
     // Undo last import - restores file to pre-import state
     function undoLastImport() {
+      if (operationInFlight) return; // single-operation gate (Phase D)
       if (!lastImportSnapshot) {
         showToast('No import to undo', 'error');
         return;
       }
-      
+
       if (!confirm('⚠️ This will undo the last import, restoring the file to its previous state. This cannot be undone. Continue?')) {
         return;
       }
-      
+
       addLog('↩️ Undoing last import...', 'info', 'import');
-      
+
       // Disable undo button during operation
       const undoBtn = document.getElementById('undo-import-btn');
       if (undoBtn) {
         undoBtn.disabled = true;
         undoBtn.innerHTML = '<span class="undo-icon">⏳</span> Undoing...';
       }
-      
+
+      setOperationInFlight('undo');
       parent.postMessage({
         pluginMessage: {
           type: 'undo_import',
@@ -8537,6 +8819,18 @@
     }
 
     function handleFile(file) {
+      // Heavy-load guard (Phase D): hard-refuse absurd files, confirm very large ones.
+      const MB = 1024 * 1024;
+      if (file && file.size > 100 * MB) {
+        addLog(`❌ File too large (${(file.size / MB).toFixed(1)} MB). Maximum supported size is 100 MB.`, 'error', 'import');
+        showToast('File too large (max 100 MB)', 'error');
+        return;
+      }
+      if (file && file.size > 20 * MB) {
+        if (!confirm(`⚠️ This file is ${(file.size / MB).toFixed(1)} MB and may take a while to load. Continue?`)) {
+          return;
+        }
+      }
       const reader = new FileReader();
       reader.onload = (e) => {
         document.getElementById('import-input').value = e.target.result;
@@ -9753,6 +10047,15 @@
 
     // Initialize Simple-mode wiring (listeners, shared-node placement, first paint)
     initSimpleMode();
+
+    // ========== HEAVY-LOAD HANDLING INIT (Phase D) ==========
+    // Wire every progress-host cancel button to the shared cancel handler.
+    function initHeavyLoadHandling() {
+      document.querySelectorAll('.op-progress-cancel').forEach(btn => {
+        btn.addEventListener('click', cancelCurrentOperation);
+      });
+    }
+    initHeavyLoadHandling();
 
     // ========== TIP MODAL ==========
     function openTipModal() {
