@@ -54,8 +54,7 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── src/code.ts                 ← Backend source (Figma QuickJS VM)
 │   ├── .gcc/                       ← Project session memory + build log
 │   ├── .github/copilot-instructions.md
-│   ├── docs/                       ← AI_CONTEXT, CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
-│   └── releases/
+│   └── docs/                       ← AI_CONTEXT, CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
 ├── nectar-design-toolkit/          ← Project: Design system toolkit (in development)
 └── Design System Builder/          ← Project: Design system toolkit (in development)
 ```
@@ -127,7 +126,6 @@ cd "Side-Kicks/<project-name>"
 # Optional:
 #   docs/              — additional documentation (CODING_STANDARDS, KNOWN_ISSUES, etc.)
 #   src/               — source code
-#   releases/          — version archives
 ```
 
 Then update:
