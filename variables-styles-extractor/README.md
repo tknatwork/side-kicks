@@ -7,15 +7,27 @@
 
 **Move your design system anywhere. Export and import Figma variables and styles — selectively, safely, and in Tokens Studio–compatible JSON.**
 
-> 🔍 **Status:** v2.1.0 in final testing — v2.0.0 published to Figma Community (17 January 2026)
+> 🔍 **Status:** v2.1.0 published to Figma Community · v2.0.0 first published 17 January 2026
+
+Variables & Styles Extractor moves complete design systems between Figma files — every variable collection, mode, alias, and style — as clean, re-importable JSON. It runs **100% locally** (zero network access) and stays responsive on large design systems thanks to a batched processing engine with live progress and a real Cancel button.
+
+## Highlights (v2.1)
+
+- 🧩 **Simple mode, redesigned** — a clean three-section layout: pick variables, pick styles, export. Collections expand into name-prefix groups (just like Figma's Variables panel), so you ship exactly the groups you choose.
+- 🎯 **Group-level selection** — export or import only the variable/style groups you tick, not all-or-nothing.
+- 📦 **Built for large design systems** — batched processing keeps Figma responsive on thousands of variables, with live progress bars and a Cancel button that safely rolls everything back.
+- 🛡️ **Safe import undo** — every import takes a validated snapshot first; undo restores in one click, and a single `Cmd/Ctrl+Z` reverts the whole import natively. A corrupt snapshot can never wipe your file.
+- 🎨 **Three export formats** — Figma JSON (perfect round-trips), W3C Design Tokens, and a Tokens Studio–compatible format (token sets per Collection/Mode, `$themes`, DTCG keys, `{dot.path}` aliases).
+- ⚙️ **Advanced mode** — per-mode selection, merge strategies, pre-import diff review, plan checks, library mapping, and font validation, one toggle away.
+- 🔒 **Private by design** — `networkAccess: none`; your file never leaves Figma.
 
 ## Features
 
 ### Variables
 - ✅ Color, Number, String, Boolean variables
-- ✅ Variable collections with multiple modes (up to 20+)
-- ✅ Variable aliases and references
-- ✅ Library-linked variable detection
+- ✅ Variable collections with multiple modes
+- ✅ Variable aliases and references (resolved or preserved)
+- ✅ Library-linked variable detection + dependency flagging
 
 ### Styles
 - ✅ Color styles (solid, gradient, image fills)
@@ -24,65 +36,82 @@
 - ✅ Grid styles (rows, columns, grid)
 - ✅ Multi-paint color styles
 
+### Export formats
+- ✅ **Figma JSON** — full-fidelity round-trip (default)
+- ✅ **Tokens Studio** — single-file shape with token sets, `$themes`, `$metadata`, DTCG keys
+- ✅ **W3C Design Tokens** — the open DTCG draft standard
+
 ### Import safety
-- ✅ Automatic rollback on failure
-- ✅ One-click undo for last import
-- ✅ Pre-import snapshots
+- ✅ Validated pre-import snapshot (checked **before** any clearing)
+- ✅ Automatic rollback on failure, with progress
+- ✅ One-click undo + single-step native `Cmd/Ctrl+Z`
 - ✅ Smart merge / clean import / custom merge
+
+### Heavy-load handling
+- ✅ Batched processing engine — stays responsive on large systems
+- ✅ Live progress for export, import, and clear operations
+- ✅ Cooperative Cancel that rolls back safely
+- ✅ Chunked export delivery for very large payloads
+- ✅ Instant paste / lag-free mode switching with multi-MB JSON
 
 ### Validation
 - ✅ Font availability checking
-- ✅ Library connection status
+- ✅ Library connection status + external dependency detection
 - ✅ Plan compatibility (Starter/Pro/Org/Enterprise)
-- ✅ External dependency detection
 
-### Performance
-- ✅ Web Worker JSON parsing (handles 1MB+ files)
-- ✅ Result caching for repeated operations
-- ✅ Skeleton loaders during load
-- ✅ 4-column layout (1200×628 px)
+### Interface
+- ✅ Simple mode (compact 905×628) and Advanced mode (1200×628)
+- ✅ Edge-fade scroll indicators and skeleton loaders
 - ✅ Activity log with copy/clear controls
 
 ## Installation
 
 ### From Figma Community (Recommended)
 1. Visit the [plugin page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)
-2. Click "Try it out" or "Save"
+2. Click "Open in…" / "Save"
 3. Open any Figma file
-4. Run: Plugins → Variables & Styles Extractor
+4. Run: Plugins → Variables and Styles Extractor
 
 ### From Source
 1. Clone this repository
-2. In Figma: Plugins → Development → Import plugin from manifest
-3. Select the `manifest.json` file
+2. In Figma: Plugins → Development → Import plugin from manifest…
+3. Select `variables-styles-extractor/manifest.json`
 
 ## Usage
 
 ### Export
-1. Open a Figma file with variables/styles
-2. Run the plugin
-3. Go to Export tab
-4. Select collections to export
-5. Click "Export Selected"
+1. Open a Figma file with variables/styles and run the plugin (opens in Simple mode)
+2. Tick the variable collections/groups and style types you want
+3. Pick a format (Figma JSON · Tokens Studio · W3C) and click **Export** — or **Copy JSON**
 
 ### Import
-1. Open the target Figma file
-2. Run the plugin
-3. Go to Import tab
-4. Drop JSON file or paste contents
-5. Click "Import"
+1. Open the target Figma file and run the plugin → Import tab
+2. Paste JSON or upload a `.json` file
+3. Tick what to import, then click **Import** (use **Undo Import** to revert)
 
 ## Privacy
 
-- 🔒 No network access - fully local
-- 🔒 No data collection
-- 🔒 Open source
+- 🔒 **No network access** — `networkAccess: none` in the manifest; fully local
+- 🔒 No data collection — your file never leaves Figma
+- 🔒 Open source (MIT)
+
+## Build
+
+```bash
+cd variables-styles-extractor
+pnpm install --frozen-lockfile
+pnpm build:dev   # tsc only (readable code.js)
+pnpm build       # tsc + terser (minified, shipped) — commit code.js
+```
+
+`code.js` is the checked-in compiled artifact; there is no CI build step, so commit it alongside `src/code.ts` changes. See [`AGENTS.md`](./AGENTS.md) and [`docs/CODING_STANDARDS.md`](./docs/CODING_STANDARDS.md) for the Figma QuickJS/iframe constraints.
 
 ## Support
 
 - [Report a Bug](https://github.com/tknatwork/side-kicks/issues/new?template=bug_report.md)
 - [Request a Feature](https://github.com/tknatwork/side-kicks/issues/new?template=feature_request.md)
 - [Known Issues](./docs/KNOWN_ISSUES.md)
+- [Changelog](./docs/CHANGELOG.md)
 
 ## License
 
