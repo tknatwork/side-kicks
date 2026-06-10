@@ -5037,7 +5037,7 @@
           const flatVars = flattenObject(modeVars);
           varCount = Math.max(varCount, flatVars.length);
           flatVars.forEach(v => {
-            if (v.$type && Object.prototype.hasOwnProperty.call(types, v.$type)) types[v.$type]++;
+            if (v.$type === 'color') types.color++; else if (v.$type === 'float') types.float++; else if (v.$type === 'boolean') types.boolean++; else if (v.$type === 'string') types.string++;
           });
         });
         
@@ -5357,7 +5357,7 @@
           const flatVars = flattenObject(modeVars);
           varCount = Math.max(varCount, flatVars.length);
           flatVars.forEach(v => {
-            if (v.$type && Object.prototype.hasOwnProperty.call(types, v.$type)) types[v.$type]++;
+            if (v.$type === 'color') types.color++; else if (v.$type === 'float') types.float++; else if (v.$type === 'boolean') types.boolean++; else if (v.$type === 'string') types.string++;
           });
         });
         
@@ -6299,7 +6299,7 @@
             <span class="font-status-title">All Fonts Available</span>
           </div>
           <div class="font-status-message">
-            All ${requiredFonts.length} font(s) used by ${styleCount} text style(s) are installed and ready for import.
+            All ${escapeHtml(requiredFonts.length)} font(s) used by ${escapeHtml(styleCount)} text style(s) are installed and ready for import.
           </div>
           <div class="font-list">
             ${availableFonts.map(f => `
@@ -6320,7 +6320,7 @@
             <span class="font-status-title">Some Fonts Missing</span>
           </div>
           <div class="font-status-message">
-            ${styleCount} text style(s) require ${requiredFonts.length} font(s). Some are available, but ${missingFonts.length} are missing.
+            ${escapeHtml(styleCount)} text style(s) require ${escapeHtml(requiredFonts.length)} font(s). Some are available, but ${escapeHtml(missingFonts.length)} are missing.
             Text styles with missing fonts may not import correctly.
           </div>
           <div class="font-list">
@@ -6351,7 +6351,7 @@
             <span class="font-status-title">Fonts Not Found</span>
           </div>
           <div class="font-status-message">
-            ${styleCount} text style(s) require ${requiredFonts.length} font(s) that are <strong>not installed</strong>.
+            ${escapeHtml(styleCount)} text style(s) require ${escapeHtml(requiredFonts.length)} font(s) that are <strong>not installed</strong>.
             Text styles may fail to import or appear incorrectly.
           </div>
           <div class="font-list">
@@ -6428,12 +6428,12 @@
           html += `
             <div class="validation-alert success">
               <div class="validation-alert-title">✅ Ready to Import</div>
-              <p>Import is compatible with ${planInfo.name} plan (${planInfo.maxModes === Infinity ? 'unlimited' : planInfo.maxModes} modes/collection)</p>
+              <p>Import is compatible with ${escapeHtml(planInfo.name)} plan (${planInfo.maxModes === Infinity ? 'unlimited' : escapeHtml(planInfo.maxModes)} modes/collection)</p>
               ${validation.importing ? `
                 <p style="margin-top: 4px; font-size: 10px;">
-                  ${validation.importing.collections} collections • 
-                  ${validation.importing.totalVariables} variables • 
-                  Max ${validation.importing.maxModesInAnyCollection} modes in any collection
+                  ${escapeHtml(validation.importing.collections)} collections • 
+                  ${escapeHtml(validation.importing.totalVariables)} variables • 
+                  Max ${escapeHtml(validation.importing.maxModesInAnyCollection)} modes in any collection
                 </p>
               ` : ''}
             </div>
@@ -6945,7 +6945,7 @@
           if (msg.seq === 0 || !window._exportChunks) {
             window._exportChunks = [];
           }
-          if (typeof msg.seq === 'number' && msg.seq >= 0) { window._exportChunks[msg.seq] = msg.data; }
+          if (typeof msg.seq === 'number' && msg.seq >= 0) { window._exportChunks[msg.seq >>> 0] = msg.data; }
           pendingProgress = {
             operation: 'export',
             phase: 'export_deliver',
@@ -8044,7 +8044,7 @@
             const flatVars = flattenObject(modeVars);
             varCount = Math.max(varCount, flatVars.length);
             flatVars.forEach(v => {
-              if (v.$type && Object.prototype.hasOwnProperty.call(types, v.$type)) types[v.$type]++;
+              if (v.$type === 'color') types.color++; else if (v.$type === 'float') types.float++; else if (v.$type === 'boolean') types.boolean++; else if (v.$type === 'string') types.string++;
             });
           });
           
