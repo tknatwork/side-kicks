@@ -5076,10 +5076,10 @@
               <div class="collection-name">${colName} ${newBadge}</div>
               <div class="collection-meta">~${varCount} variables • Modes: ${modes.join(', ')}</div>
               <div class="collection-types">
-                ${types.color > 0 ? `<span class="type-badge type-color">${types.color} colors</span>` : ''}
-                ${types.float > 0 ? `<span class="type-badge type-float">${types.float} numbers</span>` : ''}
-                ${types.boolean > 0 ? `<span class="type-badge type-boolean">${types.boolean} booleans</span>` : ''}
-                ${types.string > 0 ? `<span class="type-badge type-string">${types.string} strings</span>` : ''}
+                ${types.color > 0 ? `<span class="type-badge type-color">${escapeHtml(types.color)} colors</span>` : ''}
+                ${types.float > 0 ? `<span class="type-badge type-float">${escapeHtml(types.float)} numbers</span>` : ''}
+                ${types.boolean > 0 ? `<span class="type-badge type-boolean">${escapeHtml(types.boolean)} booleans</span>` : ''}
+                ${types.string > 0 ? `<span class="type-badge type-string">${escapeHtml(types.string)} strings</span>` : ''}
               </div>
             </div>
             ${advancedControls}
@@ -7502,10 +7502,10 @@
 
     function renderTypeBadges(types) {
       const badges = [];
-      if (types.color) badges.push(`<span class="type-badge type-color">${types.color} colors</span>`);
-      if (types.float) badges.push(`<span class="type-badge type-float">${types.float} numbers</span>`);
-      if (types.boolean) badges.push(`<span class="type-badge type-boolean">${types.boolean} booleans</span>`);
-      if (types.string) badges.push(`<span class="type-badge type-string">${types.string} strings</span>`);
+      if (types.color) badges.push(`<span class="type-badge type-color">${escapeHtml(types.color)} colors</span>`);
+      if (types.float) badges.push(`<span class="type-badge type-float">${escapeHtml(types.float)} numbers</span>`);
+      if (types.boolean) badges.push(`<span class="type-badge type-boolean">${escapeHtml(types.boolean)} booleans</span>`);
+      if (types.string) badges.push(`<span class="type-badge type-string">${escapeHtml(types.string)} strings</span>`);
       return badges.join('');
     }
 
@@ -8817,11 +8817,11 @@
         const colData = colObj[colName] || {};
         const newCol = {};
         if ('$originalName' in colData) newCol.$originalName = colData.$originalName;
-        const newModes = {};
+        const newModes = Object.create(null);
         const modesObj = colData.modes || {};
         Object.keys(modesObj).forEach(modeName => {
           const modeVars = modesObj[modeName];
-          const newMode = {};
+          const newMode = Object.create(null);
           if (modeVars && typeof modeVars === 'object') {
             Object.keys(modeVars).forEach(k => {
               const v = modeVars[k];
