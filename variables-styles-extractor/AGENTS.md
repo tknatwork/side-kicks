@@ -1,11 +1,11 @@
 <!-- === SYSTEM PAIRING ===
 Consumed by: All AI builders (Claude Code, Cursor, Copilot, Aider, Continue, Gemini CLI, Codex)
 Updated by: manual, on architectural or convention changes
-Pairs with: CLAUDE.md (pointer), docs/AI_CONTEXT.md (legacy context, protected),
+Pairs with: CLAUDE.md (pointer),
             docs/CODING_STANDARDS.md, docs/FIGMA_PLUGIN_DEVELOPMENT.md
 Update trigger: change to plugin architecture, Figma constraints discovered, message protocol added
 Last verified: 2026-06-10 (message protocol overhaul absorbed; START_HERE.md boot doc added)
-Index: docs/AI_CONTEXT.md
+Index: AGENTS.md
 === END PAIRING === -->
 
 # AGENTS.md — Variables & Styles Extractor
@@ -29,7 +29,6 @@ Index: docs/AI_CONTEXT.md
 2. **`.gcc/session-memory.md`** — warm-start state from the last session.
 3. **[`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md)** — mandatory coding rules for this plugin.
 4. **[`docs/FIGMA_PLUGIN_DEVELOPMENT.md`](docs/FIGMA_PLUGIN_DEVELOPMENT.md)** — Figma sandbox constraints and patterns.
-5. **[`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md)** — legacy project context (protected, kept for tooling).
 
 ### Step 2: Understand what you can break
 
@@ -104,7 +103,6 @@ variables-styles-extractor/
 ├── .github/
 │   └── copilot-instructions.md  ← Project-specific Copilot rules (protected)
 └── docs/
-    ├── AI_CONTEXT.md          ← Legacy context (protected, kept for tooling)
     ├── AGENTS.md              ← Redirect to ../AGENTS.md
     ├── CLAUDE.md              ← Redirect to ../CLAUDE.md
     ├── CHANGELOG.md           ← Version history (protected)
@@ -264,7 +262,6 @@ Never delete — rewrite if the content becomes wrong:
 | `AGENTS.md` (this file) | Canonical AI rules |
 | `CLAUDE.md` | Pointer for legacy Claude Code path |
 | `LICENSE` | MIT + CFRL notice |
-| `docs/AI_CONTEXT.md` | Legacy context (protected) |
 | `docs/AGENTS.md` | Redirect (kept for tooling) |
 | `docs/CLAUDE.md` | Redirect (kept for tooling) |
 | `docs/CHANGELOG.md` | Version history (protected) |
@@ -290,7 +287,6 @@ Never delete — rewrite if the content becomes wrong:
 |------|---------|--------------|
 | `AGENTS.md` (this file) | Canonical AI rules | Every session |
 | `CLAUDE.md` | Pointer | Auto-loaded by legacy paths |
-| `docs/AI_CONTEXT.md` | Legacy context (protected) | First time on project |
 | `docs/CODING_STANDARDS.md` | Mandatory rules | Before every coding session |
 | `docs/FIGMA_PLUGIN_DEVELOPMENT.md` | Figma sandbox guide | Before writing code touching Figma APIs |
 | `docs/CHANGELOG.md` | Version history | Understanding prior changes |

@@ -26,7 +26,7 @@ This is a Figma plugin for exporting and importing variables and styles between 
 | Priority | File | Purpose |
 |----------|------|--------|
 | 1 | `docs/CODING_STANDARDS.md` | Coding standards, patterns & conventions |
-| 2 | `docs/AI_CONTEXT.md` | Project context and architecture |
+| 2 | `AGENTS.md` | Project context and architecture |
 | 3 | `docs/CHANGELOG.md` | Version history and recent changes |
 | 4 | `docs/TASKS.md` | Current tasks and backlog |
 
@@ -46,7 +46,7 @@ When working on a new kind of build or feature that isn't covered in the critica
 ### Step 2: Update Documentation
 Once the feature is working:
 1. **Update `docs/CODING_STANDARDS.md`** with any new patterns discovered
-2. **Update `docs/AI_CONTEXT.md`** if architecture changed
+2. **Update `AGENTS.md`** if architecture changed
 3. **Update `docs/CHANGELOG.md`** with the new feature
 4. **Update this file** if new critical workflows emerged
 

@@ -1,7 +1,7 @@
 <!-- === SYSTEM PAIRING ===
 Consumed by: All AI builders (Claude Code, Cursor, Copilot, Aider, Continue, Gemini CLI, Codex)
 Updated by: manual + commits referencing structural changes
-Pairs with: CLAUDE.md (pointer), docs/AI_CONTEXT.md (legacy folder context, protected),
+Pairs with: CLAUDE.md (pointer),
             per-project AGENTS.md (e.g. variables-styles-extractor/AGENTS.md)
 Update trigger: structural change (new project, new convention, security policy update)
 Last verified: 2026-05-22 (initial Portfolio-style AI structure)
@@ -18,15 +18,13 @@ Index: README.md → table of projects
 
 ## What this repo is
 
-A **multi-project workspace** for Figma plugins and design tooling. Each
-project lives in its own subfolder with an isolated lifecycle. Currently
-shipping:
+A workspace for Figma plugins and design tooling. It currently hosts a
+single active project (the former Nectar Design Toolkit and Design System
+Builder projects have been removed):
 
 | Project | Folder | Status |
 |---------|--------|--------|
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published on Figma Community ([1584331992332668732](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)) |
-| Nectar Design Toolkit | [`nectar-design-toolkit/`](nectar-design-toolkit/) | Active development |
-| Design System Builder | [`Design System Builder/`](Design%20System%20Builder/) | Active development |
 
 ---
 
@@ -56,14 +54,12 @@ banned without explicit user permission.
 
 | You're editing | You may also touch | You must NOT touch |
 |----------------|--------------------|--------------------|
-| `variables-styles-extractor/**` | Root `README.md`, `.github/` if it's a security/CI change you've been asked for | Other project folders |
-| `nectar-design-toolkit/**` | Same | Other project folders |
-| `Design System Builder/**` | Same | Other project folders |
-| Workspace root files (this file, README, `.gcc/`) | Any project's README if cross-cutting | Per-project source unless explicitly asked |
+| `variables-styles-extractor/**` | Root `README.md`, `.github/` if it's a security/CI change you've been asked for | — |
+| Workspace root files (this file, README, `.gcc/`) | The project's README if cross-cutting | Per-project source unless explicitly asked |
 
-If a single change genuinely spans two project folders (e.g. extracting
-a shared utility), say so in the commit message and reference both
-projects.
+If a future change spans more than one project folder (e.g. extracting
+a shared utility once a second project exists), say so in the commit
+message and reference both projects.
 
 ---
 
@@ -87,7 +83,6 @@ path as part of the repo contract.
 | `.gcc/main.md` | Project registry |
 | `.gcc/memory.md` | Cross-session memory |
 | `.gcc/changelog.md` | Workspace structural changes |
-| `docs/AI_CONTEXT.md` | Legacy folder context (kept for tooling that hardcodes the path) |
 | `docs/CHANGELOG.md` | Workspace-level changelog |
 
 ### Per-project
@@ -98,7 +93,7 @@ Each project must keep, at its own root:
 - `LICENSE` (project license)
 - `.gcc/session-memory.md`, `.gcc/commit.md`, `.gcc/metadata.yaml`, `.gcc/main.md`, `.gcc/memory.md`, `.gcc/changelog.md`
 - `.github/copilot-instructions.md` (if the project predates AGENTS.md adoption)
-- `docs/AI_CONTEXT.md`, `docs/CHANGELOG.md` (legacy paths, kept for tooling)
+- `docs/CHANGELOG.md` (legacy path, kept for tooling)
 
 When a doc becomes a redirect (e.g. content moved from `docs/AGENTS.md`
 to project-root `AGENTS.md`), the redirect stays in place and points to
