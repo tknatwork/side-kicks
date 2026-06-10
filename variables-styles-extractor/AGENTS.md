@@ -101,18 +101,17 @@ variables-styles-extractor/
 │   └── changelog.md
 ├── .github/
 │   └── copilot-instructions.md  ← Project-specific Copilot rules (protected)
-├── docs/
-│   ├── AI_CONTEXT.md          ← Legacy context (protected, kept for tooling)
-│   ├── AGENTS.md              ← Redirect to ../AGENTS.md
-│   ├── CLAUDE.md              ← Redirect to ../CLAUDE.md
-│   ├── CHANGELOG.md           ← Version history (protected)
-│   ├── CODING_STANDARDS.md    ← Mandatory rules
-│   ├── FIGMA_PLUGIN_DEVELOPMENT.md  ← Figma-specific guide
-│   ├── GEMINI.md              ← Gemini-specific notes
-│   ├── JSON_FORMAT.md         ← Import/export JSON schema
-│   ├── KNOWN_ISSUES.md
-│   └── TASKS.md
-└── releases/             ← Version archives
+└── docs/
+    ├── AI_CONTEXT.md          ← Legacy context (protected, kept for tooling)
+    ├── AGENTS.md              ← Redirect to ../AGENTS.md
+    ├── CLAUDE.md              ← Redirect to ../CLAUDE.md
+    ├── CHANGELOG.md           ← Version history (protected)
+    ├── CODING_STANDARDS.md    ← Mandatory rules
+    ├── FIGMA_PLUGIN_DEVELOPMENT.md  ← Figma-specific guide
+    ├── GEMINI.md              ← Gemini-specific notes
+    ├── JSON_FORMAT.md         ← Import/export JSON schema
+    ├── KNOWN_ISSUES.md
+    └── TASKS.md
 ```
 
 ---

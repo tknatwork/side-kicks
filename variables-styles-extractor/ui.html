@@ -701,15 +701,6 @@
       border-color: var(--color-primary);
     }
 
-    /* Advanced mode indicator */
-    .advanced-only {
-      display: none;
-    }
-
-    body.advanced-mode .advanced-only {
-      display: block;
-    }
-
     .collection-item-row {
       display: flex;
       align-items: center;
@@ -4477,29 +4468,6 @@
       });
     }
     
-    // Batch DOM updates using DocumentFragment
-    function batchDOMUpdate(container, htmlContent) {
-      rafUpdate(() => {
-        container.innerHTML = htmlContent;
-      });
-    }
-    
-    // Process array in chunks to avoid blocking UI
-    async function processInChunks(array, processFn, chunkSize = 50) {
-      const results = [];
-      for (let i = 0; i < array.length; i += chunkSize) {
-        const chunk = array.slice(i, i + chunkSize);
-        const chunkResults = chunk.map(processFn);
-        results.push(...chunkResults);
-        
-        // Yield to browser between chunks
-        if (i + chunkSize < array.length) {
-          await new Promise(resolve => rafUpdate(resolve));
-        }
-      }
-      return results;
-    }
-    
     // Efficient object flattening with early termination option
     function flattenObjectFast(obj, prefix = '', maxDepth = 20) {
       const results = [];
@@ -4984,27 +4952,6 @@
       collectionBehaviors.clear();
       
       addLog('🗑️ Reset to input - cleared all', 'info', 'import');
-    }
-
-    // Select all import collections
-    function selectAllImport(select) {
-      const collectionsList = document.getElementById('import-collections-list');
-      if (!collectionsList) return;
-      
-      const checkboxes = collectionsList.querySelectorAll('.collection-checkbox');
-      checkboxes.forEach(checkbox => {
-        checkbox.checked = select;
-        const colName = checkbox.closest('.collection-item')?.querySelector('.collection-name')?.textContent;
-        if (colName) {
-          if (select) {
-            selectedImportCollections.add(colName);
-          } else {
-            selectedImportCollections.delete(colName);
-          }
-        }
-      });
-      
-      updateImportButtonState();
     }
 
     // Select all import styles
@@ -6579,9 +6526,6 @@
           updateStatusCheckVisibility();
           break;
 
-        case 'collection_details':
-          updateCollectionDetails(msg.data);
-          break;
         case 'export_complete':
           exportData = msg.data.data;
           document.getElementById('export-output').value = exportData;
@@ -6840,6 +6784,10 @@
         
         logArea.scrollTop = logArea.scrollHeight;
       });
+    }
+
+    function showToast(message, type) {
+      addLog(message, type === 'error' ? 'error' : 'info');
     }
 
     // ========== EXPORT ==========
@@ -7907,11 +7855,7 @@
       const treeEmptyPreview = document.getElementById('import-empty-preview-tree');
       
       if (!treeContainer) return;
-      
-      // Use DocumentFragment for better performance
-      const fragment = document.createDocumentFragment();
-      const tempDiv = document.createElement('div');
-      
+
       let treeHtml = '';
       
       // Build tree for variable collections (same structure as export)

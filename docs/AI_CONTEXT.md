@@ -60,8 +60,8 @@ Side-Kicks/
 │   │   ├── copilot-instructions.md  ← Project AI rules (PROTECTED)
 │   │   └── workflows/               ← CI/CD pipelines
 │   ├── docs/                        ← Additional documentation
-│   ├── src/                         ← Source code
-│   └── releases/                    ← Version archives
+│   └── src/                         ← Source code
+│       (version archives live in git history — `git log` / tags)
 ├── [new-project]/                   ← TEMPLATE for future projects
 │   ├── AI_CONTEXT.md                ← Project context (PROTECTED)
 │   ├── CHANGELOG.md                 ← Project history (PROTECTED)
@@ -90,8 +90,8 @@ Each tool/plugin project lives in its **own subfolder** with a consistent struct
 │   ├── copilot-instructions.md  ← Project AI rules (PROTECTED)
 │   └── workflows/      ← CI/CD pipelines
 ├── docs/               ← Additional documentation
-├── src/                ← Source code
-└── releases/           ← Version archives (optional)
+└── src/                ← Source code
+    (version history: git log / tags — no releases/ folder needed)
 ```
 
 ### Why This Structure?

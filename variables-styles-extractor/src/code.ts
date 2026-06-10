@@ -19,27 +19,6 @@ figma.showUI(__html__, {
 });
 
 // ============================================================================
-// SECTION 1: RESULT TYPE PATTERN (JSF Rule 4.13 - Explicit Error Handling)
-// ============================================================================
-
-interface Success<T> {
-  readonly ok: true;
-  readonly value: T;
-}
-
-interface Failure<E> {
-  readonly ok: false;
-  readonly error: E;
-}
-
-type Result<T, E = string> = Success<T> | Failure<E>;
-
-const Result = {
-  ok: <T>(value: T): Success<T> => ({ ok: true, value }),
-  err: <E>(error: E): Failure<E> => ({ ok: false, error }),
-} as const;
-
-// ============================================================================
 // SECTION 2: TYPE DEFINITIONS (JSF Rule 4.9 - Strong Typing)
 // ============================================================================
 
@@ -3176,25 +3155,6 @@ async function getCollections(): Promise<void> {
   });
 }
 
-async function getVariablesForCollection(collectionName: string): Promise<void> {
-  const allCollections = await figma.variables.getLocalVariableCollectionsAsync();
-  const collection = allCollections.find(c => c.name === collectionName);
-  
-  if (!collection) {
-    Logger.send('variables', { variables: [] });
-    return;
-  }
-  
-  const variables = (await Promise.all(collection.variableIds
-    .map(async id => {
-      const v = await figma.variables.getVariableByIdAsync(id);
-      return v ? { name: v.name, type: v.resolvedType } : null;
-    })))
-    .filter(Boolean);
-  
-  Logger.send('variables', { variables });
-}
-
 // ============================================================================
 // SECTION 14: CLEAR FUNCTIONS
 // ============================================================================
@@ -3541,11 +3501,7 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
     case 'get_collections':
       await getCollections();
       break;
-      
-    case 'get_variables':
-      await getVariablesForCollection(msg.collection as string);
-      break;
-      
+
     case 'check_libraries':
       // Check if required library collections are available
       try {
@@ -3649,10 +3605,6 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
         Logger.log(`❌ Undo failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
         Logger.send('undo_error', { error: e instanceof Error ? e.message : 'Undo failed' });
       }
-      break;
-      
-    case 'close':
-      figma.closePlugin();
       break;
   }
 };
