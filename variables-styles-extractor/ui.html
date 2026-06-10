@@ -5037,7 +5037,7 @@
           const flatVars = flattenObject(modeVars);
           varCount = Math.max(varCount, flatVars.length);
           flatVars.forEach(v => {
-            if (v.$type) types[v.$type]++;
+            if (v.$type && Object.prototype.hasOwnProperty.call(types, v.$type)) types[v.$type]++;
           });
         });
         
@@ -5357,7 +5357,7 @@
           const flatVars = flattenObject(modeVars);
           varCount = Math.max(varCount, flatVars.length);
           flatVars.forEach(v => {
-            if (v.$type) types[v.$type]++;
+            if (v.$type && Object.prototype.hasOwnProperty.call(types, v.$type)) types[v.$type]++;
           });
         });
         
@@ -5406,31 +5406,31 @@
             <div class="stats-section-title">📦 Variables</div>
             <div class="stats-row">
               <div class="stat-card">
-                <span class="stat-value">${totalColors}</span>
+                <span class="stat-value">${escapeHtml(totalColors)}</span>
                 <span class="stat-label">Colors</span>
               </div>
               <div class="stat-card">
-                <span class="stat-value">${totalNumbers}</span>
+                <span class="stat-value">${escapeHtml(totalNumbers)}</span>
                 <span class="stat-label">Numbers</span>
               </div>
             </div>
             <div class="stats-row">
               <div class="stat-card">
-                <span class="stat-value">${totalStrings}</span>
+                <span class="stat-value">${escapeHtml(totalStrings)}</span>
                 <span class="stat-label">Strings</span>
               </div>
               <div class="stat-card">
-                <span class="stat-value">${totalBooleans}</span>
+                <span class="stat-value">${escapeHtml(totalBooleans)}</span>
                 <span class="stat-label">Booleans</span>
               </div>
             </div>
             <div class="stats-row">
               <div class="stat-card">
-                <span class="stat-value">${totalCollections}</span>
+                <span class="stat-value">${escapeHtml(totalCollections)}</span>
                 <span class="stat-label">Collections</span>
               </div>
               <div class="stat-card stat-total">
-                <span class="stat-value">${totalVariables}</span>
+                <span class="stat-value">${escapeHtml(totalVariables)}</span>
                 <span class="stat-label">Total</span>
               </div>
             </div>
@@ -5457,25 +5457,25 @@
             <div class="stats-section-title">🎨 Styles</div>
             <div class="stats-row stats-row-3col">
               <div class="stat-card">
-                <span class="stat-value">${totalTextStyles}</span>
+                <span class="stat-value">${escapeHtml(totalTextStyles)}</span>
                 <span class="stat-label">Text</span>
               </div>
               <div class="stat-card">
-                <span class="stat-value">${totalColorStyles}</span>
+                <span class="stat-value">${escapeHtml(totalColorStyles)}</span>
                 <span class="stat-label">Color</span>
               </div>
               <div class="stat-card">
-                <span class="stat-value">${totalEffectStyles}</span>
+                <span class="stat-value">${escapeHtml(totalEffectStyles)}</span>
                 <span class="stat-label">Effect</span>
               </div>
             </div>
             <div class="stats-row">
               <div class="stat-card">
-                <span class="stat-value">${totalGridStyles}</span>
+                <span class="stat-value">${escapeHtml(totalGridStyles)}</span>
                 <span class="stat-label">Layout Guide</span>
               </div>
               <div class="stat-card stat-total">
-                <span class="stat-value">${totalStyles}</span>
+                <span class="stat-value">${escapeHtml(totalStyles)}</span>
                 <span class="stat-label">Total</span>
               </div>
             </div>
@@ -5995,7 +5995,7 @@
             ${availableCollections.map(col => `
               <div class="library-collection-item available">
                 <span class="status-icon">✅</span>
-                <span>${col}</span>
+                <span>${escapeHtml(col)}</span>
               </div>
             `).join('')}
           </div>
@@ -6018,13 +6018,13 @@
             ${availableCollections.map(col => `
               <div class="library-collection-item available">
                 <span class="status-icon">✅</span>
-                <span>${col} (connected)</span>
+                <span>${escapeHtml(col)} (connected)</span>
               </div>
             `).join('')}
             ${missingCollections.map(col => `
               <div class="library-collection-item missing">
                 <span class="status-icon">❌</span>
-                <span>${col} (not connected - will use fallback values)</span>
+                <span>${escapeHtml(col)} (not connected - will use fallback values)</span>
               </div>
             `).join('')}
           </div>
@@ -6055,7 +6055,7 @@
             ${missingCollections.map(col => `
               <div class="library-collection-item missing">
                 <span class="status-icon">❌</span>
-                <span>${col}</span>
+                <span>${escapeHtml(col)}</span>
               </div>
             `).join('')}
           </div>
@@ -6305,7 +6305,7 @@
             ${availableFonts.map(f => `
               <div class="font-item available">
                 <span class="status-icon">✅</span>
-                <span>${f.family} ${f.style}</span>
+                <span>${escapeHtml(f.family)} ${escapeHtml(f.style)}</span>
               </div>
             `).join('')}
           </div>
@@ -6327,13 +6327,13 @@
             ${availableFonts.map(f => `
               <div class="font-item available">
                 <span class="status-icon">✅</span>
-                <span>${f.family} ${f.style}</span>
+                <span>${escapeHtml(f.family)} ${escapeHtml(f.style)}</span>
               </div>
             `).join('')}
             ${missingFonts.map(f => `
               <div class="font-item missing">
                 <span class="status-icon">❌</span>
-                <span>${f.family} ${f.style}</span>
+                <span>${escapeHtml(f.family)} ${escapeHtml(f.style)}</span>
               </div>
             `).join('')}
           </div>
@@ -6358,7 +6358,7 @@
             ${missingFonts.map(f => `
               <div class="font-item missing">
                 <span class="status-icon">❌</span>
-                <span>${f.family} ${f.style}</span>
+                <span>${escapeHtml(f.family)} ${escapeHtml(f.style)}</span>
               </div>
             `).join('')}
           </div>
@@ -6418,7 +6418,7 @@
           html += `
             <div class="validation-alert warning">
               <div class="validation-alert-title">⚠️ Warnings</div>
-              <ul>${validation.warnings.map(w => `<li>${w}</li>`).join('')}</ul>
+              <ul>${validation.warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')}</ul>
             </div>
           `;
         }
@@ -6794,15 +6794,15 @@
             let sourceHtml = '';
             // Variables info
             if (structureStats.totalVariables > 0) {
-              sourceHtml += `<span class="alert-item" style="border-color: #4CAF50;">✅ ${structureStats.totalVariables} Local Variables</span>`;
+              sourceHtml += `<span class="alert-item" style="border-color: #4CAF50;">✅ ${escapeHtml(structureStats.totalVariables)} Local Variables</span>`;
             }
             if (structureStats.libraryAliases > 0) {
-              sourceHtml += `<span class="alert-item" style="border-color: #FAAD14;">📚 ${structureStats.libraryAliases} Library References</span>`;
+              sourceHtml += `<span class="alert-item" style="border-color: #FAAD14;">📚 ${escapeHtml(structureStats.libraryAliases)} Library References</span>`;
             }
             // Styles info
             const totalStyles = (stylesInfo.colorStyles || 0) + (stylesInfo.textStyles || 0) + (stylesInfo.effectStyles || 0) + (stylesInfo.gridStyles || 0);
             if (totalStyles > 0) {
-              sourceHtml += `<span class="alert-item" style="border-color: #4CAF50;">✅ ${totalStyles} Local Styles</span>`;
+              sourceHtml += `<span class="alert-item" style="border-color: #4CAF50;">✅ ${escapeHtml(totalStyles)} Local Styles</span>`;
             }
             if (sourceHtml) {
               assetSourceBanner.classList.remove('hidden');
@@ -6818,13 +6818,13 @@
           if (bindingsInfoBanner && bindingsInfoList) {
             let bindingsHtml = '';
             if (structureStats.totalAliases > 0) {
-              bindingsHtml += `<span class="alert-item">🔗 ${structureStats.totalAliases} Variable Aliases</span>`;
+              bindingsHtml += `<span class="alert-item">🔗 ${escapeHtml(structureStats.totalAliases)} Variable Aliases</span>`;
               if (structureStats.localAliases > 0) {
-                bindingsHtml += `<span class="alert-item" style="border-color: #4CAF50;">✅ ${structureStats.localAliases} Local</span>`;
+                bindingsHtml += `<span class="alert-item" style="border-color: #4CAF50;">✅ ${escapeHtml(structureStats.localAliases)} Local</span>`;
               }
             }
             if (structureStats.styleBindings > 0) {
-              bindingsHtml += `<span class="alert-item">🎨 ${structureStats.styleBindings} Styles → Variables</span>`;
+              bindingsHtml += `<span class="alert-item">🎨 ${escapeHtml(structureStats.styleBindings)} Styles → Variables</span>`;
             }
             if (bindingsHtml) {
               bindingsInfoBanner.classList.remove('hidden');
@@ -6842,7 +6842,7 @@
             if (fontsUsed.length > 0) {
               fontsUsedBanner.classList.remove('hidden');
               fontsUsedList.innerHTML = fontsUsed.map(f => 
-                `<span class="alert-item">🔤 ${f.family} (${f.styles.join(', ')})</span>`
+                `<span class="alert-item">🔤 ${escapeHtml(f.family)} (${escapeHtml(f.styles.join(', '))})</span>`
               ).join('');
             } else {
               fontsUsedBanner.classList.add('hidden');
@@ -6861,7 +6861,7 @@
 
           if (libraryDeps.length > 0) {
             warningBanner.classList.remove('hidden');
-            depsList.innerHTML = libraryDeps.map(name => `<span class="alert-item">📚 ${name}</span>`).join('');
+            depsList.innerHTML = libraryDeps.map(name => `<span class="alert-item">📚 ${escapeHtml(name)}</span>`).join('');
             addLog(`📚 Detected library dependencies: ${libraryDeps.join(', ')}`, 'warning');
             
             // Show the export library option checkbox (only in Advanced mode)
@@ -6945,7 +6945,7 @@
           if (msg.seq === 0 || !window._exportChunks) {
             window._exportChunks = [];
           }
-          window._exportChunks[msg.seq] = msg.data;
+          if (typeof msg.seq === 'number' && msg.seq >= 0) { window._exportChunks[msg.seq] = msg.data; }
           pendingProgress = {
             operation: 'export',
             phase: 'export_deliver',
@@ -7030,7 +7030,7 @@
           if (reqFonts && reqFonts.length > 0) {
             fontBanner.classList.remove('hidden');
             fontList.innerHTML = reqFonts.map(f =>
-              `<span class="alert-item">🔤 ${f.family} ${f.style}</span>`
+              `<span class="alert-item">🔤 ${escapeHtml(f.family)} ${escapeHtml(f.style)}</span>`
             ).join('');
             addLog(`🔤 Required fonts for import: ${reqFonts.map(f => `${f.family} ${f.style}`).join(', ')}`, 'info');
             updateStatusCheckVisibility();
@@ -7280,7 +7280,7 @@
       const time = new Date().toLocaleTimeString();
       const entry = document.createElement('div');
       entry.className = 'log-entry';
-      entry.innerHTML = `<span class="log-time">${time}</span><span class="log-${type}">${message}</span>`;
+      entry.innerHTML = `<span class="log-time">${escapeHtml(time)}</span><span class="log-${escapeHtml(type)}">${escapeHtml(message)}</span>`;
       
       // Use requestAnimationFrame for smooth DOM updates
       rafUpdate(() => {
@@ -7321,28 +7321,29 @@
         selectedExportCollections.add(c.name); // Select all by default
         // Initialize all modes as selected for this collection
         selectedExportModes.set(c.name, new Set(c.modes));
-        
+        const cn = escapeHtml(c.name); // names are user-controlled (file/import data)
+
         const modeCheckboxes = c.modes.length > 1 ? `
           <div class="collection-modes advanced-only-block" style="margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--color-border);">
             <div style="font-size: 9px; color: var(--color-text-secondary); margin-bottom: 3px;">Export modes:</div>
             <div style="display: flex; flex-wrap: wrap; gap: 4px;">
               ${c.modes.map(mode => `
                 <label class="mode-checkbox-label" style="display: flex; align-items: center; gap: 3px; font-size: 10px; padding: 2px 6px; background: var(--color-bg); border: 1px solid var(--color-border); border-radius: 3px; cursor: pointer;">
-                  <input type="checkbox" checked onclick="event.stopPropagation(); toggleExportMode('${c.name}', '${mode}', this.checked)" style="width: 12px; height: 12px;">
-                  <span>${mode}</span>
+                  <input type="checkbox" class="export-mode-checkbox" checked data-collection="${cn}" data-mode="${escapeHtml(mode)}" onclick="event.stopPropagation()" style="width: 12px; height: 12px;">
+                  <span>${escapeHtml(mode)}</span>
                 </label>
               `).join('')}
             </div>
           </div>
         ` : '';
-        
+
         return `
-          <div class="collection-item" onclick="toggleExportCollection('${c.name}')">
-            <input type="checkbox" class="collection-checkbox" id="export-${c.name}" checked onclick="event.stopPropagation()" onchange="updateExportSelection('${c.name}', this.checked)">
+          <div class="collection-item" data-collection="${cn}" data-action="toggle-export-collection">
+            <input type="checkbox" class="collection-checkbox" id="export-${cn}" checked data-collection="${cn}" onclick="event.stopPropagation()">
             <div class="collection-info">
-              <div class="collection-name">${c.name}</div>
-              <div class="collection-meta">${c.variableCount} variables • Modes: ${c.modes.join(', ')}</div>
-              <div class="collection-types" id="types-${c.name}">
+              <div class="collection-name">${cn}</div>
+              <div class="collection-meta">${escapeHtml(c.variableCount)} variables • Modes: ${escapeHtml(c.modes.join(', '))}</div>
+              <div class="collection-types" id="types-${cn}">
                 ${renderTypeBadges(c.types || {})}
               </div>
               ${modeCheckboxes}
@@ -7350,6 +7351,25 @@
           </div>
         `;
       }).join('');
+
+      // Delegated handlers (attached once) — replaces inline onclick/onchange so
+      // user-supplied collection/mode names never enter an executable context.
+      if (!container.dataset.exportDelegated) {
+        container.dataset.exportDelegated = '1';
+        container.addEventListener('click', function (e) {
+          if (e.target.closest('input')) return; // checkbox manages its own state
+          const item = e.target.closest('.collection-item[data-action="toggle-export-collection"]');
+          if (item) toggleExportCollection(item.dataset.collection);
+        });
+        container.addEventListener('change', function (e) {
+          const t = e.target;
+          if (t.classList && t.classList.contains('collection-checkbox')) {
+            updateExportSelection(t.dataset.collection, t.checked);
+          } else if (t.classList && t.classList.contains('export-mode-checkbox')) {
+            toggleExportMode(t.dataset.collection, t.dataset.mode, t.checked);
+          }
+        });
+      }
 
       // Detect and display source file plan
       updateExportDetectedPlan();
@@ -7642,31 +7662,31 @@
             <div class="stats-section-title">📦 Variables</div>
             <div class="stats-row">
               <div class="stat-card">
-                <span class="stat-value">${totalColors}</span>
+                <span class="stat-value">${escapeHtml(totalColors)}</span>
                 <span class="stat-label">Colors</span>
               </div>
               <div class="stat-card">
-                <span class="stat-value">${totalNumbers}</span>
+                <span class="stat-value">${escapeHtml(totalNumbers)}</span>
                 <span class="stat-label">Numbers</span>
               </div>
             </div>
             <div class="stats-row">
               <div class="stat-card">
-                <span class="stat-value">${totalStrings}</span>
+                <span class="stat-value">${escapeHtml(totalStrings)}</span>
                 <span class="stat-label">Strings</span>
               </div>
               <div class="stat-card">
-                <span class="stat-value">${totalBooleans}</span>
+                <span class="stat-value">${escapeHtml(totalBooleans)}</span>
                 <span class="stat-label">Booleans</span>
               </div>
             </div>
             <div class="stats-row">
               <div class="stat-card">
-                <span class="stat-value">${selectedExportCollections.size}</span>
+                <span class="stat-value">${escapeHtml(selectedExportCollections.size)}</span>
                 <span class="stat-label">Collections</span>
               </div>
               <div class="stat-card stat-total">
-                <span class="stat-value">${totalVars}</span>
+                <span class="stat-value">${escapeHtml(totalVars)}</span>
                 <span class="stat-label">Total</span>
               </div>
             </div>
@@ -7681,25 +7701,25 @@
             <div class="stats-section-title">🎨 Styles</div>
             <div class="stats-row stats-row-3col">
               <div class="stat-card">
-                <span class="stat-value">${selectedTextStyles}</span>
+                <span class="stat-value">${escapeHtml(selectedTextStyles)}</span>
                 <span class="stat-label">Text</span>
               </div>
               <div class="stat-card">
-                <span class="stat-value">${selectedColorStyles}</span>
+                <span class="stat-value">${escapeHtml(selectedColorStyles)}</span>
                 <span class="stat-label">Color</span>
               </div>
               <div class="stat-card">
-                <span class="stat-value">${selectedEffectStyles}</span>
+                <span class="stat-value">${escapeHtml(selectedEffectStyles)}</span>
                 <span class="stat-label">Effect</span>
               </div>
             </div>
             <div class="stats-row">
               <div class="stat-card">
-                <span class="stat-value">${selectedGridStyles}</span>
+                <span class="stat-value">${escapeHtml(selectedGridStyles)}</span>
                 <span class="stat-label">Layout Guide</span>
               </div>
               <div class="stat-card stat-total">
-                <span class="stat-value">${totalStyles}</span>
+                <span class="stat-value">${escapeHtml(totalStyles)}</span>
                 <span class="stat-label">Total</span>
               </div>
             </div>
@@ -7712,27 +7732,27 @@
       // Build tree preview
       let tree = '';
       selectedCols.forEach(c => {
-        tree += `<div class="tree-collection"><span class="tree-collection-name">📁 ${c.name}</span>`;
+        tree += `<div class="tree-collection"><span class="tree-collection-name">📁 ${escapeHtml(c.name)}</span>`;
         c.modes.forEach(m => {
-          tree += `<div class="tree-mode">📂 ${m}</div>`;
+          tree += `<div class="tree-mode">📂 ${escapeHtml(m)}</div>`;
         });
-        tree += `<div class="tree-var">... ${c.variableCount} variables</div></div>`;
+        tree += `<div class="tree-var">... ${escapeHtml(c.variableCount)} variables</div></div>`;
       });
       
       // Add styles to tree if selected
       if (hasStylesSelected && totalStyles > 0) {
         tree += `<div class="tree-collection"><span class="tree-collection-name">🎨 Styles</span>`;
         if (selectedColorStyles > 0) {
-          tree += `<div class="tree-mode">🎨 ${selectedColorStyles} Color Styles</div>`;
+          tree += `<div class="tree-mode">🎨 ${escapeHtml(selectedColorStyles)} Color Styles</div>`;
         }
         if (selectedTextStyles > 0) {
-          tree += `<div class="tree-mode">📝 ${selectedTextStyles} Text Styles</div>`;
+          tree += `<div class="tree-mode">📝 ${escapeHtml(selectedTextStyles)} Text Styles</div>`;
         }
         if (selectedEffectStyles > 0) {
-          tree += `<div class="tree-mode">✨ ${selectedEffectStyles} Effect Styles</div>`;
+          tree += `<div class="tree-mode">✨ ${escapeHtml(selectedEffectStyles)} Effect Styles</div>`;
         }
         if (selectedGridStyles > 0) {
-          tree += `<div class="tree-mode">📐 ${selectedGridStyles} Grid Styles</div>`;
+          tree += `<div class="tree-mode">📐 ${escapeHtml(selectedGridStyles)} Grid Styles</div>`;
         }
         tree += `</div>`;
       }
@@ -8024,7 +8044,7 @@
             const flatVars = flattenObject(modeVars);
             varCount = Math.max(varCount, flatVars.length);
             flatVars.forEach(v => {
-              if (v.$type) types[v.$type]++;
+              if (v.$type && Object.prototype.hasOwnProperty.call(types, v.$type)) types[v.$type]++;
             });
           });
           
@@ -8059,31 +8079,31 @@
               <div class="stats-section-title">📦 Variables</div>
               <div class="stats-row">
                 <div class="stat-card">
-                  <span class="stat-value">${totalColors}</span>
+                  <span class="stat-value">${escapeHtml(totalColors)}</span>
                   <span class="stat-label">Colors</span>
                 </div>
                 <div class="stat-card">
-                  <span class="stat-value">${totalNumbers}</span>
+                  <span class="stat-value">${escapeHtml(totalNumbers)}</span>
                   <span class="stat-label">Numbers</span>
                 </div>
               </div>
               <div class="stats-row">
                 <div class="stat-card">
-                  <span class="stat-value">${totalStrings}</span>
+                  <span class="stat-value">${escapeHtml(totalStrings)}</span>
                   <span class="stat-label">Strings</span>
                 </div>
                 <div class="stat-card">
-                  <span class="stat-value">${totalBooleans}</span>
+                  <span class="stat-value">${escapeHtml(totalBooleans)}</span>
                   <span class="stat-label">Booleans</span>
                 </div>
               </div>
               <div class="stats-row">
                 <div class="stat-card">
-                  <span class="stat-value">${totalCollections}</span>
+                  <span class="stat-value">${escapeHtml(totalCollections)}</span>
                   <span class="stat-label">Collections</span>
                 </div>
                 <div class="stat-card stat-total">
-                  <span class="stat-value">${totalVariables}</span>
+                  <span class="stat-value">${escapeHtml(totalVariables)}</span>
                   <span class="stat-label">Total</span>
                 </div>
               </div>
@@ -8098,25 +8118,25 @@
               <div class="stats-section-title">🎨 Styles</div>
               <div class="stats-row stats-row-3col">
                 <div class="stat-card">
-                  <span class="stat-value">${totalTextStyles}</span>
+                  <span class="stat-value">${escapeHtml(totalTextStyles)}</span>
                   <span class="stat-label">Text</span>
                 </div>
                 <div class="stat-card">
-                  <span class="stat-value">${totalColorStyles}</span>
+                  <span class="stat-value">${escapeHtml(totalColorStyles)}</span>
                   <span class="stat-label">Color</span>
                 </div>
                 <div class="stat-card">
-                  <span class="stat-value">${totalEffectStyles}</span>
+                  <span class="stat-value">${escapeHtml(totalEffectStyles)}</span>
                   <span class="stat-label">Effect</span>
                 </div>
               </div>
               <div class="stats-row">
                 <div class="stat-card">
-                  <span class="stat-value">${totalGridStyles}</span>
+                  <span class="stat-value">${escapeHtml(totalGridStyles)}</span>
                   <span class="stat-label">Layout Guide</span>
                 </div>
                 <div class="stat-card stat-total">
-                  <span class="stat-value">${totalStyles}</span>
+                  <span class="stat-value">${escapeHtml(totalStyles)}</span>
                   <span class="stat-label">Total</span>
                 </div>
               </div>
@@ -8808,10 +8828,10 @@
               // Leaf test matches flattenObject/computeImportGroupsIndex:
               // top-level leaves live under the '' (ungrouped) key
               const isLeaf = v && typeof v === 'object' && ('$value' in v || '$type' in v || '$alias' in v);
-              if (sel.has(isLeaf ? '' : k)) newMode[k] = v;
+              if (k !== '__proto__' && k !== 'constructor' && k !== 'prototype' && sel.has(isLeaf ? '' : k)) newMode[k] = v;
             });
           }
-          newModes[modeName] = newMode;
+          if (modeName !== '__proto__' && modeName !== 'constructor' && modeName !== 'prototype') newModes[modeName] = newMode;
         });
         newCol.modes = newModes;
         return { [colName]: newCol };
@@ -8854,7 +8874,7 @@
       const listEl = document.getElementById('library-mapping-list');
       
       listEl.innerHTML = libraryRefs.map(name => 
-        `<span class="alert-item" style="border-color: #4CAF50;">📚 ${name}</span>`
+        `<span class="alert-item" style="border-color: #4CAF50;">📚 ${escapeHtml(name)}</span>`
       ).join('');
       
       modal.classList.remove('hidden');
