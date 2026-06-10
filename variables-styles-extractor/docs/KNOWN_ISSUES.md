@@ -1,7 +1,7 @@
 # Known Issues - Variables & Styles Extractor
 
 **Plugin**: Variables & Styles Extractor  
-**Current Version**: 1.6.0 (2.0.0 in development)  
+**Current Version**: 2.0.0 (published) — 2.1.0 unreleased in development  
 **Status**: Published to Figma Community
 
 ---
@@ -136,4 +136,4 @@ Plugin crashed with "stack underflow" on large files. Fixed by changing TypeScri
 
 ---
 
-**Last Updated:** 2026-01-05
+**Last Updated:** 2026-06-10

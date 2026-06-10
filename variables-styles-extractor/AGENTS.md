@@ -4,7 +4,7 @@ Updated by: manual, on architectural or convention changes
 Pairs with: CLAUDE.md (pointer), docs/AI_CONTEXT.md (legacy context, protected),
             docs/CODING_STANDARDS.md, docs/FIGMA_PLUGIN_DEVELOPMENT.md
 Update trigger: change to plugin architecture, Figma constraints discovered, message protocol added
-Last verified: 2026-05-22 (promoted from docs/AGENTS.md to project root)
+Last verified: 2026-06-10 (message protocol overhaul absorbed; START_HERE.md boot doc added)
 Index: docs/AI_CONTEXT.md
 === END PAIRING === -->
 
@@ -24,6 +24,7 @@ Index: docs/AI_CONTEXT.md
 ## Quick start for AI agents
 
 ### Step 1: Read in this order
+0. **[`START_HERE.md`](START_HERE.md)** — 60-second boot check (constraints recap, build commands, danger zones).
 1. **This file** (`AGENTS.md`) — plugin architecture + constraints + conventions.
 2. **`.gcc/session-memory.md`** — warm-start state from the last session.
 3. **[`docs/CODING_STANDARDS.md`](docs/CODING_STANDARDS.md)** — mandatory coding rules for this plugin.
@@ -81,6 +82,7 @@ treat any NEW violation as a regression and fix it inline.
 
 ```
 variables-styles-extractor/
+├── START_HERE.md         ← Boot check (read first — constraints recap, build commands, danger zones)
 ├── AGENTS.md             ← This file (canonical AI rules)
 ├── CLAUDE.md             ← Pointer to AGENTS.md (legacy Claude Code path)
 ├── README.md             ← Public-facing
@@ -142,19 +144,30 @@ ui.html ─────postMessage─────► code.ts (Figma VM)
    │                              │
    │◄────figma.ui.postMessage─────┘
 
-Export:    UI sends 'export'           → code.ts processes → 'export_complete'
+Export:    UI sends 'export'           → code.ts processes → 'export_chunk' × N → 'export_done'
 Import:    UI sends 'validate_import'  → code.ts validates → 'validation_result'
-           UI sends 'import'           → code.ts imports   → 'import_complete'
+           UI sends 'import'           → code.ts imports   → 'import_complete' (carries undo snapshot)
+Progress:  long ops stream 'operation_progress' (throttled ≥250ms); UI may send 'cancel_operation'
 ```
 
 | UI → Backend | Backend → UI |
 |--------------|--------------|
-| `export` | `export_complete` |
-| `import` | `import_complete` |
+| `export` (with `selectedGroups` / `selectedStyleGroups` / `exportFormat` incl. `tokens-studio`) | `export_chunk` (256KB chunks) / `export_done` |
+| `import` | `import_complete` (carries undo snapshot) / `import_rolling_back` / `import_rollback_complete` / `import_rollback_failed` |
 | `validate_import` | `validation_result` |
+| `compute_import_diff` | `import_diff_result` |
+| `detect_plan` | `plan_detected` |
+| `clear_variables` / `clear_styles` / `clear_all` | `clear_complete` |
+| `get_collections` | `collections` (with `groups` + `styleGroups`) |
 | `check_libraries` | `library_check_result` |
 | `check_fonts` | `font_check_result` |
-| `get_collections` | `collections` |
+| `undo_import` | `undo_complete` / `undo_error` |
+| `cancel_operation` | `operation_cancelled` |
+| `resize_ui` (`mode: 'simple' \| 'advanced'`) | — (window resizes: Simple 905×628, Advanced 1200×628) |
+| — (any op while another runs) | `operation_denied` |
+| — (anytime) | `log`, `operation_progress`, `error` |
+
+> **History:** the 2026-06 protocol overhaul REMOVED `export_complete`, `get_variables`/`variables`, `collection_details`, `close`, and `create_undo_snapshot`/`snapshot_created`/`snapshot_error` — do not reintroduce them.
 
 ---
 
@@ -187,6 +200,18 @@ interface PlanValidation {
   fontDependencies?:    { styleCount: number; fonts: Array<{ family: string; style: string }> };
 }
 ```
+
+**Export options (2026-06):** the `export` message now carries `selectedGroups` and
+`selectedStyleGroups` (name-prefix group filters — absent key = export all) and
+`exportFormat: 'figma' | 'w3c' | 'tokens-studio'` (the Tokens Studio format is
+additive — it must never change the `figma`/`w3c` output shapes).
+
+**Heavy-load utilities (2026-06):** `code.ts` ships a `BATCH` config with
+`runBatched` / `runBatchedAsync` / `runSequentialAsync` (QuickJS-safe, no
+generators) that yield between batches, plus throttled `operation_progress`
+emission, cooperative cancellation, and a single operation lock
+(`operation_denied` on concurrent ops). Route any new loop over many
+variables/styles through these — never block the VM with a raw loop.
 
 ---
 
@@ -276,4 +301,4 @@ Never delete — rewrite if the content becomes wrong:
 
 ---
 
-*Last updated: 2026-05-22 (Portfolio-style structure adopted; content promoted from `docs/AGENTS.md` to project root)*
+*Last updated: 2026-06-10 (message protocol replaced with the 2026-06 overhaul version — chunked export, progress/cancel, snapshot-in-import_complete; new export options + heavy-load utilities documented; START_HERE.md added as read-order item 0)*

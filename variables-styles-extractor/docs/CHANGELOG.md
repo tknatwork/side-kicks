@@ -10,6 +10,51 @@ All notable changes to this Figma plugin are documented here.
 
 ---
 
+## [2.1.0] - Unreleased
+
+### ✨ Simple Mode Redesign, Heavy-File Performance & Tokens Studio Export
+
+**Status:** In development — pending final manual testing in Figma Desktop before release
+
+### New Features
+
+#### Simple Mode — Redesigned 3-Section Layout
+- **🧩 Simple mode rebuilt as a clean 3-section layout** on both tabs
+  - **Export tab:** Variables (collections → groups) → Styles (types → groups) → Log + Export + Copy JSON
+  - **Import tab:** Paste/Upload → parsed contents (grouped) → Log + Import + Undo
+- **🎯 Collection- and group-level selection**: pick exactly which variable groups (by name prefix, e.g. `color/...`) and style groups to export or import — no more all-or-nothing
+- **📐 Compact window in Simple mode**: sections match the Advanced column width and the plugin window shrinks to 905×628 in Simple mode (back to 1200×628 in Advanced)
+- **🖥️ Advanced mode unchanged**: pixel-identical to v2.0.0
+
+#### Progress Bars + Cancel for Long Operations
+- **📊 Live progress bars** for long-running exports, imports, and clears — shown in both Simple and Advanced modes
+- **🛑 Cancel button**: safely stop a long operation mid-flight
+- **🧊 No more freezes**: large files no longer lock up the plugin while it works
+
+#### Safer Import Undo
+- **🛡️ Snapshot validated before any clearing**: a corrupt or incomplete undo snapshot can no longer wipe your file — undo now refuses to clear anything until the snapshot checks out
+- **↩️ One-step native undo**: imports (and standalone clears) are wrapped so a single Cmd+Z in Figma reverts the entire operation
+
+#### Tokens Studio-Compatible Export (New Optional Format)
+- **🎨 New third export format**: "Tokens Studio" — a single `tokens.json` with token sets per Collection/Mode, `$themes`, and `$metadata.tokenSetOrder`
+- **🔗 DTCG-style keys and Tokens Studio-canonical types**, with aliases exported as `{dot.path}` references
+- **🖌️ Color, typography, and effect styles** included as token sets; grid/image/blur styles are skipped with explanatory notes
+- Available from the Advanced format dropdown and the Simple mode Format select
+
+### Performance
+- **⚡ Faster imports**: a single local cache scan per import (previously up to 4 full rescans); library indexing now runs only when actually needed
+- **📦 Chunked export delivery**: huge exports are streamed to the UI in chunks, so very large files export reliably without hitting message-size limits
+
+### Fixed
+- **🔧 showToast crash**: fixed a `ReferenceError` that could crash the plugin when showing notifications
+
+### Removed
+- **🧹 Dead weight removed**: ~850KB of unused files and dead code stripped from the plugin
+- **🔐 Unused `currentuser` permission dropped**: the plugin no longer requests access it never used
+- **🚫 Blocked Google Fonts request removed**: the UI no longer attempts an external font request that was always blocked by the plugin's no-network policy
+
+---
+
 ## [2.0.0] - 2026-01-16 (UNRELEASED)
 
 ### 🎨 Major UI Overhaul - Wide 4-Column Layout
@@ -343,4 +388,4 @@ Major feature release adding support for all paint types in color styles, includ
 
 ---
 
-**Last Updated:** 2026-01-15
+**Last Updated:** 2026-06-10
