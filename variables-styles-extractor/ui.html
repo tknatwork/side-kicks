@@ -3272,6 +3272,11 @@
     .simple-layout .simple-fill-card {
       width: 100%;
     }
+    /* The scroll-fade wrappers must shrink with the card so the inner list
+       (not the whole card) is the scroll container. */
+    .simple-layout .scroll-fade-container {
+      min-height: 0;
+    }
 
     /* External-library dependency flag (Simple mode) with a path to Advanced */
     .simple-dep-banner {
@@ -3700,7 +3705,9 @@
                 <button class="btn btn-secondary btn-small" data-action="vars-select-all">✅ Select All</button>
                 <button class="btn btn-secondary btn-small" data-action="vars-select-none">✕ None</button>
               </div>
-              <div class="simple-group-list scrollable" id="simple-export-variables-list"></div>
+              <div class="scroll-fade-container" id="simple-export-vars-fade">
+                <div class="simple-group-list scrollable" id="simple-export-variables-list"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -3716,7 +3723,9 @@
                 <button class="btn btn-secondary btn-small" data-action="styles-select-all">✅ Select All</button>
                 <button class="btn btn-secondary btn-small" data-action="styles-select-none">✕ None</button>
               </div>
-              <div class="simple-group-list scrollable" id="simple-export-styles-list"></div>
+              <div class="scroll-fade-container" id="simple-export-styles-fade">
+                <div class="simple-group-list scrollable" id="simple-export-styles-list"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -3782,7 +3791,7 @@
                 </div>
                 <input type="file" id="file-input" accept=".json" style="display: none;">
                 <div class="scroll-fade-container" id="import-input-container">
-                  <textarea class="form-textarea" id="import-input" placeholder="Paste JSON data (Ctrl/Cmd+V) or upload a JSON file..." oninput="debouncedParseImportPreview()" style="min-height: 140px; margin-top: 8px; resize: none;"></textarea>
+                  <textarea class="form-textarea" id="import-input" placeholder="Paste JSON data (Ctrl/Cmd+V) or upload a JSON file..." oninput="onAdvancedImportInput(this)" style="min-height: 140px; margin-top: 8px; resize: none;"></textarea>
                 </div>
                 <!-- File loaded indicator -->
               <div id="import-file-loaded" class="loaded-file-indicator hidden" style="margin-top: 8px;">
@@ -4255,7 +4264,9 @@
                 <button class="btn btn-secondary btn-small" data-action="import-select-all">✅ Select All</button>
                 <button class="btn btn-secondary btn-small" data-action="import-select-none">✕ None</button>
               </div>
-              <div class="simple-group-list scrollable" id="simple-import-list"></div>
+              <div class="scroll-fade-container" id="simple-import-fade">
+                <div class="simple-group-list scrollable" id="simple-import-list"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -4793,8 +4804,7 @@
 
     // Clear import input area
     function clearImportInput() {
-      const importInput = document.getElementById('import-input');
-      if (importInput) importInput.value = '';
+      setImportRawText('');
       importData = null;
       libraryStatus = null;
       fontStatus = null;
@@ -5524,7 +5534,7 @@
     
     // Show loading skeletons immediately for instant UI feedback
     function showImportSkeletons() {
-      const data = document.getElementById('import-input').value.trim();
+      const data = getImportRawText().trim();
       const statusSkeleton = document.getElementById('import-status-skeleton');
       const previewSkeleton = document.getElementById('import-preview-skeleton');
       const orderEmptyPreview = document.getElementById('import-empty-preview-order');
@@ -5588,6 +5598,10 @@
     let expandedSimpleImport = new Set();
     let simpleExportPendingAction = null; // 'download' | 'copy' | null
     let simpleImportHasLibraryRefs = false; // pasted JSON contains $libraryRef tokens
+    // Raw import JSON lives here, NOT only in the textareas: multi-MB textarea
+    // values make every reflow (mode switch, window resize) freeze the iframe.
+    let importRawText = '';
+    let importDisplayTruncated = false; // textareas show a short placeholder instead
 
     // Plan limits (mirror of backend constants)
     const PLAN_LIMITS = {
@@ -6593,38 +6607,38 @@
         currentUserMode = e.target.value;
         // Window follows the mode: Simple is compact (905px), Advanced full (1200px)
         parent.postMessage({ pluginMessage: { type: 'resize_ui', mode: currentUserMode } }, '*');
-        if (currentUserMode === 'advanced') {
-          document.body.classList.add('advanced-mode');
-          // Show library refs option if deps detected
+        const toAdvanced = currentUserMode === 'advanced';
+        document.body.classList.toggle('advanced-mode', toAdvanced);
+        // Defer the DOM-heavy sync one tick so the toggle highlight and the
+        // window resize land first — keeps the switch feeling instant even
+        // with a large design system loaded (load balancing).
+        setTimeout(() => {
+          if ((currentUserMode === 'advanced') !== toAdvanced) return; // re-toggled meanwhile
           const exportLibraryOption = document.getElementById('export-library-option');
-          if (exportLibraryOption && window.detectedLibraryDeps?.length > 0) {
-            exportLibraryOption.classList.remove('hidden');
+          if (toAdvanced) {
+            if (exportLibraryOption && window.detectedLibraryDeps?.length > 0) {
+              exportLibraryOption.classList.remove('hidden');
+            }
+            // Simple -> Advanced: restore shared nodes + project Simple state into Advanced DOM
+            moveSharedNodesForMode(true);
+            syncAdvancedDomFromSimpleState();
+          } else {
+            if (exportLibraryOption) {
+              exportLibraryOption.classList.add('hidden');
+            }
+            // Advanced -> Simple: adopt shared nodes + rebuild group state from Advanced DOM
+            moveSharedNodesForMode(false);
+            rebuildSimpleStateFromAdvanced();
+            renderSimpleExportVariables();
+            renderSimpleExportStyles();
+            renderSimpleImportContents();
           }
-          // Simple -> Advanced: restore shared nodes + project Simple state into Advanced DOM (stage 3 wiring)
-          moveSharedNodesForMode(true);
-          syncAdvancedDomFromSimpleState();
-        } else {
-          document.body.classList.remove('advanced-mode');
-          // Hide library refs option in simple mode
-          const exportLibraryOption = document.getElementById('export-library-option');
-          if (exportLibraryOption) {
-            exportLibraryOption.classList.add('hidden');
+          // Re-render import collections if on selection face
+          const selectionFace = document.getElementById('import-selection-face');
+          if (selectionFace && selectionFace.style.display !== 'none') {
+            renderImportCollectionsList();
           }
-          // Advanced -> Simple: adopt shared nodes + rebuild group state from Advanced DOM (stage 3 wiring)
-          moveSharedNodesForMode(false);
-          rebuildSimpleStateFromAdvanced();
-          const si = document.getElementById('simple-import-input');
-          const ai = document.getElementById('import-input');
-          if (si && ai) si.value = ai.value;
-          renderSimpleExportVariables();
-          renderSimpleExportStyles();
-          renderSimpleImportContents();
-        }
-        // Re-render import collections if on selection face
-        const selectionFace = document.getElementById('import-selection-face');
-        if (selectionFace && selectionFace.style.display !== 'none') {
-          renderImportCollectionsList();
-        }
+        }, 0);
       });
     });
 
@@ -7004,11 +7018,8 @@
           }
           addLog(importMsg, 'success', 'import');
           loadCollections();
-          document.getElementById('import-input').value = '';
+          setImportRawText('');
           document.getElementById('file-input').value = ''; // Reset file input for re-selection
-          // Simple mode: keep the mirrored textarea in sync (stage 3 wiring)
-          const simpleImportInputAfterDone = document.getElementById('simple-import-input');
-          if (simpleImportInputAfterDone) simpleImportInputAfterDone.value = '';
           const importBtnComplete = document.getElementById('import-btn');
           importBtnComplete.disabled = true;
           importBtnComplete.textContent = '📥 Import Selected'; // Reset button text
@@ -7824,10 +7835,18 @@
 
     // ========== IMPORT ==========
 
+    // Advanced textarea input: sync the raw-text store (caret preserved), then parse
+    function onAdvancedImportInput(ta) {
+      if (importDisplayTruncated) return; // placeholder is read-only
+      showSimpleImportProcessing();
+      setImportRawText(ta.value, ta);
+      debouncedParseImportPreview();
+    }
+
     // Simplified parseImportPreview - reuses showImportSkeletons and parseImportPreviewAsync
     function parseImportPreview() {
       showImportSkeletons();
-      const data = document.getElementById('import-input').value.trim();
+      const data = getImportRawText().trim();
       if (data) {
         parseImportPreviewAsync();
       }
@@ -7865,7 +7884,7 @@
     }
     
     async function parseImportPreviewAsync() {
-      const data = document.getElementById('import-input').value.trim();
+      const data = getImportRawText().trim();
       if (!data) return;
       
       const orderEmptyPreview = document.getElementById('import-empty-preview-order');
@@ -8885,13 +8904,18 @@
     const importTextarea = document.getElementById('import-input');
     if (importTextarea) {
       importTextarea.addEventListener('paste', (e) => {
+        // Large payloads bypass the textarea DOM entirely (handleImportPaste
+        // calls preventDefault) — inserting multi-MB text is what freezes paste.
+        handleImportPaste(e);
         // Show loading feedback immediately
         showImportSkeletons();
+        showSimpleImportProcessing();
         clearFileLoadedIndicator();
-        
-        // Let the paste happen, then process with a slight delay
-        // to ensure textarea value is updated
+        if (e.defaultPrevented) return; // raw text already stored + parse scheduled
+
+        // Small paste: let it land in the textarea, then sync + process
         setTimeout(() => {
+          setImportRawText(importTextarea.value, importTextarea);
           parseImportPreviewAsync();
         }, 0);
       });
@@ -8912,7 +8936,8 @@
       }
       const reader = new FileReader();
       reader.onload = (e) => {
-        document.getElementById('import-input').value = e.target.result;
+        showSimpleImportProcessing();
+        setImportRawText(e.target.result);
         addLog('📁 Loaded: ' + file.name, 'success', 'import');
         
         // Show the loaded file indicator
@@ -8923,9 +8948,7 @@
           fileIndicator.classList.remove('hidden');
         }
 
-        // Simple mode: mirror the loaded file into the Simple input + indicator (stage 3 wiring)
-        const simpleInputMirror = document.getElementById('simple-import-input');
-        if (simpleInputMirror) simpleInputMirror.value = e.target.result;
+        // Simple mode: textarea already synced by setImportRawText; mirror the indicator
         const simpleFileIndicator = document.getElementById('simple-import-file-loaded');
         const simpleFileNameSpan = document.getElementById('simple-import-file-name');
         if (simpleFileIndicator && simpleFileNameSpan) {
@@ -9631,6 +9654,63 @@
       if (fileLoaded) fileLoaded.classList.add('hidden');
     }
 
+    // ===== Raw import text store (large-payload performance) =====
+    // Payloads above this size never live in the textareas — a placeholder is
+    // shown instead, so reflows (mode switch, window resize) stay cheap.
+    const IMPORT_DISPLAY_LIMIT = 300 * 1024;
+
+    function getImportRawText() {
+      if (importDisplayTruncated) return importRawText;
+      const ta = document.getElementById('import-input');
+      return ta ? ta.value : '';
+    }
+
+    function importPlaceholderText() {
+      const mb = (importRawText.length / (1024 * 1024)).toFixed(1);
+      return '📄 Large JSON loaded (' + mb + ' MB) — content is held in memory and the preview is hidden to keep the plugin fast.\n\nUse 🗑️ Clear to remove it.';
+    }
+
+    // Single write path for the import JSON. sourceEl (optional) is the textarea
+    // the user is typing in — left untouched for small payloads to preserve the caret.
+    function setImportRawText(text, sourceEl) {
+      importRawText = text || '';
+      importDisplayTruncated = importRawText.length > IMPORT_DISPLAY_LIMIT;
+      const display = importDisplayTruncated ? importPlaceholderText() : importRawText;
+      [document.getElementById('import-input'), document.getElementById('simple-import-input')].forEach(ta => {
+        if (!ta) return;
+        if (ta === sourceEl && !importDisplayTruncated) {
+          ta.readOnly = false;
+          return;
+        }
+        ta.value = display;
+        ta.readOnly = importDisplayTruncated;
+      });
+    }
+
+    // Immediate feedback while a pasted/uploaded payload is being parsed.
+    function showSimpleImportProcessing() {
+      const list = document.getElementById('simple-import-list');
+      if (list) {
+        list.innerHTML = '<div class="loading"><div class="spinner"></div><span>Processing JSON…</span></div>';
+      }
+      const btn = document.getElementById('simple-import-btn');
+      if (btn) btn.disabled = true;
+    }
+
+    // Paste interceptor: very large clipboard payloads bypass the textarea DOM
+    // entirely (inserting multi-MB text is what makes paste feel frozen).
+    function handleImportPaste(e) {
+      const clip = e.clipboardData || window.clipboardData;
+      if (!clip) return;
+      const text = clip.getData('text');
+      if (text && text.length > IMPORT_DISPLAY_LIMIT) {
+        e.preventDefault();
+        showSimpleImportProcessing();
+        setImportRawText(text);
+        debouncedParseImportPreview();
+      }
+    }
+
     // --- Export action (Simple buttons share the one-shot pending-action latch) ---
 
     function setSimpleExportButtonsDisabled(disabled) {
@@ -9808,12 +9888,12 @@
       const simpleImportInputEl = document.getElementById('simple-import-input');
       if (simpleImportInputEl) {
         simpleImportInputEl.addEventListener('input', () => {
-          // Mirror into the Advanced textarea (the single parse source), then
-          // reuse the exact debounced parse entry the Advanced textarea uses.
-          const advancedInput = document.getElementById('import-input');
-          if (advancedInput) advancedInput.value = simpleImportInputEl.value;
+          if (importDisplayTruncated) return; // placeholder is read-only
+          showSimpleImportProcessing();
+          setImportRawText(simpleImportInputEl.value, simpleImportInputEl);
           debouncedParseImportPreview();
         });
+        simpleImportInputEl.addEventListener('paste', handleImportPaste);
       }
 
       // Select All / None card actions
@@ -9888,7 +9968,7 @@
       libraryStatus = null;
       fontStatus = null;
       importWithLibraryLinks = true;
-      document.getElementById('import-input').value = '';
+      setImportRawText('');
       document.getElementById('file-input').value = '';
       document.getElementById('import-btn').disabled = true;
       document.getElementById('import-status').textContent = 'Load a JSON file to begin';
@@ -10095,6 +10175,10 @@
 
     // Initialize scroll fade for export collections
     initScrollFade('export-collections-container', 'export-collections');
+    // Simple-mode lists get the same edge fades as the Advanced columns
+    initScrollFade('simple-export-vars-fade', 'simple-export-variables-list');
+    initScrollFade('simple-export-styles-fade', 'simple-export-styles-list');
+    initScrollFade('simple-import-fade', 'simple-import-list');
 
     // ========== COLUMN BODY SCROLL FADE ==========
     function initColumnScrollFade(columnBodyId, fadeTopId, fadeBottomId) {
