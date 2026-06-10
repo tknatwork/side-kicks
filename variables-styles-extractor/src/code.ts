@@ -10,10 +10,16 @@
  */
 
 // JSF-AV Compliant Architecture
-// v2.0.0: Wide 4-column layout (1200x628px content area, 680px with Figma title bar)
-figma.showUI(__html__, { 
-  width: 1200, 
-  height: 628,
+// Window sizes per UI mode (the UI requests a resize on mode switch via 'resize_ui'):
+//   Simple (default): 3-column compact layout
+//   Advanced:         4-column layout
+const UI_SIZE = {
+  simple: { width: 905, height: 628 },
+  advanced: { width: 1200, height: 628 }
+};
+figma.showUI(__html__, {
+  width: UI_SIZE.simple.width,
+  height: UI_SIZE.simple.height,
   themeColors: true,
   title: '☕️ Variables & Styles Extractor v2.0.0'
 });
@@ -4901,6 +4907,16 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
         } else {
           Logger.log('⚠️ Rollback in progress — cannot cancel');
         }
+      }
+      break;
+
+    case 'resize_ui':
+      // Window follows the UI mode. Only the two known sizes are accepted —
+      // never arbitrary dimensions from the iframe.
+      if (msg.mode === 'advanced') {
+        figma.ui.resize(UI_SIZE.advanced.width, UI_SIZE.advanced.height);
+      } else {
+        figma.ui.resize(UI_SIZE.simple.width, UI_SIZE.simple.height);
       }
       break;
 

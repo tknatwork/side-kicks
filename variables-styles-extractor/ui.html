@@ -3122,9 +3122,16 @@
        (the legacy .column:nth-child width rules are position-dependent).
        ========================================================================== */
     :root {
-      --simple-col1-width: 378px;
-      --simple-col2-width: 379px;
-      --simple-col3-width: 379px;
+      /* Sections match the Advanced column widths; the plugin window itself
+         shrinks to --simple-plugin-width in Simple mode (backend resize_ui). */
+      --simple-col1-width: 279px;
+      --simple-col2-width: 280px;
+      --simple-col3-width: 280px;
+      --simple-plugin-width: 905px; /* 16 + 279 + 16 + 280 + 16 + 280 + 16 = 903 (+2px slack, mirroring Advanced) */
+    }
+
+    body:not(.advanced-mode) {
+      width: var(--simple-plugin-width);
     }
 
     .simple-layout {
@@ -6553,6 +6560,8 @@
     document.querySelectorAll('input[name="user-mode"]').forEach(radio => {
       radio.addEventListener('change', (e) => {
         currentUserMode = e.target.value;
+        // Window follows the mode: Simple is compact (905px), Advanced full (1200px)
+        parent.postMessage({ pluginMessage: { type: 'resize_ui', mode: currentUserMode } }, '*');
         if (currentUserMode === 'advanced') {
           document.body.classList.add('advanced-mode');
           // Show library refs option if deps detected
