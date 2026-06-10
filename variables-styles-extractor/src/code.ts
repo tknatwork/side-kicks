@@ -307,6 +307,48 @@ interface PlanValidation {
   };
 }
 
+// Plugin -> UI messages for heavy-load operations (progress, chunked export,
+// cancellation, operation denial).
+interface ProgressMessage {
+  readonly type: 'operation_progress';
+  readonly operation: string;
+  readonly phase: string;
+  readonly label: string;
+  readonly current: number;
+  readonly total: number;
+  readonly indeterminate: boolean;
+}
+
+interface ExportChunkMessage {
+  readonly type: 'export_chunk';
+  readonly seq: number;
+  readonly total: number;
+  readonly data: string;
+}
+
+interface ExportDoneMessage {
+  readonly type: 'export_done';
+  readonly stats: ExportStats;
+  readonly format: string;
+  readonly chunkCount: number;
+  readonly totalLength: number;
+}
+
+interface CancelledMessage {
+  readonly type: 'operation_cancelled';
+  readonly operation: string;
+  readonly phase: string;
+  readonly rolledBack: boolean;
+  readonly partial?: boolean;
+  readonly message: string;
+}
+
+interface DeniedMessage {
+  readonly type: 'operation_denied';
+  readonly requested: string;
+  readonly running: string;
+}
+
 // ============================================================================
 // SECTION 3: UTILITY FUNCTIONS (JSF Rule 4.15 - DRY)
 // ============================================================================
@@ -321,6 +363,199 @@ const Logger = {
     figma.ui.postMessage({ type, data });
   }
 } as const;
+
+// ============================================================================
+// SECTION 3a: HEAVY-LOAD UTILITIES — yield, cancellation, operation lock,
+//             batch runners, progress throttling (QuickJS-safe)
+// ============================================================================
+
+// Yield control back to the host event loop so the UI can repaint.
+function yieldToHost(): Promise<void> {
+  return new Promise(function (resolve) {
+    setTimeout(resolve, 0);
+  });
+}
+
+// Cancellation sentinel: a plain Error tagged with isOperationCancelled.
+interface CancelError extends Error {
+  isOperationCancelled: true;
+}
+
+function makeCancelError(): CancelError {
+  const err = new Error('Operation cancelled') as CancelError;
+  err.isOperationCancelled = true;
+  return err;
+}
+
+function isCancelError(e: unknown): boolean {
+  return typeof e === 'object' && e !== null &&
+    (e as Record<string, unknown>).isOperationCancelled === true;
+}
+
+// Single global operation lock. Only one long operation runs at a time.
+interface OperationState {
+  type: string | null;
+  cancelRequested: boolean;
+  cancellable: boolean;
+}
+
+const currentOperation: OperationState = {
+  type: null,
+  cancelRequested: false,
+  cancellable: true
+};
+
+function beginOperation(type: string): boolean {
+  if (currentOperation.type !== null) {
+    figma.ui.postMessage({
+      type: 'operation_denied',
+      requested: type,
+      running: currentOperation.type
+    });
+    return false;
+  }
+  currentOperation.type = type;
+  currentOperation.cancelRequested = false;
+  currentOperation.cancellable = true;
+  return true;
+}
+
+function endOperation(): void {
+  currentOperation.type = null;
+  currentOperation.cancelRequested = false;
+  currentOperation.cancellable = true;
+}
+
+function checkCancelled(): void {
+  if (currentOperation.cancelRequested && currentOperation.cancellable) {
+    throw makeCancelError();
+  }
+}
+
+async function withOperation(type: string, fn: () => Promise<void>): Promise<void> {
+  if (!beginOperation(type)) return;
+  try {
+    await fn();
+  } finally {
+    endOperation();
+  }
+}
+
+// Run a synchronous fn over items in batches, yielding between batches.
+async function runBatched<T>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T, index: number) => void,
+  onBatch?: (done: number, total: number) => void
+): Promise<void> {
+  const total = items.length;
+  for (let start = 0; start < total; start += batchSize) {
+    const end = Math.min(start + batchSize, total);
+    for (let i = start; i < end; i++) {
+      fn(items[i], i);
+    }
+    if (onBatch) onBatch(end, total);
+    checkCancelled();
+    if (end < total) {
+      await yieldToHost();
+    }
+  }
+}
+
+// Run an async fn over items in chunks via Promise.all, yielding between chunks.
+async function runBatchedAsync<T, R>(
+  items: T[],
+  chunkSize: number,
+  fn: (item: T, index: number) => Promise<R>,
+  onBatch?: (done: number, total: number) => void
+): Promise<R[]> {
+  const total = items.length;
+  const results: R[] = [];
+  for (let start = 0; start < total; start += chunkSize) {
+    const end = Math.min(start + chunkSize, total);
+    const promises: Promise<R>[] = [];
+    for (let i = start; i < end; i++) {
+      promises.push(fn(items[i], i));
+    }
+    const chunkResults = await Promise.all(promises);
+    for (let j = 0; j < chunkResults.length; j++) {
+      results.push(chunkResults[j]);
+    }
+    if (onBatch) onBatch(end, total);
+    checkCancelled();
+    if (end < total) {
+      await yieldToHost();
+    }
+  }
+  return results;
+}
+
+// Run an async fn over items strictly in order, yielding every batchSize items.
+async function runSequentialAsync<T, R>(
+  items: T[],
+  batchSize: number,
+  fn: (item: T, index: number) => Promise<R>,
+  onBatch?: (done: number, total: number) => void
+): Promise<R[]> {
+  const total = items.length;
+  const results: R[] = [];
+  for (let i = 0; i < total; i++) {
+    results.push(await fn(items[i], i));
+    const done = i + 1;
+    if (done % batchSize === 0 || done === total) {
+      if (onBatch) onBatch(done, total);
+      checkCancelled();
+      if (done < total) {
+        await yieldToHost();
+      }
+    }
+  }
+  return results;
+}
+
+// Progress reporter with time-based throttling. Always posts on phase change
+// or final tick; otherwise skips updates that arrive too soon.
+interface ProgressReporter {
+  report(
+    phase: string,
+    label: string,
+    current: number,
+    total: number,
+    indeterminate?: boolean
+  ): void;
+}
+
+function createProgress(operation: string): ProgressReporter {
+  let lastPhase: string | null = null;
+  let lastPost = 0;
+  return {
+    report(
+      phase: string,
+      label: string,
+      current: number,
+      total: number,
+      indeterminate?: boolean
+    ): void {
+      const now = Date.now();
+      const phaseChanged = phase !== lastPhase;
+      const isFinal = total > 0 && current >= total;
+      if (!phaseChanged && !isFinal) {
+        if (now - lastPost < BATCH.PROGRESS_MIN_MS) return;
+      }
+      lastPhase = phase;
+      lastPost = now;
+      figma.ui.postMessage({
+        type: 'operation_progress',
+        operation,
+        phase,
+        label,
+        current,
+        total,
+        indeterminate: indeterminate === true
+      });
+    }
+  };
+}
 
 // Plan limits by Figma subscription tier (verified from Figma documentation)
 const PLAN_LIMITS: Record<FigmaPlan, Omit<PlanLimits, 'plan'>> = {
@@ -348,6 +583,19 @@ const PLAN_LIMITS: Record<FigmaPlan, Omit<PlanLimits, 'plan'>> = {
 
 // Maximum variables per collection (all plans)
 const MAX_VARIABLES_PER_COLLECTION = 5000;
+
+// Batch sizing + throttling config for heavy-load handling (QuickJS sandbox)
+const BATCH = {
+  SYNC_CREATE: 50,
+  SYNC_LIGHT: 200,
+  ASYNC_LOOKUP: 50,
+  ASYNC_LIBRARY: 10,
+  ASYNC_FONT: 5,
+  SEQ_EXPORT: 25,
+  PROGRESS_MIN_MS: 250,
+  EXPORT_CHUNK_BYTES: 262144,
+  EXPORT_YIELD_EVERY: 8
+} as const;
 
 // Plan detection: Figma API doesn't expose plan directly, so we infer from existing modes
 async function detectCurrentPlan(): Promise<PlanLimits> {
@@ -1237,62 +1485,104 @@ class VariableCache {
   private libraryVariableMap = new Map<string, Variable>(); // Library/remote variables
   private libraryCollectionNames = new Set<string>(); // Names of connected library collections
   private initialized = false;
+  private libraryIndexed = false;
 
-  async initialize(): Promise<void> {
+  // Lazy readiness: build the local index once if not already done.
+  async ensureReady(): Promise<void> {
     if (this.initialized) return;
-    await this.rebuild();
+    await this.rebuildLocal();
     this.initialized = true;
   }
 
+  // Back-compat: external callers still call initialize(). Delegates to ensureReady().
+  async initialize(): Promise<void> {
+    await this.ensureReady();
+  }
+
+  // Full rebuild for callers that need both local and library indexes.
   async rebuild(): Promise<void> {
-    this.collectionMap.clear();
-    this.variableMap.clear();
-    this.libraryVariableMap.clear();
-    this.libraryCollectionNames.clear();
-    
-    // Index local collections and variables
-    for (const col of await figma.variables.getLocalVariableCollectionsAsync()) {
+    await this.rebuildLocal();
+    await this.ensureLibraryIndex();
+    this.initialized = true;
+  }
+
+  // Rebuild ONLY the local collection + variable index. No library indexing.
+  async rebuildLocal(): Promise<void> {
+    this.clearLocal();
+
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    for (let c = 0; c < collections.length; c++) {
+      const col = collections[c];
       this.collectionMap.set(col.name, col);
-      for (const varId of col.variableIds) {
-        const v = await figma.variables.getVariableByIdAsync(varId);
+
+      // Batch the per-variable async lookups instead of awaiting one at a time.
+      const ids = col.variableIds;
+      const resolved = await runBatchedAsync(
+        ids,
+        BATCH.ASYNC_LOOKUP,
+        function (varId: string): Promise<Variable | null> {
+          return figma.variables.getVariableByIdAsync(varId);
+        }
+      );
+      for (let i = 0; i < resolved.length; i++) {
+        const v = resolved[i];
         if (v) {
           this.variableMap.set(`${col.name}/${v.name}`, v);
         }
       }
     }
-    
-    // Also index library/remote variables that are available in this file
+  }
+
+  // Build the library/remote variable index once. Idempotent.
+  async ensureLibraryIndex(): Promise<void> {
+    if (this.libraryIndexed) return;
     await this.indexLibraryVariables();
+    this.libraryIndexed = true;
+  }
+
+  // Synchronously clear only the local collection + variable maps.
+  clearLocal(): void {
+    this.collectionMap.clear();
+    this.variableMap.clear();
   }
 
   // Index library variables from connected team libraries
   private async indexLibraryVariables(): Promise<void> {
+    this.libraryVariableMap.clear();
+    this.libraryCollectionNames.clear();
     try {
       // Get all library variable collections available to this file
       const libraryCollections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
-      
-      for (const libCol of libraryCollections) {
+
+      for (let c = 0; c < libraryCollections.length; c++) {
+        const libCol = libraryCollections[c];
         this.libraryCollectionNames.add(libCol.name);
-        
+
         // Get variables in this library collection
         try {
           const libraryVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libCol.key);
-          for (const libVar of libraryVars) {
-            // Import the variable so we can reference it by ID
-            try {
-              const importedVar = await figma.variables.importVariableByKeyAsync(libVar.key);
-              if (importedVar) {
-                this.libraryVariableMap.set(`${libCol.name}/${importedVar.name}`, importedVar);
+          // Import variables in batches so a large library does not block the host.
+          const libColName = libCol.name;
+          await runBatchedAsync(
+            libraryVars,
+            BATCH.ASYNC_LIBRARY,
+            async (libVar): Promise<void> => {
+              // Import the variable so we can reference it by ID
+              try {
+                const importedVar = await figma.variables.importVariableByKeyAsync(libVar.key);
+                if (importedVar) {
+                  this.libraryVariableMap.set(`${libColName}/${importedVar.name}`, importedVar);
+                }
+              } catch (importErr) {
+                // Individual variable import failure - skip
               }
-            } catch (importErr) {
-              // Individual variable import failure - skip
             }
-          }
+          );
         } catch (e) {
           Logger.log(`  ⚠️ Could not index library collection "${libCol.name}": ${e}`);
         }
       }
-      
+
       if (this.libraryCollectionNames.size > 0) {
         Logger.log(`📚 Indexed ${this.libraryVariableMap.size} library variables from ${this.libraryCollectionNames.size} connected libraries`);
       }
@@ -1501,10 +1791,11 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
   async export(options?: { includeImages?: boolean }): Promise<ExportColorStyle[]> {
     const includeImages = options?.includeImages ?? false;
     const styles: ExportColorStyle[] = [];
-    
-    for (const style of await figma.getLocalPaintStylesAsync()) {
-      if (style.paints.length === 0) continue;
-      
+
+    const localPaintStyles = await figma.getLocalPaintStylesAsync();
+    await runSequentialAsync(localPaintStyles, 20, async function (style: PaintStyle): Promise<void> {
+      if (style.paints.length === 0) return;
+
       const exportPaints: ExportPaintData[] = [];
       let primaryColor: ExportColorValue | undefined;
       let primaryOpacity: number | undefined;
@@ -1605,8 +1896,8 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
         }
       }
       
-      if (exportPaints.length === 0) continue;
-      
+      if (exportPaints.length === 0) return;
+
       const colorStyle: ExportColorStyle = {
         name: style.name,
         paints: exportPaints,
@@ -1616,10 +1907,10 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
         ...(style.description && { description: style.description }),
         ...(boundVars && Object.keys(boundVars).length > 0 && { boundVariables: boundVars })
       };
-      
+
       styles.push(colorStyle);
-    }
-    
+    });
+
     return styles;
   },
 
@@ -1631,10 +1922,10 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
     for (const s of await figma.getLocalPaintStylesAsync()) {
       existing.set(s.name, s);
     }
-    
-    for (const colorStyle of styles) {
+
+    await runSequentialAsync(styles, 20, async function (colorStyle: ExportColorStyle): Promise<void> {
       let style: PaintStyle;
-      
+
       if (existing.has(colorStyle.name)) {
         style = existing.get(colorStyle.name)!;
         updated++;
@@ -1790,8 +2081,8 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
       if (paints.length > 0) {
         style.paints = paints;
       }
-    }
-    
+    });
+
     return { created, updated };
   }
 };
@@ -1800,8 +2091,9 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
 const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
   async export(_options?: { includeImages?: boolean }): Promise<ExportTextStyle[]> {
     const styles: ExportTextStyle[] = [];
-    
-    for (const style of await figma.getLocalTextStylesAsync()) {
+
+    const localTextStyles = await figma.getLocalTextStylesAsync();
+    await runSequentialAsync(localTextStyles, 20, async function (style: TextStyle): Promise<void> {
       const textStyle: ExportTextStyle = {
         name: style.name,
         fontFamily: style.fontName.family,
@@ -1814,10 +2106,10 @@ const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
         ...(style.description && { description: style.description }),
         boundVariables: await extractBindings(style.boundVariables as Record<string, VariableAlias | undefined>, ['fontSize', 'lineHeight', 'letterSpacing', 'paragraphSpacing', 'paragraphIndent'])
       };
-      
+
       styles.push(textStyle);
-    }
-    
+    });
+
     return styles;
   },
 
@@ -1829,10 +2121,10 @@ const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
     for (const s of await figma.getLocalTextStylesAsync()) {
       existing.set(s.name, s);
     }
-    
-    for (const textStyle of styles) {
+
+    await runSequentialAsync(styles, 20, async function (textStyle: ExportTextStyle): Promise<void> {
       let style: TextStyle;
-      
+
       if (existing.has(textStyle.name)) {
         style = existing.get(textStyle.name)!;
         updated++;
@@ -1870,8 +2162,8 @@ const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
       } catch (e) {
         Logger.log(`⚠️ Could not load font for ${textStyle.name}: ${e}`);
       }
-    }
-    
+    });
+
     return { created, updated };
   }
 };
@@ -1880,8 +2172,9 @@ const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
 const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
   async export(_options?: { includeImages?: boolean }): Promise<ExportEffectStyle[]> {
     const styles: ExportEffectStyle[] = [];
-    
-    for (const style of await figma.getLocalEffectStylesAsync()) {
+
+    const localEffectStyles = await figma.getLocalEffectStylesAsync();
+    await runSequentialAsync(localEffectStyles, 20, async function (style: EffectStyle): Promise<void> {
       const effects: ExportEffectData[] = [];
       for (const effect of style.effects) {
         const effectData: ExportEffectData = {
@@ -1903,10 +2196,10 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
         ...(style.description && { description: style.description }),
         effects
       };
-      
+
       styles.push(effectStyle);
-    }
-    
+    });
+
     return styles;
   },
 
@@ -1918,10 +2211,10 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
     for (const s of await figma.getLocalEffectStylesAsync()) {
       existing.set(s.name, s);
     }
-    
-    for (const effectStyle of styles) {
+
+    await runSequentialAsync(styles, 20, async function (effectStyle: ExportEffectStyle): Promise<void> {
       let style: EffectStyle;
-      
+
       if (existing.has(effectStyle.name)) {
         style = existing.get(effectStyle.name)!;
         updated++;
@@ -1976,8 +2269,8 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
           }
         }
       }
-    }
-    
+    });
+
     return { created, updated };
   }
 };
@@ -1986,8 +2279,9 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
 const GridStyleProcessor: StyleProcessor<ExportGridStyle, GridStyle> = {
   async export(_options?: { includeImages?: boolean }): Promise<ExportGridStyle[]> {
     const styles: ExportGridStyle[] = [];
-    
-    for (const style of await figma.getLocalGridStylesAsync()) {
+
+    const localGridStyles = await figma.getLocalGridStylesAsync();
+    await runSequentialAsync(localGridStyles, 20, async function (style: GridStyle): Promise<void> {
       const layoutGrids: ExportGridData[] = [];
       for (const grid of style.layoutGrids) {
         const gridColor = grid.color as RGBA;
@@ -2013,10 +2307,10 @@ const GridStyleProcessor: StyleProcessor<ExportGridStyle, GridStyle> = {
         ...(style.description && { description: style.description }),
         layoutGrids
       };
-      
+
       styles.push(gridStyle);
-    }
-    
+    });
+
     return styles;
   },
 
@@ -2028,10 +2322,10 @@ const GridStyleProcessor: StyleProcessor<ExportGridStyle, GridStyle> = {
     for (const s of await figma.getLocalGridStylesAsync()) {
       existing.set(s.name, s);
     }
-    
-    for (const gridStyle of styles) {
+
+    await runSequentialAsync(styles, 20, async function (gridStyle: ExportGridStyle): Promise<void> {
       let style: GridStyle;
-      
+
       if (existing.has(gridStyle.name)) {
         style = existing.get(gridStyle.name)!;
         updated++;
@@ -2112,8 +2406,8 @@ const GridStyleProcessor: StyleProcessor<ExportGridStyle, GridStyle> = {
           }
         }
       }
-    }
-    
+    });
+
     return { created, updated };
   }
 };
@@ -2456,11 +2750,21 @@ async function exportVariables(
       collections = collections.filter(c => selectedCollections.includes(c.name));
       Logger.log(`Filtering to ${collections.length} selected collections`);
     }
-    
+
     const exportData: ExportFormat = [];
     const w3cExportData: Record<string, W3CTokenGroup> = {};
     let totalVariables = 0;
-    
+
+    // Progress + heavy-load handling: compute grand total of variables to export
+    // (sum of filtered collection variable counts) and keep a running count so
+    // the UI can show determinate progress across collections.
+    const progress = createProgress('export');
+    let grandTotal = 0;
+    for (let gc = 0; gc < collections.length; gc++) {
+      grandTotal += collections[gc].variableIds.length;
+    }
+    let processedVars = 0;
+
     for (const collection of collections) {
       Logger.log(`Processing collection: ${collection.name}`);
       
@@ -2490,15 +2794,20 @@ async function exportVariables(
         // We'll handle original mode names in metadata if needed
       }
       
-      // Process variables
-      for (const variableId of collection.variableIds) {
+      // Process variables sequentially (shared nested structure mutation), batched
+      // with periodic yields so the UI can repaint on large collections.
+      await runSequentialAsync(
+        collection.variableIds,
+        BATCH.SEQ_EXPORT,
+        async function (variableId: string): Promise<void> {
+        processedVars++;
         const variable = await figma.variables.getVariableByIdAsync(variableId);
-        if (!variable) continue;
+        if (!variable) return;
 
         // Group filtering (Simple mode): key absent for a collection => export ALL its variables
         if (selectedGroups && selectedGroups[collection.name]) {
           if (selectedGroups[collection.name].indexOf(getGroupKey(variable.name)) === -1) {
-            continue;
+            return;
           }
         }
 
@@ -2595,8 +2904,12 @@ async function exportVariables(
           
           current[leafName] = varExport;
         }
-      }
-      
+        },
+        function (): void {
+          progress.report('export_variables', 'Exporting variables', processedVars, grandTotal);
+        }
+      );
+
       exportData.push(collectionExport);
       
       // Also build W3C format if needed
@@ -2615,6 +2928,7 @@ async function exportVariables(
     if (styleOptions) {
       stylesExported = {};
       if (styleOptions.colorStyles) {
+        progress.report('export_styles', 'Exporting styles', 0, 0, true);
         const colorAllowed = selectedStyleGroups ? selectedStyleGroups.color : undefined;
         stylesExported.colorStyles = filterStylesByGroup(await ColorStyleProcessor.export({ includeImages }), colorAllowed);
         if (colorAllowed && stylesExported.colorStyles.length === 0) {
@@ -2622,6 +2936,7 @@ async function exportVariables(
         }
       }
       if (styleOptions.textStyles) {
+        progress.report('export_styles', 'Exporting styles', 0, 0, true);
         const textAllowed = selectedStyleGroups ? selectedStyleGroups.text : undefined;
         stylesExported.textStyles = filterStylesByGroup(await TextStyleProcessor.export(), textAllowed);
         if (textAllowed && stylesExported.textStyles.length === 0) {
@@ -2629,6 +2944,7 @@ async function exportVariables(
         }
       }
       if (styleOptions.effectStyles) {
+        progress.report('export_styles', 'Exporting styles', 0, 0, true);
         const effectAllowed = selectedStyleGroups ? selectedStyleGroups.effect : undefined;
         stylesExported.effectStyles = filterStylesByGroup(await EffectStyleProcessor.export(), effectAllowed);
         if (effectAllowed && stylesExported.effectStyles.length === 0) {
@@ -2636,6 +2952,7 @@ async function exportVariables(
         }
       }
       if (styleOptions.gridStyles) {
+        progress.report('export_styles', 'Exporting styles', 0, 0, true);
         const gridAllowed = selectedStyleGroups ? selectedStyleGroups.grid : undefined;
         stylesExported.gridStyles = filterStylesByGroup(await GridStyleProcessor.export(), gridAllowed);
         if (gridAllowed && stylesExported.gridStyles.length === 0) {
@@ -2681,16 +2998,73 @@ async function exportVariables(
       Logger.log(`✅ Export complete: ${stats.collections} collections, ${stats.variables} variables`);
     }
     
-    Logger.send('export_complete', {
-      data: outputData,
-      stats,
-      format: exportFormat
-    });
-    
+    await sendExportInChunks(outputData, stats, exportFormat);
+
   } catch (e) {
+    if (isCancelError(e)) {
+      Logger.log('🛑 Export cancelled');
+      figma.ui.postMessage({
+        type: 'operation_cancelled',
+        operation: 'export',
+        phase: 'export',
+        rolledBack: false,
+        message: 'Export cancelled. Nothing was changed.'
+      });
+      return;
+    }
     Logger.log(`❌ Export error: ${e}`);
     Logger.send('error', { message: `Export failed: ${e}` });
   }
+}
+
+// Deliver a large export payload to the UI in size-bounded chunks so a single
+// postMessage never has to serialize a multi-megabyte string at once. Splits on
+// byte budget (BATCH.EXPORT_CHUNK_BYTES) but never mid surrogate pair, yields to
+// the host every BATCH.EXPORT_YIELD_EVERY chunks, then posts a final summary.
+async function sendExportInChunks(
+  outputData: string,
+  stats: ExportStats,
+  format: string
+): Promise<void> {
+  const len = outputData.length;
+  const size = BATCH.EXPORT_CHUNK_BYTES;
+  const total = Math.max(1, Math.ceil(len / size));
+  let seq = 0;
+  let start = 0;
+  while (start < len) {
+    let end = Math.min(start + size, len);
+    // Don't split in the middle of a surrogate pair: if the last code unit in
+    // this slice is a high surrogate, extend the boundary by one.
+    if (end < len) {
+      const lastCode = outputData.charCodeAt(end - 1);
+      if (lastCode >= 0xD800 && lastCode <= 0xDBFF) {
+        end += 1;
+      }
+    }
+    const piece = outputData.slice(start, end);
+    figma.ui.postMessage({
+      type: 'export_chunk',
+      seq: seq,
+      total: total,
+      data: piece
+    });
+    seq++;
+    start = end;
+    if (seq % BATCH.EXPORT_YIELD_EVERY === 0 && start < len) {
+      await yieldToHost();
+    }
+  }
+  figma.ui.postMessage({
+    type: 'export_done',
+    stats: stats,
+    format: format,
+    // Report the ACTUAL number of chunks emitted, not the precomputed estimate.
+    // Surrogate-boundary extension can make the real count differ from
+    // ceil(len/size); the UI integrity check (chunks.length === chunkCount)
+    // must compare against what was actually sent.
+    chunkCount: seq,
+    totalLength: len
+  });
 }
 
 // ============================================================================
@@ -2711,7 +3085,12 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
     Logger.log(`⚠️ Could not create pre-import snapshot: ${snapshotError}`);
     // Continue without snapshot - user will be warned if import fails
   }
-  
+
+  // Heavy-load handling: throttled progress + a mutation-started flag so the
+  // cancel/rollback paths know whether the file was actually touched yet.
+  const progress = createProgress('import');
+  let mutationStarted = false;
+
   try {
     let parsedData = JSON.parse(jsonData);
     
@@ -2748,46 +3127,17 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
       importData = parsedData as ExportFormat;
     }
     
-    // Handle Clean Import: clear everything first
-    if (options.clearFirst) {
-      Logger.log('🧹 Clean Import: Clearing existing variables and styles...');
-      await clearAll();
-      Logger.log('✅ Clean Import: Clearing complete, rebuilding cache...');
-      // Reinitialize cache after clearing
-      await variableCache.rebuild();
-      Logger.log('✅ Clean Import: Cache rebuilt, proceeding with import...');
-    }
-    
-    // Handle Custom Merge: selectively clear variables and/or styles
-    if (options.customMerge) {
-      const { clearVariables: shouldClearVars, clearStyles: shouldClearStyles } = options.customMerge;
-      if (shouldClearVars && shouldClearStyles) {
-        Logger.log('🎯 Custom Merge: Clearing both variables and styles...');
-        await clearAll();
-      } else if (shouldClearVars) {
-        Logger.log('🎯 Custom Merge: Clearing variables only...');
-        await clearVariables();
-      } else if (shouldClearStyles) {
-        Logger.log('🎯 Custom Merge: Clearing styles only...');
-        await clearStyles();
-      }
-      Logger.log('✅ Custom Merge: Clearing complete, rebuilding cache...');
-      await variableCache.rebuild();
-    }
-    
-    await variableCache.initialize();
-    
     let createdCollections = 0;
     let createdVariables = 0;
     let updatedVariables = 0;
     let skippedVariables = 0;
     let stylesCreated = 0;
     let stylesUpdated = 0;
-    
+
     // Separate styles from collections
     let stylesData: StylesExport | null = null;
     const collectionData: CollectionExport[] = [];
-    
+
     for (const item of importData) {
       const keys = Object.keys(item);
       if (keys.length === 1 && keys[0] === '_styles') {
@@ -2796,7 +3146,77 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
         collectionData.push(item as CollectionExport);
       }
     }
-    
+
+    // PRE-PASS: flatten each collection's first mode exactly once (reused in pass 1),
+    // sum the grand total for determinate progress, and detect whether any value
+    // references the team library so we only index it when actually needed.
+    const preflattened: Array<{
+      collectionObj: CollectionExport;
+      flatPaths: FlatVariable[];
+    }> = [];
+    let importGrandTotal = 0;
+    let needsLibraryIndex = false;
+    for (let pc = 0; pc < collectionData.length; pc++) {
+      const collectionObj = collectionData[pc];
+      const jsonName = Object.keys(collectionObj)[0];
+      const content = collectionObj[jsonName];
+      const modeKeys = Object.keys(content.modes);
+      const firstMode = modeKeys.length > 0 ? content.modes[modeKeys[0]] : {};
+      const flatPaths = flattenVariables(firstMode, '');
+      preflattened.push({ collectionObj: collectionObj, flatPaths: flatPaths });
+      importGrandTotal += flatPaths.length;
+
+      // Scan for library needs: a $libraryRef, or an alias pointing at a
+      // collection name that is not one of the collections in this import file.
+      for (let fp = 0; fp < flatPaths.length; fp++) {
+        const v = flatPaths[fp].value;
+        if (v.$libraryRef) {
+          needsLibraryIndex = true;
+        } else if (v.$collectionName && v.$collectionName !== (content.$originalName || jsonName)) {
+          needsLibraryIndex = true;
+        }
+      }
+    }
+
+    // FIRST MUTATION BOUNDARY: everything above is read-only. Commit an undo
+    // checkpoint immediately before the first mutating step so a single Figma
+    // undo reverts the whole import as one unit.
+    mutationStarted = true;
+    figma.commitUndo();
+
+    // Handle Clean Import: clear everything first (silent — internal step of the
+    // import's own undo boundary; cancellation rethrows into the rollback path).
+    if (options.clearFirst) {
+      Logger.log('🧹 Clean Import: Clearing existing variables and styles...');
+      await clearAll(true);
+      Logger.log('✅ Clean Import: Clearing complete...');
+    }
+
+    // Handle Custom Merge: selectively clear variables and/or styles (silent).
+    if (options.customMerge) {
+      const { clearVariables: shouldClearVars, clearStyles: shouldClearStyles } = options.customMerge;
+      if (shouldClearVars && shouldClearStyles) {
+        Logger.log('🎯 Custom Merge: Clearing both variables and styles...');
+        await clearAll(true);
+      } else if (shouldClearVars) {
+        Logger.log('🎯 Custom Merge: Clearing variables only...');
+        await clearVariables(true);
+      } else if (shouldClearStyles) {
+        Logger.log('🎯 Custom Merge: Clearing styles only...');
+        await clearStyles(true);
+      }
+      Logger.log('✅ Custom Merge: Clearing complete...');
+    }
+
+    // Build the local cache index once (picks up any state after clearing).
+    // Index the team library only when the pre-pass found library refs or the
+    // caller explicitly opted in via useLibraryRefs.
+    progress.report('cache_scan', 'Scanning existing variables', 0, 0, true);
+    await variableCache.rebuildLocal();
+    if (needsLibraryIndex || options.useLibraryRefs) {
+      await variableCache.ensureLibraryIndex();
+    }
+
     // Collect all pending aliases across all collections for pass 2
     const allPendingAliases: Array<{
       variable: Variable;
@@ -2805,13 +3225,17 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
       aliasCollection: string;
       fallbackValue: ExportVariableValue;
     }> = [];
-    
+
+    let processedTotal = 0;
+
     // Process collections - PASS 1: Create variables with raw values
     Logger.log(`📥 Pass 1: Processing ${collectionData.length} collections...`);
-    for (const collectionObj of collectionData) {
+    for (let pidx = 0; pidx < preflattened.length; pidx++) {
+      const collectionObj = preflattened[pidx].collectionObj;
+      const variablePaths = preflattened[pidx].flatPaths;
       const jsonCollectionName = Object.keys(collectionObj)[0];
       const collectionContent = collectionObj[jsonCollectionName];
-      
+
       // Use $originalName if present (for round-trip with code-friendly naming)
       // This restores original Figma names when importing JSON that was exported with naming conventions
       const collectionName = collectionContent.$originalName || jsonCollectionName;
@@ -2883,9 +3307,8 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
       // Process variables - TWO PASS APPROACH
       // Pass 1: Create all variables and set RAW values only (skip aliases)
       // Pass 2: Set ALIAS values (now all target variables exist)
-      const firstModeVars = collectionContent.modes[modeNames[0]];
-      const variablePaths = flattenVariables(firstModeVars, '');
-      
+      // variablePaths reuses the pre-pass flatten — no redundant re-flatten here.
+
       // Store pending alias assignments for pass 2
       const pendingAliases: Array<{
         variable: Variable;
@@ -2894,19 +3317,24 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
         aliasCollection: string;
         fallbackValue: ExportVariableValue;
       }> = [];
-      
-      // PASS 1: Create variables and set raw values
+
+      // PASS 1: Create variables and set raw values (batched + yielded)
       Logger.log(`  Pass 1: Creating variables with raw values...`);
-      for (const { path, value } of variablePaths) {
+      await runBatched(
+        variablePaths,
+        BATCH.SYNC_CREATE,
+        function (entry: FlatVariable): void {
+        const path = entry.path;
+        const value = entry.value;
         const fullPath = `${collectionName}/${path}`;
-        
+
         let variable: Variable;
         const existingVar = variableCache.getVariable(fullPath);
-        
+
         if (existingVar) {
           if (!options.overwrite) {
             skippedVariables++;
-            continue;
+            return;
           }
           variable = existingVar;
           updatedVariables++;
@@ -2920,26 +3348,26 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
             createdVariables++;
           } catch (e) {
             Logger.log(`  ⚠️ Could not create variable ${path}: ${e}`);
-            continue;
+            return;
           }
         }
-        
+
         if (value.$description) {
           variable.description = value.$description;
         }
-        
+
         try {
           variable.scopes = TypeMapper.arrayToScopes(value.$scopes as string[]);
         } catch { /* Skip */ }
-        
+
         // Set values for each mode - raw values only in pass 1, queue aliases for pass 2
         for (const modeName of modeNames) {
           const modeId = modeMap.get(modeName);
           if (!modeId) continue;
-          
+
           const modeValue = getValueAtPath(collectionContent.modes[modeName], path);
           if (!modeValue) continue;
-          
+
           if (typeof modeValue.$value === 'string' && modeValue.$value.startsWith('{')) {
             // This is an alias - queue for pass 2
             const aliasPath = modeValue.$value.slice(1, -1).replace(/\./g, '/');
@@ -2958,24 +3386,41 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
             setRawValue(variable, modeId, modeValue);
           }
         }
-        
+
         variableCache.setVariable(fullPath, variable);
-      }
-      
+        },
+        function (done: number): void {
+          progress.report('import_create', 'Importing variables', processedTotal + done, importGrandTotal);
+        }
+      );
+      processedTotal += variablePaths.length;
+
       // Store pending aliases for this collection (will be processed after all collections)
       allPendingAliases.push(...pendingAliases);
     }
-    
-    // PASS 2: Resolve all aliases (now all variables from all collections exist)
+
+    // PASS 2: Resolve all aliases (now all variables from all collections exist).
+    // Aliases run strictly AFTER all raw values are in place. No cache rebuild
+    // needed: the initial cache_scan indexed pre-existing variables and Pass 1
+    // registered every created variable/collection under its JSON-path key —
+    // exactly the key space the alias lookups below use.
     Logger.log(`📥 Pass 2: Resolving ${allPendingAliases.length} alias references...`);
-    await variableCache.rebuild(); // Ensure cache has all newly created variables
-    
+
     let aliasesResolved = 0;
     let aliasesFailed = 0;
-    
-    for (const pending of allPendingAliases) {
+
+    await runBatched(
+      allPendingAliases,
+      BATCH.SYNC_LIGHT,
+      function (pending: {
+        variable: Variable;
+        modeId: string;
+        aliasPath: string;
+        aliasCollection: string;
+        fallbackValue: ExportVariableValue;
+      }): void {
       const targetVar = variableCache.getVariable(`${pending.aliasCollection}/${pending.aliasPath}`);
-      
+
       if (targetVar) {
         try {
           pending.variable.setValueForMode(pending.modeId, { type: 'VARIABLE_ALIAS', id: targetVar.id });
@@ -2990,17 +3435,21 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
         aliasesFailed++;
         Logger.log(`  ⚠️ Alias target not found: ${pending.aliasCollection}/${pending.aliasPath}`);
       }
-    }
-    
+      },
+      function (done: number, total: number): void {
+        progress.report('import_aliases', 'Linking aliases', done, total);
+      }
+    );
+
     if (allPendingAliases.length > 0) {
       Logger.log(`  ✅ Aliases: ${aliasesResolved} resolved, ${aliasesFailed} used fallback values`);
     }
-    
+
     // Import styles
     if (stylesData && options.importStyles) {
       Logger.log('📦 Importing styles...');
-      await variableCache.rebuild();
-      
+      progress.report('import_styles', 'Importing styles', 0, 0, true);
+
       if (stylesData.colorStyles) {
         const r = await ColorStyleProcessor.importStyles(stylesData.colorStyles, variableCache);
         stylesCreated += r.created;
@@ -3022,7 +3471,7 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
         stylesUpdated += r.updated;
       }
     }
-    
+
     const stats: ImportStats = {
       collectionsCreated: createdCollections,
       variablesCreated: createdVariables,
@@ -3031,30 +3480,63 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
       stylesCreated,
       stylesUpdated
     };
-    
+
+    // Close the undo boundary AFTER the import fully completes so the whole
+    // import collapses into a single undo step.
+    figma.commitUndo();
+
     Logger.log(`✅ Import complete!`);
-    Logger.send('import_complete', { stats });
-    
+    Logger.send('import_complete', { stats, snapshot: preImportSnapshot });
+
   } catch (e) {
+    const cancelled = isCancelError(e);
+
+    // Cancelled before any mutation: nothing to roll back.
+    if (cancelled && !mutationStarted) {
+      Logger.log('🛑 Import cancelled before any changes were made');
+      figma.ui.postMessage({
+        type: 'operation_cancelled',
+        operation: 'import',
+        phase: 'snapshot',
+        rolledBack: false,
+        message: 'Import cancelled. No changes were made.'
+      });
+      return;
+    }
+
     const errorMessage = e instanceof Error ? e.message : String(e);
-    Logger.log(`❌ Import error: ${errorMessage}`);
-    
+    if (!cancelled) {
+      Logger.log(`❌ Import error: ${errorMessage}`);
+    } else {
+      Logger.log('🛑 Import cancelled after mutation started — rolling back...');
+    }
+
     // Automatic rollback if we have a pre-import snapshot
     if (preImportSnapshot) {
       Logger.log('🔄 Attempting automatic rollback to pre-import state...');
       Logger.send('import_rolling_back', { error: errorMessage });
-      
+
       try {
         await restoreFromSnapshot(preImportSnapshot);
         Logger.log('✅ Automatic rollback successful - file restored to pre-import state');
-        Logger.send('import_rollback_complete', { 
-          error: errorMessage,
-          message: 'Import failed but your file has been automatically restored to its previous state.'
-        });
+        if (cancelled) {
+          figma.ui.postMessage({
+            type: 'operation_cancelled',
+            operation: 'import',
+            phase: 'rollback',
+            rolledBack: true,
+            message: 'Import cancelled — your file was restored to its previous state.'
+          });
+        } else {
+          Logger.send('import_rollback_complete', {
+            error: errorMessage,
+            message: 'Import failed but your file has been automatically restored to its previous state.'
+          });
+        }
       } catch (rollbackError) {
         const rollbackErrorMsg = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
         Logger.log(`❌ Rollback failed: ${rollbackErrorMsg}`);
-        Logger.send('import_rollback_failed', { 
+        Logger.send('import_rollback_failed', {
           error: errorMessage,
           rollbackError: rollbackErrorMsg,
           message: 'Import failed and automatic rollback also failed. Please use Ctrl+Z (Cmd+Z) to undo manually.'
@@ -3062,7 +3544,7 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
       }
     } else {
       // No snapshot available - just report the error
-      Logger.send('error', { 
+      Logger.send('error', {
         message: `Import failed: ${errorMessage}. Use Ctrl+Z (Cmd+Z) to undo changes.`
       });
     }
@@ -3161,43 +3643,76 @@ async function getCollections(): Promise<void> {
   let localAliases = 0;
   let libraryAliases = 0;
   
-  // Process sequentially to preserve exact order
+  // Memoize aliased-target collections so we never re-fetch the same collection
+  // once per alias. Maps variableCollectionId -> { name, remote }.
+  const aliasCollectionMemo = new Map<string, { name: string; remote: boolean }>();
+
+  // Process sequentially to preserve exact order. Per collection we prefetch the
+  // variable objects in async chunks (yielding between chunks) instead of a
+  // serial getVariableByIdAsync per id.
   const data = [];
   for (let index = 0; index < collections.length; index++) {
     const c = collections[index];
     const types = { color: 0, float: 0, boolean: 0, string: 0 };
     const variableNames: string[] = [];
 
-    for (const varId of c.variableIds) {
-      const variable = await figma.variables.getVariableByIdAsync(varId);
-      if (variable) {
-        variableNames.push(variable.name);
-        const typeStr = TypeMapper.toExportType(variable.resolvedType);
-        types[typeStr as keyof typeof types]++;
-        
-        // Check for aliases in all modes
-        for (const modeId of Object.keys(variable.valuesByMode)) {
-          const value = variable.valuesByMode[modeId];
-          if (typeof value === 'object' && value !== null && 'type' in value && value.type === 'VARIABLE_ALIAS') {
-            totalAliases++;
-            const aliasedVar = await figma.variables.getVariableByIdAsync(value.id);
-            if (aliasedVar) {
-              const aliasedCollection = await figma.variables.getVariableCollectionByIdAsync(aliasedVar.variableCollectionId);
-              if (aliasedCollection) {
-                // Check if it's from a remote/library collection
-                if (aliasedCollection.remote) {
-                  libraryDependencies.add(aliasedCollection.name);
-                  libraryAliases++;
-                } else {
-                  localAliases++;
-                }
-              }
-            }
-          }
+    // Batch-resolve all variables in this collection.
+    const variables = await runBatchedAsync(
+      c.variableIds,
+      BATCH.ASYNC_LOOKUP,
+      function (varId: string): Promise<Variable | null> {
+        return figma.variables.getVariableByIdAsync(varId);
+      }
+    );
+
+    // First pass over resolved variables: counts, names, and collect alias
+    // target ids for a second batched lookup.
+    const aliasTargetIds: string[] = [];
+    for (let vi = 0; vi < variables.length; vi++) {
+      const variable = variables[vi];
+      if (!variable) continue;
+      variableNames.push(variable.name);
+      const typeStr = TypeMapper.toExportType(variable.resolvedType);
+      types[typeStr as keyof typeof types]++;
+
+      const modeKeys = Object.keys(variable.valuesByMode);
+      for (let mk = 0; mk < modeKeys.length; mk++) {
+        const value = variable.valuesByMode[modeKeys[mk]];
+        if (typeof value === 'object' && value !== null && 'type' in value && value.type === 'VARIABLE_ALIAS') {
+          totalAliases++;
+          aliasTargetIds.push((value as VariableAlias).id);
         }
       }
     }
-    
+
+    // Batch-resolve the aliased variables, then deref each one's collection via
+    // the memo (single fetch per unseen collection id).
+    const aliasedVars = await runBatchedAsync(
+      aliasTargetIds,
+      BATCH.ASYNC_LOOKUP,
+      function (id: string): Promise<Variable | null> {
+        return figma.variables.getVariableByIdAsync(id);
+      }
+    );
+    for (let av = 0; av < aliasedVars.length; av++) {
+      const aliasedVar = aliasedVars[av];
+      if (!aliasedVar) continue;
+      const collId = aliasedVar.variableCollectionId;
+      let memo = aliasCollectionMemo.get(collId);
+      if (!memo) {
+        const aliasedCollection = await figma.variables.getVariableCollectionByIdAsync(collId);
+        if (!aliasedCollection) continue;
+        memo = { name: aliasedCollection.name, remote: aliasedCollection.remote };
+        aliasCollectionMemo.set(collId, memo);
+      }
+      if (memo.remote) {
+        libraryDependencies.add(memo.name);
+        libraryAliases++;
+      } else {
+        localAliases++;
+      }
+    }
+
     data.push({
       id: c.id,
       name: c.name,
@@ -3300,104 +3815,299 @@ async function getCollections(): Promise<void> {
 // SECTION 14: CLEAR FUNCTIONS
 // ============================================================================
 
-async function clearVariables(): Promise<void> {
+// silent: when true, suppress the user-facing clear_complete/error postMessages
+// (used by restore, where the clear is an internal step of a larger operation).
+async function clearVariables(silent: boolean = false): Promise<void> {
   Logger.log('🗑️ Clearing all variables...');
-  
+
+  // Progress only surfaces for standalone (non-silent) clears; internal callers
+  // (restore, clean import) drive their own progress reporters.
+  const progress = silent ? null : createProgress('clear');
+  let deletedCollections = 0;
+  let deletedVariables = 0;
+  let committed = false;
+
   try {
-    let deletedCollections = 0;
-    let deletedVariables = 0;
-    
-    for (const collection of await figma.variables.getLocalVariableCollectionsAsync()) {
-      for (const varId of collection.variableIds) {
-        const variable = await figma.variables.getVariableByIdAsync(varId);
-        if (variable) {
-          variable.remove();
-          deletedVariables++;
+    // Gather all collections + their variable ids up front so we have a grand
+    // total for determinate progress.
+    const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    const gathered: Array<{ collection: VariableCollection; ids: string[] }> = [];
+    let total = 0;
+    for (let i = 0; i < collections.length; i++) {
+      const ids = collections[i].variableIds;
+      gathered.push({ collection: collections[i], ids: ids });
+      total += ids.length;
+    }
+
+    // Standalone clears get a Figma undo checkpoint before the first deletion so
+    // a single Cmd+Z reverts the whole clear. Internal/silent clears participate
+    // in their caller's undo boundary instead.
+    if (!silent && total > 0) {
+      figma.commitUndo();
+      committed = true;
+    }
+
+    let done = 0;
+    for (let g = 0; g < gathered.length; g++) {
+      const entry = gathered[g];
+      // Resolve the variable objects for this collection in async chunks.
+      const resolved = await runBatchedAsync(
+        entry.ids,
+        BATCH.ASYNC_LOOKUP,
+        function (id: string): Promise<Variable | null> {
+          return figma.variables.getVariableByIdAsync(id);
         }
-      }
-      collection.remove();
+      );
+      // Remove the resolved variables in light synchronous batches.
+      await runBatched(
+        resolved,
+        BATCH.SYNC_LIGHT,
+        function (variable: Variable | null): void {
+          if (variable) {
+            variable.remove();
+            deletedVariables++;
+          }
+        },
+        function (batchDone: number): void {
+          if (progress) {
+            progress.report('clear', 'Deleting variables', done + batchDone, total);
+          }
+        }
+      );
+      done += entry.ids.length;
+      entry.collection.remove();
       deletedCollections++;
     }
-    
+
+    variableCache.clearLocal();
+
+    if (!silent && committed) {
+      figma.commitUndo();
+    }
+
     Logger.log(`✅ Cleared ${deletedCollections} collections, ${deletedVariables} variables`);
-    Logger.send('clear_complete', { message: `${deletedCollections} collections, ${deletedVariables} variables` });
+    if (!silent) {
+      Logger.send('clear_complete', { message: `${deletedCollections} collections, ${deletedVariables} variables` });
+    }
   } catch (e) {
+    // Internal/silent clears must rethrow cancellation so the caller's rollback
+    // path runs; only standalone clears translate it into a user message.
+    if (isCancelError(e)) {
+      if (silent) {
+        throw e;
+      }
+      Logger.log(`🛑 Clear cancelled after ${deletedVariables} variables in ${deletedCollections} collections`);
+      figma.ui.postMessage({
+        type: 'operation_cancelled',
+        operation: 'clear',
+        phase: 'clear',
+        rolledBack: false,
+        partial: { collectionsDeleted: deletedCollections, variablesDeleted: deletedVariables },
+        message: `Clear cancelled — ${deletedVariables} variables in ${deletedCollections} collections were already deleted. Remaining items were not touched. Use Cmd+Z to restore deleted items.`
+      });
+      return;
+    }
     Logger.log(`❌ Clear variables error: ${e}`);
-    Logger.send('error', { message: `Failed to clear variables: ${e}` });
+    if (!silent) {
+      Logger.send('error', { message: `Failed to clear variables: ${e}` });
+    } else {
+      throw e;
+    }
   }
 }
 
-async function clearStyles(): Promise<void> {
+async function clearStyles(silent: boolean = false): Promise<void> {
   Logger.log('🗑️ Clearing all styles...');
-  
+
+  const progress = silent ? null : createProgress('clear');
+  let deletedStyles = 0;
+  let committed = false;
+
   try {
-    let deletedStyles = 0;
-    
-    for (const style of await figma.getLocalPaintStylesAsync()) { style.remove(); deletedStyles++; }
-    for (const style of await figma.getLocalTextStylesAsync()) { style.remove(); deletedStyles++; }
-    for (const style of await figma.getLocalEffectStylesAsync()) { style.remove(); deletedStyles++; }
-    for (const style of await figma.getLocalGridStylesAsync()) { style.remove(); deletedStyles++; }
-    
+    const paintStyles = await figma.getLocalPaintStylesAsync();
+    const textStyles = await figma.getLocalTextStylesAsync();
+    const effectStyles = await figma.getLocalEffectStylesAsync();
+    const gridStyles = await figma.getLocalGridStylesAsync();
+    const total = paintStyles.length + textStyles.length + effectStyles.length + gridStyles.length;
+
+    if (!silent && total > 0) {
+      figma.commitUndo();
+      committed = true;
+    }
+
+    let done = 0;
+    const removeStyle = function (style: BaseStyle): void {
+      style.remove();
+      deletedStyles++;
+    };
+    const onBatch = function (batchDone: number): void {
+      if (progress) {
+        progress.report('clear', 'Deleting styles', done + batchDone, total);
+      }
+    };
+
+    await runBatched(paintStyles, BATCH.SYNC_LIGHT, removeStyle, onBatch);
+    done += paintStyles.length;
+    await runBatched(textStyles, BATCH.SYNC_LIGHT, removeStyle, onBatch);
+    done += textStyles.length;
+    await runBatched(effectStyles, BATCH.SYNC_LIGHT, removeStyle, onBatch);
+    done += effectStyles.length;
+    await runBatched(gridStyles, BATCH.SYNC_LIGHT, removeStyle, onBatch);
+    done += gridStyles.length;
+
+    if (!silent && committed) {
+      figma.commitUndo();
+    }
+
     Logger.log(`✅ Cleared ${deletedStyles} styles`);
-    Logger.send('clear_complete', { message: `${deletedStyles} styles` });
+    if (!silent) {
+      Logger.send('clear_complete', { message: `${deletedStyles} styles` });
+    }
   } catch (e) {
+    if (isCancelError(e)) {
+      if (silent) {
+        throw e;
+      }
+      Logger.log(`🛑 Clear styles cancelled after ${deletedStyles} styles`);
+      figma.ui.postMessage({
+        type: 'operation_cancelled',
+        operation: 'clear',
+        phase: 'clear',
+        rolledBack: false,
+        partial: { collectionsDeleted: 0, variablesDeleted: deletedStyles },
+        message: `Clear cancelled — ${deletedStyles} styles were already deleted. Remaining items were not touched. Use Cmd+Z to restore deleted items.`
+      });
+      return;
+    }
     Logger.log(`❌ Clear styles error: ${e}`);
-    Logger.send('error', { message: `Failed to clear styles: ${e}` });
+    if (!silent) {
+      Logger.send('error', { message: `Failed to clear styles: ${e}` });
+    } else {
+      throw e;
+    }
   }
 }
 
-async function clearAll(): Promise<void> {
+async function clearAll(silent: boolean = false): Promise<void> {
   Logger.log('🗑️ Clearing everything...');
-  
+
+  // Internal/silent callers: just delegate and let cancellation/errors bubble
+  // so the caller's rollback path runs. The children participate in the
+  // caller's own undo boundary (no per-child commitUndo).
+  if (silent) {
+    await clearVariables(true);
+    await clearStyles(true);
+    return;
+  }
+
+  // Standalone clearAll: bracket BOTH children in a single Figma undo unit and
+  // emit exactly ONE terminal message. The children run silent so they don't
+  // each open their own commitUndo boundary (which would split the operation
+  // into two separate Cmd+Z steps) and don't post their own clear_complete /
+  // operation_cancelled. Running silent also makes them rethrow CancelError, so
+  // a cancellation during the variables phase short-circuits before styles and
+  // produces a single operation_cancelled message instead of two.
+  let committed = false;
   try {
-    await clearVariables();
-    await clearStyles();
+    figma.commitUndo();
+    committed = true;
+    await clearVariables(true);
+    await clearStyles(true);
+    figma.commitUndo();
+    Logger.send('clear_complete', { message: 'all variables and styles' });
   } catch (e) {
+    if (committed) {
+      figma.commitUndo();
+    }
+    if (isCancelError(e)) {
+      Logger.log('🛑 Clear all cancelled');
+      figma.ui.postMessage({
+        type: 'operation_cancelled',
+        operation: 'clear',
+        phase: 'clear',
+        rolledBack: false,
+        partial: { collectionsDeleted: 0, variablesDeleted: 0 },
+        message: 'Clear cancelled — some items may already have been deleted. Use Cmd+Z to restore deleted items.'
+      });
+      return;
+    }
     Logger.log(`❌ Clear all error: ${e}`);
     Logger.send('error', { message: `Failed to clear: ${e}` });
   }
 }
 
-// Create a snapshot of current variables and styles for undo
-async function createUndoSnapshot(): Promise<UndoSnapshot> {
+// Create a snapshot of current variables and styles for undo. Read-only, so it
+// is cancellable. An optional progress reporter surfaces determinate progress.
+async function createUndoSnapshot(reporter?: ProgressReporter): Promise<UndoSnapshot> {
   Logger.log('📸 Creating snapshot of current file state...');
-  
+
   // Export all collections using simplified internal format
   const collections = await figma.variables.getLocalVariableCollectionsAsync();
   const snapshotCollections: unknown[] = [];
-  
+
+  // Memoize variableCollectionId -> collection name for alias dereferencing so
+  // we don't re-fetch the same collection once per alias.
+  const collectionNameById = new Map<string, string>();
+
+  // Grand total for determinate progress.
+  let totalVars = 0;
+  for (let tc = 0; tc < collections.length; tc++) {
+    totalVars += collections[tc].variableIds.length;
+  }
+  let processedVars = 0;
+
   for (const collection of collections) {
+    collectionNameById.set(collection.id, collection.name);
     const collectionSnapshot: Record<string, unknown> = {
       name: collection.name,
       modes: collection.modes.map(m => ({ id: m.modeId, name: m.name })),
       variables: [] as unknown[]
     };
-    
-    // Process variables
-    for (const variableId of collection.variableIds) {
-      const variable = await figma.variables.getVariableByIdAsync(variableId);
+
+    // Batch the per-variable async lookups instead of awaiting one at a time.
+    const resolvedVars = await runBatchedAsync(
+      collection.variableIds,
+      BATCH.ASYNC_LOOKUP,
+      function (variableId: string): Promise<Variable | null> {
+        return figma.variables.getVariableByIdAsync(variableId);
+      },
+      function (done: number): void {
+        if (reporter) {
+          reporter.report('snapshot', 'Preparing snapshot (undo safety)', processedVars + done, totalVars);
+        }
+      }
+    );
+    processedVars += collection.variableIds.length;
+
+    for (let rv = 0; rv < resolvedVars.length; rv++) {
+      const variable = resolvedVars[rv];
       if (!variable) continue;
-      
+
       const varSnapshot: Record<string, unknown> = {
         name: variable.name,
         type: variable.resolvedType,
         scopes: [...variable.scopes],
         values: {} as Record<string, unknown>
       };
-      
+
       for (const mode of collection.modes) {
         const value = variable.valuesByMode[mode.modeId];
-        
+
         if (typeof value === 'object' && value !== null && 'type' in value && value.type === 'VARIABLE_ALIAS') {
           // Handle alias
           const aliasId = (value as VariableAlias).id;
           const aliasVariable = await figma.variables.getVariableByIdAsync(aliasId);
           if (aliasVariable) {
-            const aliasCollection = await figma.variables.getVariableCollectionByIdAsync(aliasVariable.variableCollectionId);
+            let aliasCollectionName = collectionNameById.get(aliasVariable.variableCollectionId);
+            if (aliasCollectionName === undefined) {
+              const aliasCollection = await figma.variables.getVariableCollectionByIdAsync(aliasVariable.variableCollectionId);
+              aliasCollectionName = aliasCollection ? aliasCollection.name : '';
+              collectionNameById.set(aliasVariable.variableCollectionId, aliasCollectionName);
+            }
             (varSnapshot.values as Record<string, unknown>)[mode.name] = {
               isAlias: true,
               aliasName: aliasVariable.name,
-              aliasCollection: aliasCollection?.name || ''
+              aliasCollection: aliasCollectionName
             };
           }
         } else {
@@ -3416,13 +4126,13 @@ async function createUndoSnapshot(): Promise<UndoSnapshot> {
           }
         }
       }
-      
+
       (collectionSnapshot.variables as unknown[]).push(varSnapshot);
     }
-    
+
     snapshotCollections.push(collectionSnapshot);
   }
-  
+
   // Export all styles
   const stylesExport: StylesExport = {
     colorStyles: await ColorStyleProcessor.export({ includeImages: true }),
@@ -3430,10 +4140,10 @@ async function createUndoSnapshot(): Promise<UndoSnapshot> {
     effectStyles: await EffectStyleProcessor.export(),
     gridStyles: await GridStyleProcessor.export()
   };
-  
+
   const colorCount = stylesExport.colorStyles?.length || 0;
   Logger.log(`📸 Snapshot captured: ${collections.length} collections, ${colorCount} color styles`);
-  
+
   return {
     timestamp: Date.now(),
     collections: JSON.stringify(snapshotCollections),
@@ -3441,75 +4151,116 @@ async function createUndoSnapshot(): Promise<UndoSnapshot> {
   };
 }
 
-// Restore file state from a snapshot (undo)
+// Snapshot collection shape used by restore (kept in one place for validation).
+interface SnapshotCollection {
+  name: string;
+  modes: Array<{ id: string; name: string }>;
+  variables: Array<{
+    name: string;
+    type: VariableResolvedDataType;
+    scopes: string[];
+    values: Record<string, { isAlias: boolean; value?: unknown; aliasName?: string; aliasCollection?: string }>;
+  }>;
+}
+
+// Validate a parsed snapshot-collections payload before we touch the file. This
+// is what makes restore safe: we never clear the current state until we know the
+// snapshot parses and has the expected shape.
+function isValidSnapshotCollections(parsed: unknown): parsed is SnapshotCollection[] {
+  if (!Array.isArray(parsed)) return false;
+  for (let i = 0; i < parsed.length; i++) {
+    const c = parsed[i] as Record<string, unknown>;
+    if (c === null || typeof c !== 'object') return false;
+    if (typeof c.name !== 'string') return false;
+    if (!Array.isArray(c.modes)) return false;
+    if (!Array.isArray(c.variables)) return false;
+  }
+  return true;
+}
+
+// Restore file state from a snapshot (undo).
+//
+// CRITICAL ORDERING (fixes the prior data-loss bug where the file was cleared
+// before the snapshot was parsed): we PARSE + VALIDATE everything first, and
+// only after that passes do we mark the operation non-cancellable and clear.
 async function restoreFromSnapshot(snapshot: UndoSnapshot): Promise<void> {
   Logger.log('↩️ Restoring file from snapshot...');
-  
-  // Step 1: Clear everything
-  Logger.log('  Step 1: Clearing current state...');
-  await clearAll();
-  await variableCache.rebuild();
-  
-  // Step 2: Restore collections and variables
-  const snapshotCollections = JSON.parse(snapshot.collections) as Array<{
-    name: string;
-    modes: Array<{ id: string; name: string }>;
-    variables: Array<{
-      name: string;
-      type: VariableResolvedDataType;
-      scopes: string[];
-      values: Record<string, { isAlias: boolean; value?: unknown; aliasName?: string; aliasCollection?: string }>;
-    }>;
-  }>;
-  
-  Logger.log(`  Step 2: Restoring ${snapshotCollections.length} collections...`);
-  
-  // First pass: Create collections and variables with raw values
+
+  // Per-call progress reporter (phases: undo_restore, undo_aliases, undo_styles).
+  const restoreProgress = createProgress('restore');
+
+  // STEP 1 (read-only): parse + shape-check BEFORE any mutation.
+  const parsedCollections = JSON.parse(snapshot.collections);
+  const stylesData = JSON.parse(snapshot.styles) as StylesExport;
+  if (!isValidSnapshotCollections(parsedCollections)) {
+    throw new Error('Snapshot is malformed (collections payload failed validation) — refusing to clear the file.');
+  }
+  const snapshotCollections = parsedCollections;
+
+  // STEP 2: point of no return. The restore itself rebuilds the prior state, so
+  // a half-applied restore is worse than completing it — make it uncancellable.
+  currentOperation.cancellable = false;
+
+  // STEP 3: clear current state (silent — this is an internal step of restore).
+  // clearVariables already empties the local cache via clearLocal(); the restore
+  // pass below registers every collection/variable it creates, so no rescan needed.
+  Logger.log('  Clearing current state...');
+  await clearVariables(true);
+  await clearStyles(true);
+
+  Logger.log(`  Restoring ${snapshotCollections.length} collections...`);
+
+  // First pass: Create collections and variables with raw values (batched).
   const pendingAliases: Array<{
     variable: Variable;
     modeId: string;
     aliasPath: string;
     aliasCollection: string;
   }> = [];
-  
-  for (const collSnapshot of snapshotCollections) {
+
+  await runBatched(
+    snapshotCollections,
+    BATCH.SYNC_CREATE,
+    function (collSnapshot: SnapshotCollection): void {
     // Create collection
     const newCollection = figma.variables.createVariableCollection(collSnapshot.name);
-    
+    variableCache.setCollection(collSnapshot.name, newCollection);
+
     // Setup modes
     if (collSnapshot.modes.length > 0) {
       // Rename first mode
       newCollection.renameMode(newCollection.modes[0].modeId, collSnapshot.modes[0].name);
-      
+
       // Add additional modes
       for (let i = 1; i < collSnapshot.modes.length; i++) {
         newCollection.addMode(collSnapshot.modes[i].name);
       }
     }
-    
+
     // Get mode mapping
     const modeMap: Record<string, string> = {};
     for (const mode of newCollection.modes) {
       modeMap[mode.name] = mode.modeId;
     }
-    
+
     // Process variables
     for (const varSnapshot of collSnapshot.variables) {
       // Create variable - pass collection node, not ID (required for incremental mode)
       const newVar = figma.variables.createVariable(varSnapshot.name, newCollection, varSnapshot.type);
-      
+      variableCache.setVariable(`${collSnapshot.name}/${varSnapshot.name}`, newVar);
+
       // Set scopes if available
       if (varSnapshot.scopes && varSnapshot.scopes.length > 0) {
         newVar.scopes = varSnapshot.scopes as VariableScope[];
       }
-      
+
       // Set values for each mode
       for (const modeSnapshot of collSnapshot.modes) {
         const modeId = modeMap[modeSnapshot.name];
         const modeValue = varSnapshot.values[modeSnapshot.name];
-        
+
         if (!modeValue) continue;
-        
+
         if (modeValue.isAlias && modeValue.aliasName) {
           // Queue alias for second pass
           pendingAliases.push({
@@ -3521,36 +4272,46 @@ async function restoreFromSnapshot(snapshot: UndoSnapshot): Promise<void> {
         } else if (modeValue.value !== undefined) {
           // Set raw value
           let rawValue: VariableValue;
-          
+
           if (varSnapshot.type === 'COLOR' && typeof modeValue.value === 'string') {
             rawValue = ColorParser.parse(modeValue.value);
           } else {
             rawValue = modeValue.value as VariableValue;
           }
-          
+
           newVar.setValueForMode(modeId, rawValue);
         }
       }
     }
-  }
-  
-  // Second pass: Resolve aliases
-  Logger.log(`  Step 3: Resolving ${pendingAliases.length} aliases...`);
-  await variableCache.rebuild();
-  
-  for (const alias of pendingAliases) {
-    const targetKey = `${alias.aliasCollection}/${alias.aliasPath}`;
-    const targetVar = variableCache.getVariable(targetKey);
-    
-    if (targetVar) {
-      alias.variable.setValueForMode(alias.modeId, { type: 'VARIABLE_ALIAS', id: targetVar.id });
+    },
+    function (done: number, total: number): void {
+      restoreProgress.report('undo_restore', 'Restoring variables', done, total);
     }
-  }
-  
-  // Step 4: Restore styles
-  const stylesData = JSON.parse(snapshot.styles) as StylesExport;
-  Logger.log('  Step 4: Restoring styles...');
-  
+  );
+
+  // Second pass: Resolve aliases (batched, light). The first pass registered
+  // every created collection/variable into the cache, so no rescan is needed.
+  Logger.log(`  Resolving ${pendingAliases.length} aliases...`);
+
+  await runBatched(
+    pendingAliases,
+    BATCH.SYNC_LIGHT,
+    function (alias: { variable: Variable; modeId: string; aliasPath: string; aliasCollection: string }): void {
+      const targetKey = `${alias.aliasCollection}/${alias.aliasPath}`;
+      const targetVar = variableCache.getVariable(targetKey);
+      if (targetVar) {
+        alias.variable.setValueForMode(alias.modeId, { type: 'VARIABLE_ALIAS', id: targetVar.id });
+      }
+    },
+    function (done: number, total: number): void {
+      restoreProgress.report('undo_aliases', 'Restoring aliases', done, total);
+    }
+  );
+
+  // Restore styles
+  Logger.log('  Restoring styles...');
+  restoreProgress.report('undo_styles', 'Restoring styles', 0, 0, true);
+
   if (stylesData.colorStyles && stylesData.colorStyles.length > 0) {
     await ColorStyleProcessor.importStyles(stylesData.colorStyles, variableCache);
   }
@@ -3563,7 +4324,7 @@ async function restoreFromSnapshot(snapshot: UndoSnapshot): Promise<void> {
   if (stylesData.gridStyles && stylesData.gridStyles.length > 0) {
     await GridStyleProcessor.importStyles(stylesData.gridStyles, variableCache);
   }
-  
+
   Logger.log('✅ File restored from snapshot');
 }
 
@@ -3573,26 +4334,43 @@ async function restoreFromSnapshot(snapshot: UndoSnapshot): Promise<void> {
 
 figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
   switch (msg.type) {
-    case 'export':
-      await exportVariables(
-        msg.collections as string[] | undefined,
-        msg.styleOptions as StyleOptions | undefined,
-        msg.preserveLibraryRefs as boolean | undefined,
-        msg.includeImages as boolean | undefined,
-        (msg.namingConvention as NamingConvention) || 'original',
-        (msg.exportFormat as ExportFormatType) || 'figma',
-        msg.selectedModes as Record<string, string[]> | undefined,
-        (msg.resolveAliases as boolean) || false,
-        msg.selectedGroups as Record<string, string[]> | undefined,
-        msg.selectedStyleGroups as SelectedStyleGroups | undefined
-      );
+    case 'cancel_operation':
+      // Synchronous cancel request. Only flips a flag the running operation polls
+      // between batches; the uncancellable rollback window ignores it.
+      if (currentOperation.type !== null) {
+        if (currentOperation.cancellable) {
+          currentOperation.cancelRequested = true;
+          Logger.log('🛑 Cancellation requested — finishing current batch…');
+        } else {
+          Logger.log('⚠️ Rollback in progress — cannot cancel');
+        }
+      }
       break;
-      
+
+    case 'export':
+      await withOperation('export', function (): Promise<void> {
+        return exportVariables(
+          msg.collections as string[] | undefined,
+          msg.styleOptions as StyleOptions | undefined,
+          msg.preserveLibraryRefs as boolean | undefined,
+          msg.includeImages as boolean | undefined,
+          (msg.namingConvention as NamingConvention) || 'original',
+          (msg.exportFormat as ExportFormatType) || 'figma',
+          msg.selectedModes as Record<string, string[]> | undefined,
+          (msg.resolveAliases as boolean) || false,
+          msg.selectedGroups as Record<string, string[]> | undefined,
+          msg.selectedStyleGroups as SelectedStyleGroups | undefined
+        );
+      });
+      break;
+
     case 'import':
-      await importVariables(
-        msg.data as string,
-        msg.options as ImportOptions
-      );
+      await withOperation('import', function (): Promise<void> {
+        return importVariables(
+          msg.data as string,
+          msg.options as ImportOptions
+        );
+      });
       break;
       
     case 'validate_import':
@@ -3630,19 +4408,25 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
       break;
       
     case 'clear_variables':
-      await clearVariables();
+      await withOperation('clear', function (): Promise<void> {
+        return clearVariables(false);
+      });
       break;
-      
+
     case 'clear_styles':
-      await clearStyles();
+      await withOperation('clear', function (): Promise<void> {
+        return clearStyles(false);
+      });
       break;
-      
+
     case 'clear_all':
-      await clearAll();
+      await withOperation('clear', function (): Promise<void> {
+        return clearAll(false);
+      });
       break;
-      
+
     case 'get_collections':
-      await getCollections();
+      await withOperation('scan', getCollections);
       break;
 
     case 'check_libraries':
@@ -3695,17 +4479,31 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
         const requiredFonts = msg.fonts as Array<{ family: string; style: string }>;
         const availableFonts: Array<{ family: string; style: string }> = [];
         const missingFonts: Array<{ family: string; style: string }> = [];
-        
-        // Check each font by attempting to load it
-        for (const font of requiredFonts) {
-          try {
-            await figma.loadFontAsync({ family: font.family, style: font.style });
-            availableFonts.push(font);
-          } catch {
-            missingFonts.push(font);
+
+        // Probe fonts in async chunks (no progress UI, no operation lock). Each
+        // probe resolves to {font, available} and never rejects, so a single
+        // unavailable font does not abort the whole batch.
+        const probes = await runBatchedAsync(
+          requiredFonts,
+          BATCH.ASYNC_FONT,
+          function (font: { family: string; style: string }): Promise<{ font: { family: string; style: string }; available: boolean }> {
+            return figma.loadFontAsync({ family: font.family, style: font.style })
+              .then(function (): { font: { family: string; style: string }; available: boolean } {
+                return { font: font, available: true };
+              })
+              .catch(function (): { font: { family: string; style: string }; available: boolean } {
+                return { font: font, available: false };
+              });
+          }
+        );
+        for (let i = 0; i < probes.length; i++) {
+          if (probes[i].available) {
+            availableFonts.push(probes[i].font);
+          } else {
+            missingFonts.push(probes[i].font);
           }
         }
-        
+
         Logger.send('font_check_result', {
           allAvailable: missingFonts.length === 0,
           availableFonts,
@@ -3723,31 +4521,20 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
       }
       break;
     
-    case 'create_undo_snapshot':
-      // Create a snapshot of current variables and styles for undo capability
-      try {
-        Logger.log('📸 Creating undo snapshot...');
-        const snapshot = await createUndoSnapshot();
-        Logger.send('snapshot_created', { snapshot });
-        Logger.log('✅ Undo snapshot created successfully');
-      } catch (e) {
-        Logger.log(`❌ Failed to create snapshot: ${e instanceof Error ? e.message : 'Unknown error'}`);
-        Logger.send('snapshot_error', { error: e instanceof Error ? e.message : 'Failed to create snapshot' });
-      }
-      break;
-    
     case 'undo_import':
       // Restore file to pre-import state using snapshot
-      try {
-        Logger.log('↩️ Undoing import using snapshot...');
-        const snapshotData = msg.snapshot as UndoSnapshot;
-        await restoreFromSnapshot(snapshotData);
-        Logger.send('undo_complete', {});
-        Logger.log('✅ Import undone successfully');
-      } catch (e) {
-        Logger.log(`❌ Undo failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-        Logger.send('undo_error', { error: e instanceof Error ? e.message : 'Undo failed' });
-      }
+      await withOperation('undo', async function (): Promise<void> {
+        try {
+          Logger.log('↩️ Undoing import using snapshot...');
+          const snapshotData = msg.snapshot as UndoSnapshot;
+          await restoreFromSnapshot(snapshotData);
+          Logger.send('undo_complete', {});
+          Logger.log('✅ Import undone successfully');
+        } catch (e) {
+          Logger.log(`❌ Undo failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+          Logger.send('undo_error', { error: e instanceof Error ? e.message : 'Undo failed' });
+        }
+      });
       break;
   }
 };
