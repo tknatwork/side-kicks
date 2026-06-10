@@ -3114,6 +3114,129 @@
       color: var(--color-text-secondary);
       text-align: center;
     }
+
+    /* ==========================================================================
+       SIMPLE MODE — 3-column group-selection layout (foundations).
+       Visible only when body lacks .advanced-mode; Advanced columns untouched.
+       The .simple-layout container must stay the LAST child of each tab panel
+       (the legacy .column:nth-child width rules are position-dependent).
+       ========================================================================== */
+    :root {
+      --simple-col1-width: 378px;
+      --simple-col2-width: 379px;
+      --simple-col3-width: 379px;
+    }
+
+    .simple-layout {
+      display: none;
+      width: 100%;
+      gap: var(--column-gap);
+    }
+
+    body:not(.advanced-mode) .simple-layout {
+      display: flex;
+    }
+
+    body:not(.advanced-mode) .tab-panel > .column {
+      display: none;
+    }
+
+    .simple-layout > .column:nth-child(1) { width: var(--simple-col1-width); }
+    .simple-layout > .column:nth-child(2) { width: var(--simple-col2-width); }
+    .simple-layout > .column:nth-child(3) { width: var(--simple-col3-width); }
+
+    /* Expandable group tree (collections / styles). Scrollbar styling comes from
+       the shared .scrollable utility applied in markup. */
+    .simple-group-list {
+      background: var(--color-bg);
+      border: var(--border-width) solid var(--color-border);
+      border-radius: var(--border-radius);
+      overflow-y: auto;
+      flex: 1;
+      min-height: 120px;
+    }
+
+    .simple-parent-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--color-bg-tertiary);
+      cursor: pointer;
+    }
+
+    .simple-parent-row:hover {
+      background: var(--color-bg-secondary);
+    }
+
+    .simple-chevron {
+      width: 14px;
+      flex-shrink: 0;
+      font-size: 10px;
+      user-select: none;
+    }
+
+    .simple-group-rows {
+      padding-left: 28px;
+      border-bottom: 1px solid var(--color-bg-tertiary);
+    }
+
+    .simple-group-rows[hidden] {
+      display: none;
+    }
+
+    .simple-group-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px 4px 0;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .simple-group-row input[type="checkbox"] {
+      width: 14px;
+      height: 14px;
+      flex-shrink: 0;
+    }
+
+    .simple-group-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .simple-group-name.is-ungrouped {
+      color: var(--color-text-secondary);
+      font-style: italic;
+    }
+
+    .simple-actions-row {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .simple-log-slot {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .simple-progress-area {
+      flex-shrink: 0;
+    }
+
+    .simple-fill-card {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
   </style>
 </head>
 <body>
@@ -3438,7 +3561,70 @@
           </div>
         </div>
       </div>
-      
+
+      <!-- ===== SIMPLE MODE LAYOUT (must stay LAST child of the tab panel) ===== -->
+      <div class="simple-layout" id="export-simple-layout">
+
+        <!-- Simple Column 1: Variables -->
+        <div class="column" id="simple-export-vars-column">
+          <div class="column-header">
+            <span class="column-title">🗂️ Variables</span>
+            <button class="btn btn-small btn-icon" id="simple-export-refresh-btn" title="Refresh">🔄</button>
+          </div>
+          <div class="column-body" style="display: flex; flex-direction: column;">
+            <div class="section-card section-card-yellow simple-fill-card">
+              <div class="section-card-header">
+                <span>Variables Collections</span>
+              </div>
+              <div class="section-card-actions">
+                <button class="btn btn-secondary btn-small" data-action="vars-select-all">✅ Select All</button>
+                <button class="btn btn-secondary btn-small" data-action="vars-select-none">✕ None</button>
+              </div>
+              <div class="simple-group-list scrollable" id="simple-export-variables-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Simple Column 2: Styles -->
+        <div class="column" id="simple-export-styles-column">
+          <div class="column-header">
+            <span class="column-title">🎨 Styles</span>
+          </div>
+          <div class="column-body" style="display: flex; flex-direction: column;">
+            <div class="section-card section-card-yellow simple-fill-card">
+              <div class="section-card-header">
+                <span>Styles</span>
+              </div>
+              <div class="section-card-actions">
+                <button class="btn btn-secondary btn-small" data-action="styles-select-all">✅ Select All</button>
+                <button class="btn btn-secondary btn-small" data-action="styles-select-none">✕ None</button>
+              </div>
+              <div class="simple-group-list scrollable" id="simple-export-styles-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Simple Column 3: Activity Log + actions -->
+        <div class="column" id="simple-export-log-column">
+          <div class="column-header">
+            <span class="column-title">📁 Activity Log</span>
+            <div class="column-actions">
+              <button class="btn btn-small btn-secondary" id="simple-export-copylog-btn">📋 Copy</button>
+              <button class="btn btn-small btn-secondary" id="simple-export-clearlog-btn">🗑️ Clear</button>
+            </div>
+          </div>
+          <div class="column-body" style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="simple-progress-area hidden" id="progress-host-export-simple" data-progress-host></div>
+            <div class="simple-log-slot" id="simple-export-log-slot"></div>
+            <div class="simple-actions-row">
+              <button class="btn btn-export btn-full" id="simple-export-btn">↗️ Export</button>
+              <button class="btn btn-secondary btn-full" id="simple-copy-json-btn">📋 Copy JSON</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
     </div>
 
     <!-- ========== IMPORT TAB ========== -->
@@ -3895,7 +4081,74 @@
           </div>
         </div>
       </div>
-      
+
+      <!-- ===== SIMPLE MODE LAYOUT (must stay LAST child of the tab panel) ===== -->
+      <div class="simple-layout" id="import-simple-layout">
+
+        <!-- Simple Column 1: Load JSON -->
+        <div class="column" id="simple-import-input-column">
+          <div class="column-header">
+            <span class="column-title">📥 Load JSON</span>
+          </div>
+          <div class="column-body" style="display: flex; flex-direction: column;">
+            <div class="section-card section-card-yellow simple-fill-card">
+              <div class="section-card-header">
+                <span>Load JSON Data</span>
+              </div>
+              <div class="section-card-actions">
+                <button class="btn btn-secondary btn-small" id="simple-import-clear-btn">🗑️ Clear</button>
+                <button class="btn btn-secondary btn-small" id="simple-import-upload-btn">📂 Upload</button>
+              </div>
+              <textarea id="simple-import-input" class="form-textarea" placeholder="Paste JSON data (Ctrl/Cmd+V) or upload a JSON file..." style="min-height: 140px; flex: 1;"></textarea>
+              <!-- File loaded indicator -->
+              <div id="simple-import-file-loaded" class="loaded-file-indicator hidden" style="margin-top: 8px;">
+                <span class="file-icon">📄</span>
+                <span class="file-name" id="simple-import-file-name"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Simple Column 2: Import Contents -->
+        <div class="column" id="simple-import-contents-column">
+          <div class="column-header">
+            <span class="column-title">🧩 Import Contents</span>
+          </div>
+          <div class="column-body" style="display: flex; flex-direction: column;">
+            <div class="section-card section-card-yellow simple-fill-card">
+              <div class="section-card-header">
+                <span>Import Contents</span>
+              </div>
+              <div class="section-card-actions">
+                <button class="btn btn-secondary btn-small" data-action="import-select-all">✅ Select All</button>
+                <button class="btn btn-secondary btn-small" data-action="import-select-none">✕ None</button>
+              </div>
+              <div class="simple-group-list scrollable" id="simple-import-list"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Simple Column 3: Activity Log + actions -->
+        <div class="column" id="simple-import-log-column">
+          <div class="column-header">
+            <span class="column-title">📁 Activity Log</span>
+            <div class="column-actions">
+              <button class="btn btn-small btn-secondary" id="simple-import-copylog-btn">📋 Copy</button>
+              <button class="btn btn-small btn-secondary" id="simple-import-clearlog-btn">🗑️ Clear</button>
+            </div>
+          </div>
+          <div class="column-body" style="display: flex; flex-direction: column; gap: 8px;">
+            <div class="simple-progress-area hidden" id="progress-host-import-simple" data-progress-host></div>
+            <div class="simple-log-slot" id="simple-import-log-slot"></div>
+            <div class="simple-actions-row">
+              <button class="btn btn-import btn-full" id="simple-import-btn" disabled>📥 Import</button>
+              <div id="simple-import-undo-slot"></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
     </div>
   </main>
 
@@ -3957,10 +4210,34 @@
       : (cb) => setTimeout(cb, 1);
     
     // Cancel idle callback
-    const cancelIdle = window.cancelIdleCallback 
+    const cancelIdle = window.cancelIdleCallback
       ? (id) => window.cancelIdleCallback(id)
       : (id) => clearTimeout(id);
-    
+
+    // ========== SIMPLE-MODE SHARED HELPERS ==========
+    // Escape any interpolated value before inserting into HTML (XSS-safe rendering)
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, function (ch) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+      });
+    }
+
+    // Group key = substring before first '/' in the item name; '' = ungrouped
+    function getGroupKeyUI(name) {
+      const idx = String(name).indexOf('/');
+      return idx === -1 ? '' : String(name).substring(0, idx);
+    }
+
+    const UNGROUPED_LABEL = '(ungrouped)';
+
+    // Style type registry for Simple-mode group lists
+    const STYLE_TYPES = [
+      { type: 'color', label: '🎨 Colour Styles', exportKey: 'colorStyles' },
+      { type: 'text', label: '✏️ Text Styles', exportKey: 'textStyles' },
+      { type: 'effect', label: '✨ Effect Styles', exportKey: 'effectStyles' },
+      { type: 'grid', label: '📐 Layout Guides', exportKey: 'gridStyles' }
+    ];
+
     // ========== WEB WORKER FOR JSON PARSING ==========
     // Create inline Web Worker for heavy JSON operations (parsing & stringifying)
     const jsonWorkerBlob = new Blob([`
@@ -4228,6 +4505,12 @@
       if (fileLoadedIndicator) {
         fileLoadedIndicator.classList.add('hidden');
       }
+
+      // Simple mode: keep the mirrored indicator in sync (stage 3 wiring)
+      const simpleFileLoadedIndicator = document.getElementById('simple-import-file-loaded');
+      if (simpleFileLoadedIndicator) {
+        simpleFileLoadedIndicator.classList.add('hidden');
+      }
       
       // Hide the import result preview section
       const resultPreview = document.getElementById('import-result-preview-section');
@@ -4314,6 +4597,10 @@
       parsedImportCollections = [];
       parsedImportStyles = null;
       selectedImportCollections.clear();
+
+      // Simple mode: clear mirrored input + group selection (stage 3 wiring)
+      clearSimpleImportInputUi();
+      clearSimpleImportSelectionState();
       
       // Reset import images option
       const importImagesOption = document.getElementById('import-images-option');
@@ -4686,6 +4973,7 @@
 
     // Update import style selection state
     function updateImportStyleSelection() {
+      syncSimpleImportStyleGroupsFromAdvanced(); // write-through (simple mode)
       updateImportButtonState();
       updateImportPreviewStats();
     }
@@ -5018,6 +5306,20 @@
     let fontStatus = null; // { allAvailable, availableFonts, missingFonts }
     let importPreviewReviewed = false; // Must review import preview before importing
     let lastImportSnapshot = null; // Snapshot of file state before import for undo
+
+    // ===== Simple-mode group-level selection =====
+    // selectedExportCollections / selectedImportCollections become PROJECTIONS of
+    // these maps: a collection is in the set iff its group Set is non-empty.
+    let selectedExportGroups = new Map(); // collectionName -> Set(groupKey)
+    let selectedExportStyleGroups = { color: new Set(), text: new Set(), effect: new Set(), grid: new Set() };
+    let stylesGroupsInfo = { color: [], text: [], effect: [], grid: [] }; // GroupSummary[] from backend
+    let selectedImportGroups = new Map(); // collectionName -> Set(groupKey)
+    let selectedImportStyleGroups = { color: new Set(), text: new Set(), effect: new Set(), grid: new Set() };
+    let importGroupsIndex = new Map(); // collectionName -> GroupSummary[] (computed UI-side)
+    let importStyleGroupsIndex = { color: [], text: [], effect: [], grid: [] };
+    let expandedSimpleExport = new Set(); // keys 'col:<name>' / 'style:<type>'
+    let expandedSimpleImport = new Set();
+    let simpleExportPendingAction = null; // 'download' | 'copy' | null
 
     // Plan limits (mirror of backend constants)
     const PLAN_LIMITS = {
@@ -6028,6 +6330,9 @@
           if (exportLibraryOption && window.detectedLibraryDeps?.length > 0) {
             exportLibraryOption.classList.remove('hidden');
           }
+          // Simple -> Advanced: restore shared nodes + project Simple state into Advanced DOM (stage 3 wiring)
+          moveSharedNodesForMode(true);
+          syncAdvancedDomFromSimpleState();
         } else {
           document.body.classList.remove('advanced-mode');
           // Hide library refs option in simple mode
@@ -6035,6 +6340,15 @@
           if (exportLibraryOption) {
             exportLibraryOption.classList.add('hidden');
           }
+          // Advanced -> Simple: adopt shared nodes + rebuild group state from Advanced DOM (stage 3 wiring)
+          moveSharedNodesForMode(false);
+          rebuildSimpleStateFromAdvanced();
+          const si = document.getElementById('simple-import-input');
+          const ai = document.getElementById('import-input');
+          if (si && ai) si.value = ai.value;
+          renderSimpleExportVariables();
+          renderSimpleExportStyles();
+          renderSimpleImportContents();
         }
         // Re-render import collections if on selection face
         const selectionFace = document.getElementById('import-selection-face');
@@ -6245,6 +6559,17 @@
           }
           
           updateStatusCheckVisibility();
+
+          // Simple mode: seed group-level selection + render (stage 3 wiring)
+          stylesGroupsInfo = msg.data.styleGroups || { color: [], text: [], effect: [], grid: [] };
+          initSimpleExportSelectionFromCollections();
+          // Seed the Simple style state from the checkboxes updateStyleCheckboxLabels()
+          // just auto-checked, so the pre-existing Advanced default (styles included
+          // when counts > 0) is preserved; reconcile then drops stale group keys.
+          syncSimpleExportStyleGroupsFromAdvanced();
+          reconcileSimpleStyleSelection();
+          renderSimpleExportVariables();
+          renderSimpleExportStyles();
           break;
 
         case 'export_complete':
@@ -6295,6 +6620,18 @@
             fontBanner.classList.add('hidden');
             updateStatusCheckVisibility();
           }
+
+          // Simple mode: complete the pending one-click action (stage 3 wiring)
+          if (simpleExportPendingAction) {
+            const simpleExportAct = simpleExportPendingAction;
+            simpleExportPendingAction = null;
+            setSimpleExportButtonsDisabled(false);
+            if (simpleExportAct === 'copy') {
+              copyExport();
+            } else {
+              downloadExport();
+            }
+          }
           break;
         case 'import_complete':
           const s = msg.data.stats;
@@ -6309,6 +6646,9 @@
           loadCollections();
           document.getElementById('import-input').value = '';
           document.getElementById('file-input').value = ''; // Reset file input for re-selection
+          // Simple mode: keep the mirrored textarea in sync (stage 3 wiring)
+          const simpleImportInputAfterDone = document.getElementById('simple-import-input');
+          if (simpleImportInputAfterDone) simpleImportInputAfterDone.value = '';
           const importBtnComplete = document.getElementById('import-btn');
           importBtnComplete.disabled = true;
           importBtnComplete.textContent = '📥 Import Selected'; // Reset button text
@@ -6344,6 +6684,12 @@
               clearBtnFlash.classList.remove('btn-flash-attention');
             }, 2500);
           }
+
+          // Simple mode: the input was consumed, so clear the Simple selection
+          // state + contents list, leaving the Import button disabled — mirrors
+          // Advanced, which disables #import-btn above (stage 3 wiring)
+          resetSimpleImportButton();
+          clearSimpleImportSelectionState();
           break;
         case 'snapshot_created':
           // Snapshot created, now proceed with actual import
@@ -6402,6 +6748,9 @@
           importBtnRollback.disabled = false;
           importBtnRollback.textContent = '📥 Import Selected'; // Reset button text
           loadCollections();
+          // Simple mode: re-enable the Simple import button (stage 3 wiring)
+          resetSimpleImportButton();
+          updateSimpleImportButtonState();
           break;
         case 'import_rollback_failed':
           // Automatic rollback failed
@@ -6411,6 +6760,9 @@
           const importBtnFailed = document.getElementById('import-btn');
           importBtnFailed.disabled = false;
           importBtnFailed.textContent = '📥 Import Selected'; // Reset button text
+          // Simple mode: re-enable the Simple import button (stage 3 wiring)
+          resetSimpleImportButton();
+          updateSimpleImportButtonState();
           break;
         case 'clear_complete':
           addLog(`✅ Cleared: ${msg.data.message}`, 'success');
@@ -6465,6 +6817,10 @@
           break;
         case 'error':
           addLog('❌ ' + msg.data.message, 'error');
+          // Simple mode: release the action buttons on backend failure (stage 3 wiring)
+          simpleExportPendingAction = null;
+          setSimpleExportButtonsDisabled(false);
+          resetSimpleImportButton();
           break;
       }
     };
@@ -6688,6 +7044,7 @@
       if (stylesInfo.colorStyles > 0) document.getElementById('export-color-styles').checked = select;
       if (stylesInfo.effectStyles > 0) document.getElementById('export-effect-styles').checked = select;
       if (stylesInfo.gridStyles > 0) document.getElementById('export-grid-styles').checked = select;
+      syncSimpleExportStyleGroupsFromAdvanced(); // write-through (simple mode; programmatic .checked fires no change event)
       updateExportPreview();
     }
 
@@ -6712,6 +7069,8 @@
       } else {
         selectedExportCollections.delete(name);
       }
+      setSelectedGroupsForCollection(name, selected); // write-through (simple mode)
+      renderSimpleExportVariables(); // write-through (simple mode)
       updateExportPreview();
     }
 
@@ -6727,6 +7086,8 @@
           }
         }
       });
+      collections.forEach(c => setSelectedGroupsForCollection(c.name, select)); // write-through (simple mode)
+      renderSimpleExportVariables(); // write-through (simple mode)
       updateExportPreview();
     }
 
@@ -6953,12 +7314,20 @@
         return;
       }
       
-      const styleOptions = {
-        colorStyles: document.getElementById('export-color-styles').checked,
-        textStyles: document.getElementById('export-text-styles').checked,
-        effectStyles: document.getElementById('export-effect-styles').checked,
-        gridStyles: document.getElementById('export-grid-styles').checked
-      };
+      // Advanced: read the style checkboxes; Simple: derive from group-level state
+      const styleOptions = isAdvancedMode()
+        ? {
+            colorStyles: document.getElementById('export-color-styles').checked,
+            textStyles: document.getElementById('export-text-styles').checked,
+            effectStyles: document.getElementById('export-effect-styles').checked,
+            gridStyles: document.getElementById('export-grid-styles').checked
+          }
+        : {
+            colorStyles: selectedExportStyleGroups.color.size > 0,
+            textStyles: selectedExportStyleGroups.text.size > 0,
+            effectStyles: selectedExportStyleGroups.effect.size > 0,
+            gridStyles: selectedExportStyleGroups.grid.size > 0
+          };
       
       // In Simple mode, always include images when color styles are selected
       // In Advanced mode, use the checkbox value
@@ -6991,7 +7360,15 @@
           }
         });
       }
-      
+
+      // Simple mode: group-level payloads (null = no partial selections to send)
+      let selectedGroupsPayload = null;
+      let selectedStyleGroupsPayload = null;
+      if (!isAdvancedMode()) {
+        selectedGroupsPayload = buildSelectedGroupsPayload();
+        selectedStyleGroupsPayload = buildSelectedStyleGroupsPayload();
+      }
+
       if (includeImages) {
         addLog(`📤 Exporting ${selectedExportCollections.size} collections with image data...`);
       } else {
@@ -7024,8 +7401,10 @@
           namingConvention: namingConvention,
           exportFormat: exportFormat,
           selectedModes: selectedModesMap,
-          resolveAliases: resolveAliases
-        } 
+          resolveAliases: resolveAliases,
+          selectedGroups: selectedGroupsPayload,
+          selectedStyleGroups: selectedStyleGroupsPayload
+        }
       }, '*');
     }
     
@@ -7124,6 +7503,9 @@
       document.getElementById('validation-results').innerHTML = '';
       const clearBtn = document.getElementById('import-clear-btn');
       if (clearBtn) clearBtn.disabled = true;
+
+      // Simple mode: emptied input -> drop stale group selection/index (stage 3 wiring)
+      clearSimpleImportSelectionState();
     }
     
     async function parseImportPreviewAsync() {
@@ -7491,6 +7873,11 @@
         // Also detect Figma file plan from existing collections
         parent.postMessage({ pluginMessage: { type: 'detect_plan' } }, '*');
 
+        // Simple mode: rebuild group index + default-select everything (stage 3 wiring)
+        computeImportGroupsIndex();
+        initSimpleImportSelectionAll();
+        renderSimpleImportContents();
+
       } catch (e) {
         // Hide skeletons on error
         if (statusSkeleton) statusSkeleton.classList.add('hidden');
@@ -7512,6 +7899,12 @@
         if (statusEl) statusEl.textContent = '❌ Invalid JSON format';
         importData = null;
         addLog('❌ Invalid JSON: ' + e.message, 'error', 'import');
+
+        // Simple mode: drop stale group selection/index (stage 3 wiring).
+        // The textarea mirror is intentionally NOT cleared here: #import-input
+        // keeps its content on parse failure (mid-edit JSON), so the Simple
+        // textarea must keep it too or live typing would be wiped.
+        clearSimpleImportSelectionState();
       }
     }
 
@@ -7675,6 +8068,8 @@
       } else {
         selectedImportCollections.delete(name);
       }
+      setSelectedImportGroupsForCollection(name, selected); // write-through (simple mode)
+      renderSimpleImportContents(); // write-through (simple mode)
       updateImportStatus();
       
       // Update preview stats to reflect selection change
@@ -7704,6 +8099,11 @@
           }
         }
       });
+      importData.forEach(colObj => { // write-through (simple mode)
+        const colName = Object.keys(colObj)[0];
+        if (colName && colName !== '_styles') setSelectedImportGroupsForCollection(colName, select);
+      });
+      renderSimpleImportContents(); // write-through (simple mode)
       updateImportStatus();
       
       // Update preview stats to reflect selection change
@@ -7769,7 +8169,12 @@
         const colName = Object.keys(colObj)[0];
         return colName === '_styles' || selectedImportCollections.has(colName);
       });
-      
+
+      // Simple mode: prune the payload down to the group-level selection (stage 3 wiring)
+      if (!isAdvancedMode()) {
+        filteredData = pruneImportDataForSimpleSelection(filteredData);
+      }
+
       // If mode selection is active, filter modes in each collection
       const planInfo = PLAN_LIMITS[selectedPlan];
       if (Object.keys(selectedModes).length > 0 && planInfo.maxModes !== Infinity) {
@@ -7799,9 +8204,16 @@
         addLog(`📥 Importing ${selectedImportCollections.size} collections...`);
       }
       
-      // Remove styles if none selected in the styles section
-      const styleCheckboxes = document.querySelectorAll('#import-styles-options input[type="checkbox"]:checked');
-      const includeStyles = styleCheckboxes.length > 0;
+      // Remove styles if none selected in the styles section.
+      // Advanced: read the selection-face checkboxes (populated by proceedToImportSelection).
+      // Simple: that face never runs, so derive from the group-level state instead.
+      let includeStyles;
+      if (isAdvancedMode()) {
+        const styleCheckboxes = document.querySelectorAll('#import-styles-options input[type="checkbox"]:checked');
+        includeStyles = styleCheckboxes.length > 0;
+      } else {
+        includeStyles = STYLE_TYPES.some(st => selectedImportStyleGroups[st.type].size > 0);
+      }
       let finalData = includeStyles ? filteredData : filteredData.filter(item => Object.keys(item)[0] !== '_styles');
       
       // Check if images should be included:
@@ -7893,7 +8305,62 @@
         return { '_styles': strippedStyles };
       });
     }
-    
+
+    // Simple mode: prune the (already collection-filtered) import payload down to
+    // the group-level selection. Builds NEW container objects only — leaf values
+    // keep referencing the original parsed data, which is never mutated.
+    function pruneImportDataForSimpleSelection(data) {
+      return data.map(colObj => {
+        const colName = Object.keys(colObj)[0];
+
+        if (colName === '_styles') {
+          const stylesData = colObj['_styles'];
+          if (!stylesData) return colObj;
+          // Deep clone (matches stripImageDataFromStyles' clone strategy)
+          let cloned;
+          if (typeof structuredClone === 'function') {
+            cloned = structuredClone(stylesData);
+          } else {
+            cloned = JSON.parse(JSON.stringify(stylesData));
+          }
+          STYLE_TYPES.forEach(st => {
+            if (!Array.isArray(cloned[st.exportKey])) return;
+            const sel = selectedImportStyleGroups[st.type];
+            cloned[st.exportKey] = cloned[st.exportKey].filter(s => sel.has(getGroupKeyUI((s && s.name) || '')));
+            if (cloned[st.exportKey].length === 0) delete cloned[st.exportKey];
+          });
+          // Drop the whole entry when nothing survives
+          if (Object.keys(cloned).length === 0) return null;
+          return { '_styles': cloned };
+        }
+
+        const sel = selectedImportGroups.get(colName);
+        if (!sel) return colObj; // no group entry -> collection passes through unchanged
+
+        const colData = colObj[colName] || {};
+        const newCol = {};
+        if ('$originalName' in colData) newCol.$originalName = colData.$originalName;
+        const newModes = {};
+        const modesObj = colData.modes || {};
+        Object.keys(modesObj).forEach(modeName => {
+          const modeVars = modesObj[modeName];
+          const newMode = {};
+          if (modeVars && typeof modeVars === 'object') {
+            Object.keys(modeVars).forEach(k => {
+              const v = modeVars[k];
+              // Leaf test matches flattenObject/computeImportGroupsIndex:
+              // top-level leaves live under the '' (ungrouped) key
+              const isLeaf = v && typeof v === 'object' && ('$value' in v || '$type' in v || '$alias' in v);
+              if (sel.has(isLeaf ? '' : k)) newMode[k] = v;
+            });
+          }
+          newModes[modeName] = newMode;
+        });
+        newCol.modes = newModes;
+        return { [colName]: newCol };
+      }).filter(entry => entry !== null);
+    }
+
     function detectLibraryRefsInImportData(data) {
       const libraryRefs = new Set();
       
@@ -8082,10 +8549,898 @@
           fileNameSpan.textContent = file.name;
           fileIndicator.classList.remove('hidden');
         }
-        
+
+        // Simple mode: mirror the loaded file into the Simple input + indicator (stage 3 wiring)
+        const simpleInputMirror = document.getElementById('simple-import-input');
+        if (simpleInputMirror) simpleInputMirror.value = e.target.result;
+        const simpleFileIndicator = document.getElementById('simple-import-file-loaded');
+        const simpleFileNameSpan = document.getElementById('simple-import-file-name');
+        if (simpleFileIndicator && simpleFileNameSpan) {
+          simpleFileNameSpan.textContent = file.name;
+          simpleFileIndicator.classList.remove('hidden');
+        }
+
         parseImportPreview();
       };
       reader.readAsText(file);
+    }
+
+    // ========== SIMPLE MODE: RENDERING ==========
+    // Render + mutation layer for the Simple-mode 3-column group lists.
+    // XSS-safety: ALL interpolated values pass through escapeHtml() (values AND
+    // data-* attribute values); identifiers travel via data-* attributes and
+    // delegated addEventListener (no inline handlers, no string-interpolated JS).
+
+    // --- Row template helpers (private to this section) ---
+
+    // Build ` data-k="v"` pairs; attribute NAMES are internal constants, values escaped.
+    function simpleDataAttrsHtml(dataAttrs) {
+      let out = '';
+      for (const key in dataAttrs) {
+        out += ' data-' + key + '="' + escapeHtml(dataAttrs[key]) + '"';
+      }
+      return out;
+    }
+
+    // opts: { expandKey, expanded, name, meta, dataAttrs (for the checkbox) }
+    function simpleParentRowHtml(opts) {
+      return '<div class="simple-parent-row" data-action="toggle-expand" data-expand-key="' + escapeHtml(opts.expandKey) + '">' +
+        '<span class="simple-chevron">' + (opts.expanded ? '▾' : '▸') + '</span>' +
+        '<input type="checkbox"' + simpleDataAttrsHtml(opts.dataAttrs) + '>' +
+        '<div style="flex: 1; min-width: 0;">' +
+          '<div class="collection-name">' + escapeHtml(opts.name) + '</div>' +
+          '<div class="collection-meta">' + escapeHtml(opts.meta) + '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function simpleGroupRowHtml(groupKey, count, dataAttrs, checked) {
+      const isUngrouped = groupKey === '';
+      const label = isUngrouped ? UNGROUPED_LABEL : groupKey;
+      return '<label class="simple-group-row">' +
+        '<input type="checkbox"' + simpleDataAttrsHtml(dataAttrs) + (checked ? ' checked' : '') + '>' +
+        '<span class="simple-group-name' + (isUngrouped ? ' is-ungrouped' : '') + '">' + escapeHtml(label) + '</span>' +
+        '<span class="style-count">(' + escapeHtml(count) + ')</span>' +
+      '</label>';
+    }
+
+    function simpleSectionHeaderHtml(label) {
+      return '<div class="collection-meta" style="padding: 8px 10px 2px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px;">' + escapeHtml(label) + '</div>';
+    }
+
+    // Ungrouped ('') sorts last; everything else alphabetical
+    function sortGroupSummaries(groups) {
+      return groups.slice().sort(function (a, b) {
+        if (a.name === b.name) return 0;
+        if (a.name === '') return 1;
+        if (b.name === '') return -1;
+        return a.name.localeCompare(b.name);
+      });
+    }
+
+    // --- Group accessors (single source for "what groups does X have") ---
+
+    function getExportCollectionGroups(name) {
+      const c = collections.find(col => col.name === name);
+      if (!c) return [];
+      return c.groups || [{ name: '', count: c.variableCount }];
+    }
+
+    function getExportStyleGroups(type) {
+      const fromBackend = stylesGroupsInfo[type] || [];
+      if (fromBackend.length > 0) return fromBackend;
+      const st = STYLE_TYPES.find(s => s.type === type);
+      const count = st ? (stylesInfo[st.exportKey] || 0) : 0;
+      return count > 0 ? [{ name: '', count: count }] : [];
+    }
+
+    function getImportCollectionGroups(name) {
+      return importGroupsIndex.get(name) || [];
+    }
+
+    function getImportStyleGroups(type) {
+      return importStyleGroupsIndex[type] || [];
+    }
+
+    // --- Renderers (full re-render only on data arrival / mode switch) ---
+
+    function renderSimpleExportVariables() {
+      const listEl = document.getElementById('simple-export-variables-list');
+      if (!listEl) return;
+      if (!collections || collections.length === 0) {
+        listEl.innerHTML = '<div class="loading">No variable collections found</div>';
+        return;
+      }
+      let html = '';
+      collections.forEach(c => {
+        const groups = sortGroupSummaries(c.groups || [{ name: '', count: c.variableCount }]);
+        const expandKey = 'col:' + c.name;
+        const expanded = expandedSimpleExport.has(expandKey);
+        const selected = selectedExportGroups.get(c.name);
+        html += simpleParentRowHtml({
+          expandKey: expandKey,
+          expanded: expanded,
+          name: c.name,
+          meta: c.variableCount + ' variables • Modes: ' + (c.modes || []).join(', '),
+          dataAttrs: { action: 'export-col-all', collection: c.name }
+        });
+        html += '<div class="simple-group-rows"' + (expanded ? '' : ' hidden') + '>';
+        groups.forEach(g => {
+          html += simpleGroupRowHtml(g.name, g.count,
+            { action: 'export-group', collection: c.name, group: g.name },
+            !!(selected && selected.has(g.name)));
+        });
+        html += '</div>';
+      });
+      listEl.innerHTML = html;
+      // Parent tri-state pass
+      collections.forEach(c => {
+        const selected = selectedExportGroups.get(c.name);
+        setSimpleParentTriState('simple-export-variables-list', 'export-col-all', 'collection', c.name,
+          selected ? selected.size : 0, getExportCollectionGroups(c.name).length);
+      });
+    }
+
+    function renderSimpleExportStyles() {
+      const listEl = document.getElementById('simple-export-styles-list');
+      if (!listEl) return;
+      const totalStyles = STYLE_TYPES.reduce((acc, st) => acc + (stylesInfo[st.exportKey] || 0), 0);
+      if (totalStyles === 0) {
+        listEl.innerHTML = '<div class="loading">No local styles found</div>';
+        return;
+      }
+      let html = '';
+      STYLE_TYPES.forEach(st => {
+        const count = stylesInfo[st.exportKey] || 0;
+        if (count === 0) return;
+        const groups = sortGroupSummaries(getExportStyleGroups(st.type));
+        const expandKey = 'style:' + st.type;
+        const expanded = expandedSimpleExport.has(expandKey);
+        const selected = selectedExportStyleGroups[st.type];
+        html += simpleParentRowHtml({
+          expandKey: expandKey,
+          expanded: expanded,
+          name: st.label,
+          meta: count + (count === 1 ? ' style' : ' styles'),
+          dataAttrs: { action: 'export-style-all', type: st.type }
+        });
+        html += '<div class="simple-group-rows"' + (expanded ? '' : ' hidden') + '>';
+        groups.forEach(g => {
+          html += simpleGroupRowHtml(g.name, g.count,
+            { action: 'export-style-group', type: st.type, group: g.name },
+            selected.has(g.name));
+        });
+        html += '</div>';
+      });
+      listEl.innerHTML = html;
+      // Parent tri-state pass
+      STYLE_TYPES.forEach(st => {
+        if ((stylesInfo[st.exportKey] || 0) === 0) return;
+        setSimpleParentTriState('simple-export-styles-list', 'export-style-all', 'type', st.type,
+          selectedExportStyleGroups[st.type].size, getExportStyleGroups(st.type).length);
+      });
+    }
+
+    // Meta line for an import collection parent row
+    function importCollectionMetaText(name, groups) {
+      let totalVars = 0;
+      groups.forEach(g => { totalVars += g.count; });
+      let modes = [];
+      for (let i = 0; i < parsedImportCollections.length; i++) {
+        const colObj = parsedImportCollections[i];
+        if (Object.keys(colObj)[0] === name) {
+          modes = Object.keys((colObj[name] && colObj[name].modes) || {});
+          break;
+        }
+      }
+      return '~' + totalVars + ' variables • Modes: ' + modes.join(', ');
+    }
+
+    function renderSimpleImportContents() {
+      const listEl = document.getElementById('simple-import-list');
+      if (!listEl) { updateSimpleImportButtonState(); return; }
+      const hasStyleGroups = STYLE_TYPES.some(st => (importStyleGroupsIndex[st.type] || []).length > 0);
+      if (importGroupsIndex.size === 0 && !hasStyleGroups) {
+        listEl.innerHTML = '<div class="loading">Paste or upload JSON to see contents</div>';
+        updateSimpleImportButtonState();
+        return;
+      }
+      let html = '';
+      if (importGroupsIndex.size > 0) {
+        html += simpleSectionHeaderHtml('📦 Variables');
+        importGroupsIndex.forEach((groups, name) => {
+          const expandKey = 'col:' + name;
+          const expanded = expandedSimpleImport.has(expandKey);
+          const selected = selectedImportGroups.get(name);
+          html += simpleParentRowHtml({
+            expandKey: expandKey,
+            expanded: expanded,
+            name: name,
+            meta: importCollectionMetaText(name, groups),
+            dataAttrs: { action: 'import-col-all', collection: name }
+          });
+          html += '<div class="simple-group-rows"' + (expanded ? '' : ' hidden') + '>';
+          groups.forEach(g => {
+            html += simpleGroupRowHtml(g.name, g.count,
+              { action: 'import-group', collection: name, group: g.name },
+              !!(selected && selected.has(g.name)));
+          });
+          html += '</div>';
+        });
+      }
+      if (hasStyleGroups) {
+        html += simpleSectionHeaderHtml('🎨 Styles');
+        STYLE_TYPES.forEach(st => {
+          const groups = importStyleGroupsIndex[st.type] || [];
+          if (groups.length === 0) return;
+          const count = groups.reduce((acc, g) => acc + g.count, 0);
+          const expandKey = 'style:' + st.type;
+          const expanded = expandedSimpleImport.has(expandKey);
+          const selected = selectedImportStyleGroups[st.type];
+          html += simpleParentRowHtml({
+            expandKey: expandKey,
+            expanded: expanded,
+            name: st.label,
+            meta: count + (count === 1 ? ' style' : ' styles'),
+            dataAttrs: { action: 'import-style-all', type: st.type }
+          });
+          html += '<div class="simple-group-rows"' + (expanded ? '' : ' hidden') + '>';
+          groups.forEach(g => {
+            html += simpleGroupRowHtml(g.name, g.count,
+              { action: 'import-style-group', type: st.type, group: g.name },
+              selected.has(g.name));
+          });
+          html += '</div>';
+        });
+      }
+      listEl.innerHTML = html;
+      // Parent tri-state pass
+      importGroupsIndex.forEach((groups, name) => {
+        const selected = selectedImportGroups.get(name);
+        setSimpleParentTriState('simple-import-list', 'import-col-all', 'collection', name,
+          selected ? selected.size : 0, groups.length);
+      });
+      STYLE_TYPES.forEach(st => {
+        const groups = importStyleGroupsIndex[st.type] || [];
+        if (groups.length === 0) return;
+        setSimpleParentTriState('simple-import-list', 'import-style-all', 'type', st.type,
+          selectedImportStyleGroups[st.type].size, groups.length);
+      });
+      updateSimpleImportButtonState();
+    }
+
+    // Build importGroupsIndex / importStyleGroupsIndex from the parsed import JSON
+    // (parsedImportCollections: [{name: {modes: {...}}}], parsedImportStyles: _styles entry).
+    function computeImportGroupsIndex() {
+      importGroupsIndex = new Map();
+      importStyleGroupsIndex = { color: [], text: [], effect: [], grid: [] };
+
+      (parsedImportCollections || []).forEach(colObj => {
+        const colName = Object.keys(colObj)[0];
+        if (!colName || colName === '_styles') return;
+        const col = colObj[colName];
+        const modesObj = (col && col.modes) || {};
+        const groupMax = new Map(); // groupKey -> max leaf count across modes
+        Object.keys(modesObj).forEach(modeName => {
+          const modeVars = modesObj[modeName];
+          if (!modeVars || typeof modeVars !== 'object') return;
+          const perMode = new Map();
+          Object.keys(modeVars).forEach(k => {
+            const v = modeVars[k];
+            if (!v || typeof v !== 'object') return;
+            if ('$value' in v || '$type' in v || '$alias' in v) {
+              // Top-level leaf => ungrouped (key '') — same leaf test as flattenObject
+              perMode.set('', (perMode.get('') || 0) + 1);
+            } else {
+              const leafCount = flattenObject(v).length;
+              if (leafCount > 0) perMode.set(k, (perMode.get(k) || 0) + leafCount);
+            }
+          });
+          perMode.forEach((count, key) => {
+            if (count > (groupMax.get(key) || 0)) groupMax.set(key, count);
+          });
+        });
+        const groups = [];
+        groupMax.forEach((count, key) => { groups.push({ name: key, count: count }); });
+        importGroupsIndex.set(colName, sortGroupSummaries(groups));
+      });
+
+      if (parsedImportStyles) {
+        STYLE_TYPES.forEach(st => {
+          const styles = parsedImportStyles[st.exportKey];
+          if (!styles || styles.length === 0) return;
+          const counts = new Map();
+          styles.forEach(s => {
+            const key = getGroupKeyUI((s && s.name) || '');
+            counts.set(key, (counts.get(key) || 0) + 1);
+          });
+          const arr = [];
+          counts.forEach((count, key) => { arr.push({ name: key, count: count }); });
+          importStyleGroupsIndex[st.type] = sortGroupSummaries(arr);
+        });
+      }
+    }
+
+    // --- Targeted DOM sync utilities (mutations touch only affected checkboxes) ---
+
+    function eachSimpleInput(listId, action, fn) {
+      const listEl = document.getElementById(listId);
+      if (!listEl) return;
+      const inputs = listEl.querySelectorAll('input[data-action="' + action + '"]');
+      for (let i = 0; i < inputs.length; i++) fn(inputs[i]);
+    }
+
+    function setSimpleGroupChecks(listId, action, attrName, attrValue, selectedSet) {
+      eachSimpleInput(listId, action, input => {
+        if (input.dataset[attrName] !== attrValue) return;
+        input.checked = !!(selectedSet && selectedSet.has(input.dataset.group));
+      });
+    }
+
+    function setSimpleParentTriState(listId, action, attrName, attrValue, selectedSize, totalGroups) {
+      eachSimpleInput(listId, action, input => {
+        if (input.dataset[attrName] !== attrValue) return;
+        input.checked = totalGroups > 0 && selectedSize >= totalGroups;
+        input.indeterminate = selectedSize > 0 && selectedSize < totalGroups;
+      });
+    }
+
+    // --- Export mutations ---
+
+    function setExportGroup(collection, groupKey, on) {
+      let set = selectedExportGroups.get(collection);
+      if (!set) { set = new Set(); selectedExportGroups.set(collection, set); }
+      if (on) set.add(groupKey); else set.delete(groupKey);
+      if (set.size === 0) selectedExportGroups.delete(collection);
+      setSimpleParentTriState('simple-export-variables-list', 'export-col-all', 'collection', collection,
+        set.size, getExportCollectionGroups(collection).length);
+      syncExportCollectionProjection(collection);
+    }
+
+    function setExportCollectionAll(collection, on) {
+      setSelectedGroupsForCollection(collection, on);
+      const set = selectedExportGroups.get(collection);
+      setSimpleGroupChecks('simple-export-variables-list', 'export-group', 'collection', collection, set);
+      setSimpleParentTriState('simple-export-variables-list', 'export-col-all', 'collection', collection,
+        set ? set.size : 0, getExportCollectionGroups(collection).length);
+      syncExportCollectionProjection(collection);
+    }
+
+    function setExportStyleGroup(type, groupKey, on) {
+      const set = selectedExportStyleGroups[type];
+      if (!set) return;
+      if (on) set.add(groupKey); else set.delete(groupKey);
+      setSimpleParentTriState('simple-export-styles-list', 'export-style-all', 'type', type,
+        set.size, getExportStyleGroups(type).length);
+      syncAdvancedStyleCheckboxFromState(type);
+    }
+
+    function setExportStyleTypeAll(type, on) {
+      const set = selectedExportStyleGroups[type];
+      if (!set) return;
+      set.clear();
+      if (on) getExportStyleGroups(type).forEach(g => set.add(g.name));
+      setSimpleGroupChecks('simple-export-styles-list', 'export-style-group', 'type', type, set);
+      setSimpleParentTriState('simple-export-styles-list', 'export-style-all', 'type', type,
+        set.size, getExportStyleGroups(type).length);
+      syncAdvancedStyleCheckboxFromState(type);
+    }
+
+    // Projection: selectedExportCollections mirrors "group Set non-empty"
+    function syncExportCollectionProjection(name) {
+      const set = selectedExportGroups.get(name);
+      if (set && set.size > 0) {
+        selectedExportCollections.add(name);
+      } else {
+        selectedExportCollections.delete(name);
+      }
+      const cb = document.getElementById('export-' + name);
+      if (cb) cb.checked = !!(set && set.size);
+      updateExportPreview();
+    }
+
+    function syncAdvancedStyleCheckboxFromState(type) {
+      const cb = document.getElementById('export-' + type + '-styles');
+      if (cb) cb.checked = selectedExportStyleGroups[type].size > 0;
+      updateExportPreview();
+    }
+
+    // --- Import mutations ---
+
+    function setImportGroup(collection, groupKey, on) {
+      let set = selectedImportGroups.get(collection);
+      if (!set) { set = new Set(); selectedImportGroups.set(collection, set); }
+      if (on) set.add(groupKey); else set.delete(groupKey);
+      if (set.size === 0) selectedImportGroups.delete(collection);
+      setSimpleParentTriState('simple-import-list', 'import-col-all', 'collection', collection,
+        set.size, getImportCollectionGroups(collection).length);
+      syncImportCollectionProjection(collection);
+    }
+
+    function setImportCollectionAll(collection, on) {
+      setSelectedImportGroupsForCollection(collection, on);
+      const set = selectedImportGroups.get(collection);
+      setSimpleGroupChecks('simple-import-list', 'import-group', 'collection', collection, set);
+      setSimpleParentTriState('simple-import-list', 'import-col-all', 'collection', collection,
+        set ? set.size : 0, getImportCollectionGroups(collection).length);
+      syncImportCollectionProjection(collection);
+    }
+
+    function setImportStyleGroup(type, groupKey, on) {
+      const set = selectedImportStyleGroups[type];
+      if (!set) return;
+      if (on) set.add(groupKey); else set.delete(groupKey);
+      setSimpleParentTriState('simple-import-list', 'import-style-all', 'type', type,
+        set.size, getImportStyleGroups(type).length);
+      syncImportStyleProjection(type);
+    }
+
+    function setImportStyleTypeAll(type, on) {
+      const set = selectedImportStyleGroups[type];
+      if (!set) return;
+      set.clear();
+      if (on) getImportStyleGroups(type).forEach(g => set.add(g.name));
+      setSimpleGroupChecks('simple-import-list', 'import-style-group', 'type', type, set);
+      setSimpleParentTriState('simple-import-list', 'import-style-all', 'type', type,
+        set.size, getImportStyleGroups(type).length);
+      syncImportStyleProjection(type);
+    }
+
+    function syncImportCollectionProjection(name) {
+      const set = selectedImportGroups.get(name);
+      if (set && set.size > 0) {
+        selectedImportCollections.add(name);
+      } else {
+        selectedImportCollections.delete(name);
+      }
+      // Mirror into the Advanced checkbox (indexed by position in parsedImportCollections)
+      for (let i = 0; i < parsedImportCollections.length; i++) {
+        if (Object.keys(parsedImportCollections[i])[0] === name) {
+          const cb = document.getElementById('import-col-' + i);
+          if (cb) cb.checked = !!(set && set.size);
+          break;
+        }
+      }
+      updateSimpleImportButtonState();
+    }
+
+    function syncImportStyleProjection(type) {
+      const cb = document.getElementById('import-' + type + '-styles-sel');
+      if (cb) cb.checked = selectedImportStyleGroups[type].size > 0;
+      updateSimpleImportButtonState();
+    }
+
+    // --- Simple Import button state ---
+
+    function updateSimpleImportButtonState() {
+      const btn = document.getElementById('simple-import-btn');
+      if (!btn) return;
+      const hasData = !!(parsedImportCollections && parsedImportCollections.length > 0) || !!parsedImportStyles;
+      // Match the import action's real precondition: importVariables (and the
+      // runSimpleImport guard) require at least one selected variable
+      // collection, so style-group selections alone must not enable the button.
+      let hasSelection = false;
+      selectedImportGroups.forEach(set => { if (set.size > 0) hasSelection = true; });
+      btn.disabled = !(hasData && hasSelection);
+    }
+
+    function resetSimpleImportButton() {
+      const btn = document.getElementById('simple-import-btn');
+      if (!btn) return;
+      btn.textContent = '📥 Import';
+      updateSimpleImportButtonState();
+    }
+
+    // --- Write-through helpers (Advanced -> Simple state; no projection sync) ---
+
+    function setSelectedGroupsForCollection(name, selected) {
+      if (selected) {
+        const groups = getExportCollectionGroups(name);
+        const keys = groups.length > 0 ? groups.map(g => g.name) : [''];
+        selectedExportGroups.set(name, new Set(keys));
+      } else {
+        selectedExportGroups.delete(name);
+      }
+    }
+
+    function setSelectedImportGroupsForCollection(name, selected) {
+      if (selected) {
+        const groups = getImportCollectionGroups(name);
+        const keys = groups.length > 0 ? groups.map(g => g.name) : [''];
+        selectedImportGroups.set(name, new Set(keys));
+      } else {
+        selectedImportGroups.delete(name);
+      }
+    }
+
+    // Read the four Advanced export style checkboxes -> all-or-none group state
+    function syncSimpleExportStyleGroupsFromAdvanced() {
+      STYLE_TYPES.forEach(st => {
+        const cb = document.getElementById('export-' + st.type + '-styles');
+        const set = selectedExportStyleGroups[st.type];
+        set.clear();
+        if (cb && cb.checked) getExportStyleGroups(st.type).forEach(g => set.add(g.name));
+      });
+      renderSimpleExportStyles();
+    }
+
+    // Read the four Advanced import style checkboxes -> all-or-none group state
+    function syncSimpleImportStyleGroupsFromAdvanced() {
+      STYLE_TYPES.forEach(st => {
+        const cb = document.getElementById('import-' + st.type + '-styles-sel');
+        const set = selectedImportStyleGroups[st.type];
+        set.clear();
+        if (cb && cb.checked) getImportStyleGroups(st.type).forEach(g => set.add(g.name));
+      });
+      renderSimpleImportContents();
+    }
+
+    // --- Delegated listeners (stage 3 calls attachSimpleModeListeners() from init) ---
+
+    function makeSimpleExpandClickHandler(expandedSet) {
+      return function (event) {
+        const target = event.target;
+        if (!target || target.tagName === 'INPUT') return;
+        const row = target.closest ? target.closest('[data-action="toggle-expand"]') : null;
+        if (!row) return;
+        const key = row.dataset.expandKey;
+        const nowExpanded = !expandedSet.has(key);
+        if (nowExpanded) expandedSet.add(key); else expandedSet.delete(key);
+        const chevron = row.querySelector('.simple-chevron');
+        if (chevron) chevron.textContent = nowExpanded ? '▾' : '▸';
+        const rowsEl = row.nextElementSibling;
+        if (rowsEl && rowsEl.classList.contains('simple-group-rows')) {
+          if (nowExpanded) {
+            rowsEl.removeAttribute('hidden');
+          } else {
+            rowsEl.setAttribute('hidden', '');
+          }
+        }
+      };
+    }
+
+    function handleSimpleExportVarsChange(event) {
+      const input = event.target;
+      if (!input || input.tagName !== 'INPUT' || !input.dataset.action) return;
+      if (input.dataset.action === 'export-col-all') {
+        setExportCollectionAll(input.dataset.collection, input.checked);
+      } else if (input.dataset.action === 'export-group') {
+        setExportGroup(input.dataset.collection, input.dataset.group, input.checked);
+      }
+    }
+
+    function handleSimpleExportStylesChange(event) {
+      const input = event.target;
+      if (!input || input.tagName !== 'INPUT' || !input.dataset.action) return;
+      if (input.dataset.action === 'export-style-all') {
+        setExportStyleTypeAll(input.dataset.type, input.checked);
+      } else if (input.dataset.action === 'export-style-group') {
+        setExportStyleGroup(input.dataset.type, input.dataset.group, input.checked);
+      }
+    }
+
+    function handleSimpleImportChange(event) {
+      const input = event.target;
+      if (!input || input.tagName !== 'INPUT' || !input.dataset.action) return;
+      if (input.dataset.action === 'import-col-all') {
+        setImportCollectionAll(input.dataset.collection, input.checked);
+      } else if (input.dataset.action === 'import-group') {
+        setImportGroup(input.dataset.collection, input.dataset.group, input.checked);
+      } else if (input.dataset.action === 'import-style-all') {
+        setImportStyleTypeAll(input.dataset.type, input.checked);
+      } else if (input.dataset.action === 'import-style-group') {
+        setImportStyleGroup(input.dataset.type, input.dataset.group, input.checked);
+      }
+    }
+
+    function attachSimpleModeListeners() {
+      const exportVarsList = document.getElementById('simple-export-variables-list');
+      if (exportVarsList) {
+        exportVarsList.addEventListener('click', makeSimpleExpandClickHandler(expandedSimpleExport));
+        exportVarsList.addEventListener('change', handleSimpleExportVarsChange);
+      }
+      const exportStylesList = document.getElementById('simple-export-styles-list');
+      if (exportStylesList) {
+        exportStylesList.addEventListener('click', makeSimpleExpandClickHandler(expandedSimpleExport));
+        exportStylesList.addEventListener('change', handleSimpleExportStylesChange);
+      }
+      const importList = document.getElementById('simple-import-list');
+      if (importList) {
+        importList.addEventListener('click', makeSimpleExpandClickHandler(expandedSimpleImport));
+        importList.addEventListener('change', handleSimpleImportChange);
+      }
+      // Write-through: Advanced export style checkboxes -> Simple group state.
+      // (Extra listener; the existing inline onchange="updateExportPreview()" stays untouched.)
+      STYLE_TYPES.forEach(st => {
+        const cb = document.getElementById('export-' + st.type + '-styles');
+        if (cb) {
+          cb.addEventListener('change', syncSimpleExportStyleGroupsFromAdvanced);
+        }
+      });
+    }
+
+    // ========== SIMPLE MODE: PIPELINE WIRING (stage 3) ==========
+    // Data-arrival seeding, export/import actions, mode-toggle node moves,
+    // and init-time listener attachment for the Simple 3-column layout.
+
+    // --- Data-arrival seeding (export side; called from the 'collections' message) ---
+
+    // Mirrors the Advanced handler (renderExportCollections re-selects everything):
+    // every group of every collection starts selected.
+    function initSimpleExportSelectionFromCollections() {
+      selectedExportGroups = new Map();
+      collections.forEach(c => setSelectedGroupsForCollection(c.name, true));
+    }
+
+    // Drop selected style-group keys that no longer exist in the refreshed data,
+    // then project the result into the Advanced style checkboxes so both faces
+    // agree. The 'collections' handler seeds the sets from the auto-checked
+    // Advanced checkboxes first (syncSimpleExportStyleGroupsFromAdvanced), so
+    // the pre-existing Advanced default (styles included when counts > 0) holds.
+    function reconcileSimpleStyleSelection() {
+      STYLE_TYPES.forEach(st => {
+        const valid = new Set();
+        getExportStyleGroups(st.type).forEach(g => valid.add(g.name));
+        const set = selectedExportStyleGroups[st.type];
+        const keep = [];
+        set.forEach(name => { if (valid.has(name)) keep.push(name); });
+        set.clear();
+        keep.forEach(name => set.add(name));
+        syncAdvancedStyleCheckboxFromState(st.type);
+      });
+    }
+
+    // --- Data-arrival seeding (import side; called after parseImportPreviewAsync succeeds) ---
+
+    // Default after a successful parse: every collection/group + every style
+    // type/group selected. Also seeds the selectedImportCollections projection.
+    function initSimpleImportSelectionAll() {
+      selectedImportGroups = new Map();
+      selectedImportCollections = new Set();
+      importGroupsIndex.forEach((groups, name) => {
+        const keys = new Set();
+        groups.forEach(g => keys.add(g.name));
+        if (keys.size > 0) {
+          selectedImportGroups.set(name, keys);
+          selectedImportCollections.add(name);
+        }
+      });
+      STYLE_TYPES.forEach(st => {
+        const set = selectedImportStyleGroups[st.type];
+        set.clear();
+        (importStyleGroupsIndex[st.type] || []).forEach(g => set.add(g.name));
+      });
+    }
+
+    // Clear the Simple import selection state + index and repaint the list.
+    // Used by the parse failure path, resetImportState and clearImportInput.
+    function clearSimpleImportSelectionState() {
+      selectedImportGroups = new Map();
+      importGroupsIndex = new Map();
+      selectedImportStyleGroups = { color: new Set(), text: new Set(), effect: new Set(), grid: new Set() };
+      importStyleGroupsIndex = { color: [], text: [], effect: [], grid: [] };
+      renderSimpleImportContents();
+      updateSimpleImportButtonState();
+    }
+
+    // Clear the Simple input mirror (textarea + loaded-file indicator).
+    // NOT called from the parse catch path: #import-input keeps its content
+    // there, so the mirror must keep it too.
+    function clearSimpleImportInputUi() {
+      const simpleInput = document.getElementById('simple-import-input');
+      if (simpleInput) simpleInput.value = '';
+      const fileLoaded = document.getElementById('simple-import-file-loaded');
+      if (fileLoaded) fileLoaded.classList.add('hidden');
+    }
+
+    // --- Export action (Simple buttons share the one-shot pending-action latch) ---
+
+    function setSimpleExportButtonsDisabled(disabled) {
+      const exportBtn = document.getElementById('simple-export-btn');
+      if (exportBtn) exportBtn.disabled = disabled;
+      const copyBtn = document.getElementById('simple-copy-json-btn');
+      if (copyBtn) copyBtn.disabled = disabled;
+    }
+
+    function runSimpleExport(action) {
+      if (simpleExportPendingAction) return;
+      if (selectedExportCollections.size === 0) {
+        addLog('❌ Please select at least one variable collection', 'error');
+        return;
+      }
+      simpleExportPendingAction = action;
+      setSimpleExportButtonsDisabled(true);
+      exportVariables();
+    }
+
+    // --- Import action ---
+
+    function runSimpleImport() {
+      // Mirror importVariables' own guard BEFORE latching the button, so a
+      // styles-only selection can't leave the button stuck on 'Processing'.
+      if (!importData || selectedImportCollections.size === 0) {
+        addLog('❌ Please select at least one variable collection to import', 'error', 'import');
+        return;
+      }
+      const btn = document.getElementById('simple-import-btn');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Processing...';
+      }
+      importVariables();
+    }
+
+    // --- Export payload builders (Simple mode only; null = nothing partial) ---
+
+    function buildSelectedGroupsPayload() {
+      const payload = {};
+      let hasPartial = false;
+      selectedExportGroups.forEach((set, name) => {
+        if (!selectedExportCollections.has(name)) return;
+        const total = getExportCollectionGroups(name).length;
+        if (set.size > 0 && total > 0 && set.size < total) {
+          payload[name] = Array.from(set);
+          hasPartial = true;
+        }
+      });
+      return hasPartial ? payload : null;
+    }
+
+    function buildSelectedStyleGroupsPayload() {
+      const payload = {};
+      let hasPartial = false;
+      STYLE_TYPES.forEach(st => {
+        const set = selectedExportStyleGroups[st.type];
+        const total = getExportStyleGroups(st.type).length;
+        if (set.size > 0 && total > 0 && set.size < total) {
+          payload[st.type] = Array.from(set);
+          hasPartial = true;
+        }
+      });
+      return hasPartial ? payload : null;
+    }
+
+    // --- Mode toggle: shared node reparenting + state/DOM reconciliation ---
+
+    // #log-area-export / #log-area-import / #import-undo-section are single DOM
+    // nodes shared by both layouts. Advanced original positions:
+    //   export log  -> before #export-json-preview-section (same .column-body)
+    //   import log  -> before #import-result-preview-section (same .column-body)
+    //   undo section-> last child of that same .column-body
+    function moveSharedNodesForMode(toAdvanced) {
+      const logExport = document.getElementById('log-area-export');
+      const logImport = document.getElementById('log-area-import');
+      const undoSection = document.getElementById('import-undo-section');
+      if (toAdvanced) {
+        const exportPreviewSection = document.getElementById('export-json-preview-section');
+        if (logExport && exportPreviewSection && exportPreviewSection.parentNode) {
+          exportPreviewSection.parentNode.insertBefore(logExport, exportPreviewSection);
+        }
+        const importResultSection = document.getElementById('import-result-preview-section');
+        if (logImport && importResultSection && importResultSection.parentNode) {
+          importResultSection.parentNode.insertBefore(logImport, importResultSection);
+        }
+        if (undoSection && importResultSection && importResultSection.parentNode) {
+          importResultSection.parentNode.appendChild(undoSection);
+        }
+      } else {
+        const exportSlot = document.getElementById('simple-export-log-slot');
+        if (exportSlot && logExport) exportSlot.appendChild(logExport);
+        const importSlot = document.getElementById('simple-import-log-slot');
+        if (importSlot && logImport) importSlot.appendChild(logImport);
+        const undoSlot = document.getElementById('simple-import-undo-slot');
+        if (undoSlot && undoSection) undoSlot.appendChild(undoSection);
+      }
+    }
+
+    // Advanced -> Simple: group state derives from the Advanced selections.
+    function rebuildSimpleStateFromAdvanced() {
+      // Export collections: selected in Advanced ? ALL groups : none
+      selectedExportGroups = new Map();
+      collections.forEach(c => {
+        setSelectedGroupsForCollection(c.name, selectedExportCollections.has(c.name));
+      });
+      // Export styles: Advanced checkbox checked ? all groups : none
+      syncSimpleExportStyleGroupsFromAdvanced();
+      // Import analogs only if the Advanced selection face was populated;
+      // otherwise keep the parse-time defaults.
+      const selectionFace = document.getElementById('import-selection-face');
+      if (selectionFace && selectionFace.style.display !== 'none') {
+        selectedImportGroups = new Map();
+        importGroupsIndex.forEach((groups, name) => {
+          setSelectedImportGroupsForCollection(name, selectedImportCollections.has(name));
+        });
+        syncSimpleImportStyleGroupsFromAdvanced();
+      }
+    }
+
+    // Simple -> Advanced: project the Simple state into the Advanced controls.
+    function syncAdvancedDomFromSimpleState() {
+      collections.forEach(c => {
+        const cb = document.getElementById('export-' + c.name);
+        if (cb) cb.checked = selectedExportCollections.has(c.name);
+      });
+      STYLE_TYPES.forEach(st => syncAdvancedStyleCheckboxFromState(st.type));
+      const selectionFace = document.getElementById('import-selection-face');
+      if (selectionFace && selectionFace.style.display !== 'none') {
+        renderImportCollectionsList();
+      }
+    }
+
+    // --- Init-time wiring (called once, next to the other init calls) ---
+
+    function wireSimpleSelectButton(action, handler) {
+      const btn = document.querySelector('button[data-action="' + action + '"]');
+      if (btn) btn.addEventListener('click', handler);
+    }
+
+    function initSimpleMode() {
+      attachSimpleModeListeners();
+
+      // Action buttons
+      const simpleExportActionBtn = document.getElementById('simple-export-btn');
+      if (simpleExportActionBtn) simpleExportActionBtn.addEventListener('click', () => runSimpleExport('download'));
+      const simpleCopyJsonActionBtn = document.getElementById('simple-copy-json-btn');
+      if (simpleCopyJsonActionBtn) simpleCopyJsonActionBtn.addEventListener('click', () => runSimpleExport('copy'));
+      const simpleImportActionBtn = document.getElementById('simple-import-btn');
+      if (simpleImportActionBtn) simpleImportActionBtn.addEventListener('click', runSimpleImport);
+
+      // Column-header actions
+      const simpleRefreshBtn = document.getElementById('simple-export-refresh-btn');
+      if (simpleRefreshBtn) simpleRefreshBtn.addEventListener('click', refreshCollections);
+      const simpleExportCopyLogBtn = document.getElementById('simple-export-copylog-btn');
+      if (simpleExportCopyLogBtn) simpleExportCopyLogBtn.addEventListener('click', () => copyLog('export'));
+      const simpleExportClearLogBtn = document.getElementById('simple-export-clearlog-btn');
+      if (simpleExportClearLogBtn) simpleExportClearLogBtn.addEventListener('click', () => clearLog('export'));
+      const simpleImportCopyLogBtn = document.getElementById('simple-import-copylog-btn');
+      if (simpleImportCopyLogBtn) simpleImportCopyLogBtn.addEventListener('click', () => copyLog('import'));
+      const simpleImportClearLogBtn = document.getElementById('simple-import-clearlog-btn');
+      if (simpleImportClearLogBtn) simpleImportClearLogBtn.addEventListener('click', () => clearLog('import'));
+
+      // Load JSON column
+      const simpleUploadBtn = document.getElementById('simple-import-upload-btn');
+      if (simpleUploadBtn) {
+        simpleUploadBtn.addEventListener('click', () => {
+          const fi = document.getElementById('file-input');
+          if (fi) fi.click();
+        });
+      }
+      const simpleImportClearInputBtn = document.getElementById('simple-import-clear-btn');
+      if (simpleImportClearInputBtn) simpleImportClearInputBtn.addEventListener('click', clearImportInput);
+      const simpleImportInputEl = document.getElementById('simple-import-input');
+      if (simpleImportInputEl) {
+        simpleImportInputEl.addEventListener('input', () => {
+          // Mirror into the Advanced textarea (the single parse source), then
+          // reuse the exact debounced parse entry the Advanced textarea uses.
+          const advancedInput = document.getElementById('import-input');
+          if (advancedInput) advancedInput.value = simpleImportInputEl.value;
+          debouncedParseImportPreview();
+        });
+      }
+
+      // Select All / None card actions
+      wireSimpleSelectButton('vars-select-all', () => collections.forEach(c => setExportCollectionAll(c.name, true)));
+      wireSimpleSelectButton('vars-select-none', () => collections.forEach(c => setExportCollectionAll(c.name, false)));
+      wireSimpleSelectButton('styles-select-all', () => STYLE_TYPES.forEach(st => setExportStyleTypeAll(st.type, true)));
+      wireSimpleSelectButton('styles-select-none', () => STYLE_TYPES.forEach(st => setExportStyleTypeAll(st.type, false)));
+      wireSimpleSelectButton('import-select-all', () => {
+        importGroupsIndex.forEach((groups, name) => setImportCollectionAll(name, true));
+        STYLE_TYPES.forEach(st => setImportStyleTypeAll(st.type, true));
+      });
+      wireSimpleSelectButton('import-select-none', () => {
+        importGroupsIndex.forEach((groups, name) => setImportCollectionAll(name, false));
+        STYLE_TYPES.forEach(st => setImportStyleTypeAll(st.type, false));
+      });
+
+      // Body starts in Simple mode (no saved-prefs restore exists; only the
+      // radio change listener ever toggles .advanced-mode).
+      moveSharedNodesForMode(false);
+
+      // Initial paint (empty states until data arrives)
+      renderSimpleExportVariables();
+      renderSimpleExportStyles();
+      renderSimpleImportContents();
+      updateSimpleImportButtonState();
     }
 
     // ========== INIT ==========
@@ -8112,6 +9467,12 @@
       if (totalHeader) {
         totalHeader.classList.add('hidden');
       }
+
+      // Simple mode: reset group selection + pending action (stage 3 wiring)
+      selectedExportGroups = new Map();
+      STYLE_TYPES.forEach(st => selectedExportStyleGroups[st.type].clear());
+      simpleExportPendingAction = null;
+      setSimpleExportButtonsDisabled(false);
     }
 
     // Reset import state - clears stale data from previous files
@@ -8153,6 +9514,10 @@
       const fontSection = document.getElementById('font-status-section');
       if (libSection) libSection.classList.add('hidden');
       if (fontSection) fontSection.classList.add('hidden');
+
+      // Simple mode: clear mirrored input + group selection (stage 3 wiring)
+      clearSimpleImportInputUi();
+      clearSimpleImportSelectionState();
     }
 
     // Switch between Order and Tree tabs in Preview column (Export)
@@ -8385,6 +9750,9 @@
 
     // Initialize column scroll fade for Import Preview panel
     initColumnScrollFade('import-preview-stats-scroll-content', 'import-preview-stats-fade-top', 'import-preview-stats-fade-bottom');
+
+    // Initialize Simple-mode wiring (listeners, shared-node placement, first paint)
+    initSimpleMode();
 
     // ========== TIP MODAL ==========
     function openTipModal() {
