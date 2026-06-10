@@ -6,9 +6,17 @@
 
 This changelog tracks **folder-level structure changes only**.
 
-For project-specific changes, see each project's `CHANGELOG.md`:
-- `variables-styles-extractor/CHANGELOG.md`
-- `nectar-design-toolkit/CHANGELOG.md`
+For project-specific changes, see the active project's changelog:
+- `variables-styles-extractor/docs/CHANGELOG.md`
+
+---
+
+## [Unreleased] - Workspace reduced to a single project
+
+### Removed
+- **`nectar-design-toolkit/`** and **`Design System Builder/`** were removed from the repository. The workspace now hosts a single active project, `variables-styles-extractor`.
+- `.github/dependabot.yml` dropped the removed-project ecosystems; root `README.md`, `AGENTS.md`, and `docs/AI_CONTEXT.md` updated to the single-project layout.
+- (Earlier entries below are retained as history.)
 
 ---
 

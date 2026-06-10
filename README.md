@@ -39,7 +39,6 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── memory.md
 │   └── changelog.md
 ├── docs/
-│   ├── AI_CONTEXT.md               ← Legacy folder context (PROTECTED)
 │   └── CHANGELOG.md                ← Workspace-level changelog (PROTECTED)
 ├── variables-styles-extractor/     ← Project: Figma plugin
 │   ├── AGENTS.md                   ← Project AI rules (canonical)
@@ -54,7 +53,7 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── START_HERE.md               ← Boot check (constraints, build, danger zones)
 │   ├── assets/                     ← Plugin logo (SVG) + icon
 │   ├── .github/copilot-instructions.md
-│   └── docs/                       ← AI_CONTEXT, CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
+│   └── docs/                       ← CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
 └── (single active project: variables-styles-extractor)
 ```
 
@@ -87,14 +86,14 @@ Some paths capture context that other tooling depends on. **Never delete — rew
 - `AGENTS.md`, `CLAUDE.md`, `README.md`
 - `.github/SECURITY.md`, `.github/CODEOWNERS`, `.github/dependabot.yml`
 - `.gcc/*` (six files)
-- `docs/AI_CONTEXT.md`, `docs/CHANGELOG.md`
+- `docs/CHANGELOG.md`
 
 ### Per-project
 - `<project>/AGENTS.md`, `<project>/CLAUDE.md`
 - `<project>/README.md`, `<project>/LICENSE`
 - `<project>/.gcc/*` (six files)
 - `<project>/.github/copilot-instructions.md` (where present)
-- `<project>/docs/AI_CONTEXT.md`, `<project>/docs/CHANGELOG.md`
+- `<project>/docs/CHANGELOG.md`
 - Any path that became a redirect during a structure change (e.g. `<project>/docs/AGENTS.md` → redirect to project root after 2026-05-22)
 
 ---
@@ -131,7 +130,6 @@ Then update:
 1. This README's "Projects" table.
 2. Workspace [`AGENTS.md`](AGENTS.md) "What this repo is" table.
 3. Workspace [`.gcc/main.md`](.gcc/main.md) "Sub-projects" table.
-4. Workspace [`docs/AI_CONTEXT.md`](docs/AI_CONTEXT.md) — protected legacy index.
 
 ---
 
