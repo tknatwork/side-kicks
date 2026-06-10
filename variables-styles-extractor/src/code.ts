@@ -227,7 +227,7 @@ type ExportFormat = (CollectionExport | { _styles: StylesExport })[];
 type NamingConvention = 'original' | 'camelCase' | 'kebab-case' | 'snake_case';
 
 // Export format types
-type ExportFormatType = 'figma' | 'w3c';
+type ExportFormatType = 'figma' | 'w3c' | 'tokens-studio';
 
 // Import options
 interface ImportOptions {
@@ -1315,6 +1315,559 @@ type CollectionDataFormat = {
     $originalName?: string;
   };
 };
+
+// ============================================================================
+// SECTION 4D: TOKENS STUDIO CONVERTER
+// ============================================================================
+// Emits the Tokens Studio (tokens-studio/figma-plugin) single-file container:
+// one token set per "<Collection>/<Mode>", DTCG keys only ($type/$value/
+// $description), "$themes" + "$metadata.tokenSetOrder" always present, plus
+// dedicated "styles/color" / "styles/typography" / "styles/effects" sets.
+// Pure transform over the already-built export data — no Figma API calls.
+// QuickJS-safe: no spread, no optional chaining, no nullish coalescing.
+
+// FLOAT scope -> Tokens Studio type refinement (applied only when the variable
+// carries exactly one relevant scope and no ALL_SCOPES).
+const TS_FLOAT_SCOPE_MAP: Record<string, string> = {
+  'CORNER_RADIUS': 'borderRadius',
+  'STROKE_FLOAT': 'borderWidth',
+  'GAP': 'spacing',
+  'WIDTH_HEIGHT': 'sizing',
+  'OPACITY': 'opacity',
+  'FONT_SIZE': 'fontSizes',
+  'LINE_HEIGHT': 'lineHeights',
+  'LETTER_SPACING': 'letterSpacing',
+  'PARAGRAPH_SPACING': 'paragraphSpacing'
+};
+
+// STRING scope -> Tokens Studio type refinement
+const TS_STRING_SCOPE_MAP: Record<string, string> = {
+  'FONT_FAMILY': 'fontFamilies',
+  'FONT_STYLE': 'fontWeights'
+};
+
+// Figma textCase -> Tokens Studio typography textCase (SMALL_CAPS* omitted —
+// no Tokens Studio representation)
+const TS_TEXT_CASE_MAP: Record<string, string> = {
+  'ORIGINAL': 'none',
+  'UPPER': 'uppercase',
+  'LOWER': 'lowercase',
+  'TITLE': 'capitalize'
+};
+
+// Figma textDecoration -> Tokens Studio typography textDecoration
+const TS_TEXT_DECORATION_MAP: Record<string, string> = {
+  'NONE': 'none',
+  'UNDERLINE': 'underline',
+  'STRIKETHROUGH': 'line-through'
+};
+
+type TokensStudioCompositeValue = Record<string, string | number>;
+
+interface TokensStudioToken {
+  $type: string;
+  $value: string | number | TokensStudioCompositeValue | TokensStudioCompositeValue[];
+  $description?: string;
+}
+
+interface TokensStudioGroup {
+  [key: string]: TokensStudioToken | TokensStudioGroup;
+}
+
+interface TokensStudioTheme {
+  id: string;
+  name: string;
+  group: string;
+  selectedTokenSets: Record<string, string>;
+}
+
+// Aggregated skip counters so each category logs ONE note, not one per item.
+interface TokensStudioSkipState {
+  libraryRefsSkipped: number;
+  imagePaintsSkipped: number;
+  blurEffectsSkipped: number;
+}
+
+const TokensStudioConverter = {
+  // Token path segments must not contain { } $ — and never resolve to
+  // prototype-polluting keys when used as dynamic object properties.
+  sanitizeSegment(segment: string): string {
+    let cleaned = segment.replace(/[{}$]/g, '');
+    if (cleaned.length === 0) {
+      cleaned = '_';
+    }
+    if (cleaned === '__proto__' || cleaned === 'constructor' || cleaned === 'prototype') {
+      cleaned = '_' + cleaned;
+    }
+    return cleaned;
+  },
+
+  // "{path.to.token}" -> same ref with every dot-segment passed through
+  // sanitizeSegment, so refs always match sanitized token paths (incl. the
+  // empty-after-stripping and __proto__/constructor/prototype renames).
+  // exportData alias refs are already collection-prefix-free name paths
+  // (built from the target variable's name with "/" -> "."), which is exactly
+  // the Tokens Studio reference shape; normal refs pass through unchanged.
+  sanitizeAliasRef(ref: string): string {
+    const parts = ref.substring(1, ref.length - 1).split('.');
+    const cleaned: string[] = [];
+    for (let i = 0; i < parts.length; i++) {
+      cleaned.push(this.sanitizeSegment(parts[i]));
+    }
+    return '{' + cleaned.join('.') + '}';
+  },
+
+  isAliasRef(value: unknown): value is string {
+    return typeof value === 'string' && value.charAt(0) === '{' &&
+           value.charAt(value.length - 1) === '}';
+  },
+
+  // Plain JSON numbers, <= 3 decimals
+  roundNumber(n: number): number {
+    return Math.round(n * 1000) / 1000;
+  },
+
+  // "#rrggbb" for opaque colors; CSS "rgba(r, g, b, a)" when alpha < 1
+  // (ColorConverter only sets rgb.a / emits rgba css when alpha < 1).
+  colorToTS(color: ExportColorValue): string {
+    const alpha = color.rgb !== undefined ? color.rgb.a : undefined;
+    if (alpha !== undefined && alpha < 1) {
+      return color.css;
+    }
+    // Near-opaque rounding edge: raw alpha in (0.995, 1) rounds to rgb.a = 1
+    // here, but ColorConverter.toHex (which checks the RAW alpha) already
+    // appended an alpha byte. Strip it so opaque emission is always #rrggbb.
+    if (color.rgb !== undefined && color.hex.length > 7) {
+      return color.hex.substring(0, 7);
+    }
+    return color.hex;
+  },
+
+  floatTypeFromScopes(scopes: readonly string[] | undefined): string {
+    if (!scopes) {
+      return 'number';
+    }
+    let mapped = '';
+    let relevant = 0;
+    for (let i = 0; i < scopes.length; i++) {
+      if (scopes[i] === 'ALL_SCOPES') {
+        return 'number';
+      }
+      const candidate = TS_FLOAT_SCOPE_MAP[scopes[i]];
+      if (candidate !== undefined) {
+        relevant++;
+        mapped = candidate;
+      }
+    }
+    return relevant === 1 ? mapped : 'number';
+  },
+
+  stringTypeFromScopes(scopes: readonly string[] | undefined): string {
+    if (!scopes) {
+      return 'text';
+    }
+    let mapped = '';
+    let relevant = 0;
+    for (let i = 0; i < scopes.length; i++) {
+      if (scopes[i] === 'ALL_SCOPES') {
+        return 'text';
+      }
+      const candidate = TS_STRING_SCOPE_MAP[scopes[i]];
+      if (candidate !== undefined) {
+        relevant++;
+        mapped = candidate;
+      }
+    }
+    return relevant === 1 ? mapped : 'text';
+  },
+
+  // Convert one export leaf to a Tokens Studio token; null = skip (library
+  // alias with no resolvable local value — its "{ref}" target is not in the
+  // export, so the reference would dangle).
+  convertVariableLeaf(leaf: ExportVariableValue, state: TokensStudioSkipState): TokensStudioToken | null {
+    let rawValue: string | number | boolean | ExportColorValue = leaf.$value;
+    if (leaf.$libraryRef !== undefined) {
+      if (leaf.$localValue !== undefined) {
+        rawValue = leaf.$localValue;
+      } else {
+        state.libraryRefsSkipped++;
+        return null;
+      }
+    }
+
+    let tsType: string;
+    let tsValue: string | number;
+    const aliasRef = this.isAliasRef(rawValue);
+
+    if (leaf.$type === 'color') {
+      tsType = 'color';
+      if (aliasRef) {
+        tsValue = this.sanitizeAliasRef(rawValue as string);
+      } else if (typeof rawValue === 'object' && rawValue !== null) {
+        tsValue = this.colorToTS(rawValue as ExportColorValue);
+      } else {
+        tsValue = String(rawValue);
+      }
+    } else if (leaf.$type === 'float') {
+      tsType = this.floatTypeFromScopes(leaf.$scopes);
+      if (aliasRef) {
+        tsValue = this.sanitizeAliasRef(rawValue as string);
+      } else if (typeof rawValue === 'number') {
+        tsValue = this.roundNumber(rawValue);
+      } else {
+        tsValue = String(rawValue);
+      }
+    } else if (leaf.$type === 'boolean') {
+      // Tokens Studio boolean tokens carry string values "true" / "false"
+      tsType = 'boolean';
+      tsValue = aliasRef ? this.sanitizeAliasRef(rawValue as string) : String(rawValue);
+    } else {
+      tsType = this.stringTypeFromScopes(leaf.$scopes);
+      tsValue = aliasRef ? this.sanitizeAliasRef(rawValue as string) : String(rawValue);
+    }
+
+    // Key order is deliberate: $type before $value (matches the plugin output)
+    const token: TokensStudioToken = { $type: tsType, $value: tsValue };
+    if (leaf.$description) {
+      token.$description = leaf.$description;
+    }
+    return token;
+  },
+
+  // Insert a token at a "/"-separated path, creating nested groups as needed.
+  insertTokenAtPath(root: TokensStudioGroup, path: string, token: TokensStudioToken): void {
+    const parts = path.split('/');
+    let current: TokensStudioGroup = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const seg = this.sanitizeSegment(parts[i]);
+      const existing = current[seg];
+      if (existing !== undefined && typeof existing === 'object' && !('$value' in existing)) {
+        current = existing as TokensStudioGroup;
+      } else {
+        const created: TokensStudioGroup = {};
+        current[seg] = created;
+        current = created;
+      }
+    }
+    current[this.sanitizeSegment(parts[parts.length - 1])] = token;
+  },
+
+  // Best-effort CSS gradient string: angle derived from the transform's
+  // x-axis (fallback 180deg); stop order and positions preserved.
+  gradientToCss(paint: ExportGradientPaint): string {
+    let angle = 180;
+    const t = paint.gradientTransform;
+    if (t !== undefined) {
+      let deg = Math.atan2(t[0][1], t[0][0]) * 180 / Math.PI + 90;
+      deg = ((deg % 360) + 360) % 360;
+      angle = Math.round(deg * 100) / 100;
+    }
+    const stops: string[] = [];
+    for (let i = 0; i < paint.gradientStops.length; i++) {
+      const stop = paint.gradientStops[i];
+      const pos = Math.round(stop.position * 10000) / 100;
+      stops.push(this.colorToTS(stop.color) + ' ' + pos + '%');
+    }
+    return 'linear-gradient(' + angle + 'deg, ' + stops.join(', ') + ')';
+  },
+
+  // First exportable paint wins: SOLID -> hex/rgba, gradients -> CSS string;
+  // IMAGE paints are counted and skipped.
+  colorStyleToTSValue(style: ExportColorStyle, state: TokensStudioSkipState): string | null {
+    const paints: readonly ExportPaintData[] = style.paints !== undefined ? style.paints : [];
+    for (let i = 0; i < paints.length; i++) {
+      const paint = paints[i];
+      if (paint.type === 'SOLID') {
+        return this.colorToTS(paint.color);
+      }
+      if (paint.type === 'GRADIENT_LINEAR' || paint.type === 'GRADIENT_RADIAL' ||
+          paint.type === 'GRADIENT_ANGULAR' || paint.type === 'GRADIENT_DIAMOND') {
+        return this.gradientToCss(paint);
+      }
+      if (paint.type === 'IMAGE') {
+        state.imagePaintsSkipped++;
+      }
+    }
+    // Legacy single-color field fallback
+    if (style.color !== undefined) {
+      return this.colorToTS(style.color);
+    }
+    return null;
+  },
+
+  // Typography composite: singular sub-keys; sub-keys we cannot derive are
+  // omitted (ExportTextStyle does not capture paragraphSpacing).
+  textStyleToTSValue(style: ExportTextStyle): TokensStudioCompositeValue {
+    const value: TokensStudioCompositeValue = {};
+    value.fontFamily = style.fontFamily;
+    value.fontWeight = style.fontStyle;
+    if (typeof style.fontSize === 'number') {
+      value.fontSize = this.roundNumber(style.fontSize);
+    }
+    const lineHeight = style.lineHeight as { unit?: string; value?: number };
+    if (lineHeight !== undefined && lineHeight !== null) {
+      if (lineHeight.unit === 'AUTO') {
+        value.lineHeight = 'AUTO';
+      } else if (lineHeight.unit === 'PERCENT' && typeof lineHeight.value === 'number') {
+        value.lineHeight = this.roundNumber(lineHeight.value) + '%';
+      } else if (lineHeight.unit === 'PIXELS' && typeof lineHeight.value === 'number') {
+        value.lineHeight = this.roundNumber(lineHeight.value);
+      }
+    }
+    const letterSpacing = style.letterSpacing as { unit?: string; value?: number };
+    if (letterSpacing !== undefined && letterSpacing !== null) {
+      if (letterSpacing.unit === 'PERCENT' && typeof letterSpacing.value === 'number') {
+        value.letterSpacing = this.roundNumber(letterSpacing.value) + '%';
+      } else if (letterSpacing.unit === 'PIXELS' && typeof letterSpacing.value === 'number') {
+        value.letterSpacing = this.roundNumber(letterSpacing.value);
+      }
+    }
+    if (style.textCase !== undefined) {
+      const textCase = TS_TEXT_CASE_MAP[style.textCase];
+      if (textCase !== undefined) {
+        value.textCase = textCase;
+      }
+    }
+    if (style.textDecoration !== undefined) {
+      const textDecoration = TS_TEXT_DECORATION_MAP[style.textDecoration];
+      if (textDecoration !== undefined) {
+        value.textDecoration = textDecoration;
+      }
+    }
+    return value;
+  },
+
+  // Shadow layers only; blur effects are counted and skipped. Single layer ->
+  // object, multiple layers -> array (layer order preserved).
+  effectStyleToTSValue(
+    style: ExportEffectStyle,
+    state: TokensStudioSkipState
+  ): TokensStudioCompositeValue | TokensStudioCompositeValue[] | null {
+    const layers: TokensStudioCompositeValue[] = [];
+    const effects = style.effects !== undefined ? style.effects : [];
+    for (let i = 0; i < effects.length; i++) {
+      const effect = effects[i];
+      if (effect.type === 'DROP_SHADOW' || effect.type === 'INNER_SHADOW') {
+        const layer: TokensStudioCompositeValue = {
+          color: effect.color !== undefined ? this.colorToTS(effect.color) : '#000000',
+          type: effect.type === 'DROP_SHADOW' ? 'dropShadow' : 'innerShadow',
+          x: effect.offset !== undefined ? this.roundNumber(effect.offset.x) : 0,
+          y: effect.offset !== undefined ? this.roundNumber(effect.offset.y) : 0,
+          blur: typeof effect.radius === 'number' ? this.roundNumber(effect.radius) : 0,
+          spread: typeof effect.spread === 'number' ? this.roundNumber(effect.spread) : 0
+        };
+        layers.push(layer);
+      } else {
+        state.blurEffectsSkipped++;
+      }
+    }
+    if (layers.length === 0) {
+      return null;
+    }
+    return layers.length === 1 ? layers[0] : layers;
+  },
+
+  // Theme ids: lowercase, spaces -> "-"
+  themeIdSegment(name: string): string {
+    return name.toLowerCase().replace(/\s+/g, '-');
+  }
+} as const;
+
+// Transform the already-built (post-group-filter) export data into the Tokens
+// Studio single-file container ("shape A").
+function convertToTokensStudio(exportData: ExportFormat): Record<string, unknown> {
+  const conv = TokensStudioConverter;
+  const result: Record<string, unknown> = {};
+  const tokenSetOrder: string[] = [];
+  const state: TokensStudioSkipState = {
+    libraryRefsSkipped: 0,
+    imagePaintsSkipped: 0,
+    blurEffectsSkipped: 0
+  };
+
+  // Split collection wrappers from the trailing _styles wrapper
+  interface TSCollectionInfo {
+    name: string;
+    modeNames: string[];
+    modes: ModeVariables;
+  }
+  const collections: TSCollectionInfo[] = [];
+  let stylesData: StylesExport | null = null;
+
+  for (let i = 0; i < exportData.length; i++) {
+    const item = exportData[i];
+    const maybeStyles = (item as { _styles?: StylesExport })._styles;
+    if (maybeStyles !== undefined) {
+      stylesData = maybeStyles;
+      continue;
+    }
+    const wrapper = item as CollectionExport;
+    const wrapperKeys = Object.keys(wrapper);
+    for (let k = 0; k < wrapperKeys.length; k++) {
+      const rawName = wrapperKeys[k];
+      const entry = wrapper[rawName];
+      if (!entry || typeof entry !== 'object' || entry.modes === undefined) {
+        continue;
+      }
+      // Reserved container keys: a collection literally named "$themes" or
+      // "$metadata" gets a "-set" suffix as its set-name base.
+      const setBaseName = (rawName === '$themes' || rawName === '$metadata') ? rawName + '-set' : rawName;
+      collections.push({
+        name: setBaseName,
+        modeNames: Object.keys(entry.modes),
+        modes: entry.modes
+      });
+    }
+  }
+
+  // Variable token sets: one per Collection/Mode (even single-mode
+  // collections), collections in order, modes in collection order.
+  for (let c = 0; c < collections.length; c++) {
+    const col = collections[c];
+    for (let m = 0; m < col.modeNames.length; m++) {
+      const modeName = col.modeNames[m];
+      const setName = col.name + '/' + modeName;
+      const group: TokensStudioGroup = {};
+      const flat = flattenVariables(col.modes[modeName], '');
+      for (let f = 0; f < flat.length; f++) {
+        const token = conv.convertVariableLeaf(flat[f].value, state);
+        if (token !== null) {
+          conv.insertTokenAtPath(group, flat[f].path, token);
+        }
+      }
+      result[setName] = group;
+      tokenSetOrder.push(setName);
+    }
+  }
+
+  // Style sets (only emitted when they have content), appended after the
+  // variable sets in tokenSetOrder.
+  const styleSetNames: string[] = [];
+  // A collection literally named "styles" with a mode named color/typography/
+  // effects would produce a variable set with the same key as a style set;
+  // suffix the style set instead of silently overwriting the variable set.
+  function styleSetKey(base: string): string {
+    return result[base] !== undefined ? base + '-set' : base;
+  }
+  if (stylesData !== null) {
+    if (stylesData.colorStyles !== undefined && stylesData.colorStyles.length > 0) {
+      const group: TokensStudioGroup = {};
+      for (let i = 0; i < stylesData.colorStyles.length; i++) {
+        const style = stylesData.colorStyles[i];
+        const tsValue = conv.colorStyleToTSValue(style, state);
+        if (tsValue === null) {
+          continue;
+        }
+        const token: TokensStudioToken = { $type: 'color', $value: tsValue };
+        if (style.description) {
+          token.$description = style.description;
+        }
+        conv.insertTokenAtPath(group, style.name, token);
+      }
+      if (Object.keys(group).length > 0) {
+        const colorSetKey = styleSetKey('styles/color');
+        result[colorSetKey] = group;
+        tokenSetOrder.push(colorSetKey);
+        styleSetNames.push(colorSetKey);
+      }
+    }
+    if (stylesData.textStyles !== undefined && stylesData.textStyles.length > 0) {
+      const group: TokensStudioGroup = {};
+      for (let i = 0; i < stylesData.textStyles.length; i++) {
+        const style = stylesData.textStyles[i];
+        const token: TokensStudioToken = { $type: 'typography', $value: conv.textStyleToTSValue(style) };
+        if (style.description) {
+          token.$description = style.description;
+        }
+        conv.insertTokenAtPath(group, style.name, token);
+      }
+      if (Object.keys(group).length > 0) {
+        const typographySetKey = styleSetKey('styles/typography');
+        result[typographySetKey] = group;
+        tokenSetOrder.push(typographySetKey);
+        styleSetNames.push(typographySetKey);
+      }
+    }
+    if (stylesData.effectStyles !== undefined && stylesData.effectStyles.length > 0) {
+      const group: TokensStudioGroup = {};
+      for (let i = 0; i < stylesData.effectStyles.length; i++) {
+        const style = stylesData.effectStyles[i];
+        const tsValue = conv.effectStyleToTSValue(style, state);
+        if (tsValue === null) {
+          continue;
+        }
+        const token: TokensStudioToken = { $type: 'boxShadow', $value: tsValue };
+        if (style.description) {
+          token.$description = style.description;
+        }
+        conv.insertTokenAtPath(group, style.name, token);
+      }
+      if (Object.keys(group).length > 0) {
+        const effectsSetKey = styleSetKey('styles/effects');
+        result[effectsSetKey] = group;
+        tokenSetOrder.push(effectsSetKey);
+        styleSetNames.push(effectsSetKey);
+      }
+    }
+    if (stylesData.gridStyles !== undefined && stylesData.gridStyles.length > 0) {
+      Logger.log('Tokens Studio export: grid styles skipped (no Tokens Studio representation)');
+    }
+  }
+
+  // One aggregated note per skipped category (JSF: no per-item log spam)
+  if (state.libraryRefsSkipped > 0) {
+    Logger.log('Tokens Studio export: skipped ' + state.libraryRefsSkipped + ' library-alias token(s) with no resolvable local value');
+  }
+  if (state.imagePaintsSkipped > 0) {
+    Logger.log('Tokens Studio export: skipped ' + state.imagePaintsSkipped + ' image paint(s) in color styles (no Tokens Studio representation)');
+  }
+  if (state.blurEffectsSkipped > 0) {
+    Logger.log('Tokens Studio export: skipped ' + state.blurEffectsSkipped + ' blur effect(s) in effect styles (boxShadow tokens carry shadows only)');
+  }
+
+  // $themes: one entry per collection x mode. Own set "enabled"; every other
+  // collection contributes its same-named mode set when it exists (else its
+  // first mode set) as "source"; style sets are "source" in every theme.
+  const themes: TokensStudioTheme[] = [];
+  for (let c = 0; c < collections.length; c++) {
+    const col = collections[c];
+    for (let m = 0; m < col.modeNames.length; m++) {
+      const modeName = col.modeNames[m];
+      const selected: Record<string, string> = {};
+      selected[col.name + '/' + modeName] = 'enabled';
+      for (let o = 0; o < collections.length; o++) {
+        if (o === c) {
+          continue;
+        }
+        const other = collections[o];
+        if (other.modeNames.length === 0) {
+          continue;
+        }
+        let pick = other.modeNames[0];
+        for (let mm = 0; mm < other.modeNames.length; mm++) {
+          if (other.modeNames[mm] === modeName) {
+            pick = modeName;
+            break;
+          }
+        }
+        selected[other.name + '/' + pick] = 'source';
+      }
+      for (let s = 0; s < styleSetNames.length; s++) {
+        selected[styleSetNames[s]] = 'source';
+      }
+      themes.push({
+        id: conv.themeIdSegment(col.name) + '-' + conv.themeIdSegment(modeName),
+        name: modeName,
+        group: col.name,
+        selectedTokenSets: selected
+      });
+    }
+  }
+
+  result['$themes'] = themes;
+  result['$metadata'] = { tokenSetOrder: tokenSetOrder };
+  return result;
+}
 
 // ============================================================================
 // SECTION 5: COLOR PARSING MODULE (JSF Rule 4.7)
@@ -2992,6 +3545,10 @@ async function exportVariables(
       }
       outputData = JSON.stringify(w3cExportData, null, 2);
       Logger.log(`✅ Export complete (W3C format): ${stats.collections} collections, ${stats.variables} variables`);
+    } else if (exportFormat === 'tokens-studio') {
+      // Tokens Studio (tokens-studio/figma-plugin) single-file container
+      outputData = JSON.stringify(convertToTokensStudio(exportData), null, 2);
+      Logger.log(`✅ Export complete (Tokens Studio format): ${stats.collections} collections, ${stats.variables} variables`);
     } else {
       // Figma JSON format
       outputData = JSON.stringify(exportData, null, 2);
