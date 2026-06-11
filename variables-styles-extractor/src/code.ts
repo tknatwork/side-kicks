@@ -21,7 +21,7 @@ figma.showUI(__html__, {
   width: UI_SIZE.simple.width,
   height: UI_SIZE.simple.height,
   themeColors: true,
-  title: 'Variables & Styles Extractor v2.1.0'
+  title: 'Variables & Styles Extractor v2.1.2'
 });
 
 // ============================================================================
@@ -306,6 +306,12 @@ interface PlanValidation {
   readonly libraryDependencies?: {
     readonly variableCount: number;
     readonly collections: string[];
+    // Unique (library collection, variable path) pairs the refs point at —
+    // lets check_libraries judge satisfiability by content, not just by name.
+    // selfSatisfied marks refs whose collection+path is provided by the import
+    // payload itself (e.g. a file that carries a local twin of the library it
+    // references) — those link during the import regardless of file state.
+    readonly refs: Array<{ collection: string; path: string; selfSatisfied?: boolean }>;
   };
   readonly fontDependencies?: {
     readonly styleCount: number;
@@ -728,21 +734,59 @@ async function validateImportAgainstPlan(
   // Detect library dependencies (variables that reference external collections)
   const libraryCollections = new Set<string>();
   let libraryVarCount = 0;
-  
+  const libraryRefKeys = new Set<string>();
+  const libraryRefs: Array<{ collection: string; path: string; selfSatisfied?: boolean }> = [];
+
+  // Index every variable path the import payload itself provides, keyed by
+  // collection name (and $originalName where a naming convention renamed the
+  // JSON key). A library ref whose collection+path appears here is satisfied
+  // by the import itself — e.g. community files that carry a local twin of
+  // the very library they reference.
+  const selfPaths = new Map<string, Set<string>>();
   for (const colExport of importCollections) {
     const colName = Object.keys(colExport)[0];
     const colData = colExport[colName];
-    
     if (!colData || !colData.modes) continue;
-    
+
+    const pathSet = new Set<string>();
+    for (const modeName of Object.keys(colData.modes)) {
+      const variables = flattenVariables(colData.modes[modeName], '');
+      for (const { path } of variables) pathSet.add(path);
+    }
+    selfPaths.set(colName, pathSet);
+    const originalName = (colData as { $originalName?: string }).$originalName;
+    if (originalName && originalName !== colName) selfPaths.set(originalName, pathSet);
+  }
+
+  for (const colExport of importCollections) {
+    const colName = Object.keys(colExport)[0];
+    const colData = colExport[colName];
+
+    if (!colData || !colData.modes) continue;
+
     for (const modeName of Object.keys(colData.modes)) {
       const modeData = colData.modes[modeName];
       const variables = flattenVariables(modeData, '');
-      
+
       for (const { value } of variables) {
         if (value.$libraryRef && value.$collectionName) {
           libraryCollections.add(value.$collectionName);
           libraryVarCount++;
+          // Record the unique (collection, path) pair this ref targets so the
+          // availability check can match by content, not just collection name.
+          if (typeof value.$value === 'string' && value.$value.startsWith('{')) {
+            const refPath = value.$value.slice(1, -1).replace(/\./g, '/');
+            const refKey = value.$collectionName + ' ' + refPath;
+            if (!libraryRefKeys.has(refKey)) {
+              libraryRefKeys.add(refKey);
+              const providedByImport = selfPaths.get(value.$collectionName);
+              libraryRefs.push({
+                collection: value.$collectionName,
+                path: refPath,
+                selfSatisfied: providedByImport ? providedByImport.has(refPath) : false
+              });
+            }
+          }
         }
       }
     }
@@ -789,7 +833,8 @@ async function validateImportAgainstPlan(
     ...(libraryCollections.size > 0 && {
       libraryDependencies: {
         variableCount: libraryVarCount,
-        collections: Array.from(libraryCollections)
+        collections: Array.from(libraryCollections),
+        refs: libraryRefs
       }
     }),
     ...(fontDeps.length > 0 && {
@@ -1052,6 +1097,36 @@ async function resolveAliasValue(variable: Variable, preferredModeId: string, ma
   
   // Return the raw value
   return value as string | number | boolean | RGBA;
+}
+
+// Resolve a variable's value through Figma's own rendering engine. Used when
+// manual chain-walking dead-ends: getVariableByIdAsync cannot fetch library-
+// internal variables this file never imported (e.g. an unpublished primitive
+// that a referenced library token aliases), but the renderer resolves the full
+// chain regardless. A throwaway hidden node pinned to the wanted mode of the
+// exporting collection provides the resolution context.
+function resolveViaConsumer(
+  variable: Variable,
+  collection: VariableCollection,
+  modeId: string
+): string | number | boolean | RGBA | undefined {
+  let node: FrameNode | null = null;
+  try {
+    node = figma.createFrame();
+    node.name = '__vse-alias-resolver';
+    node.visible = false;
+    node.resize(1, 1);
+    node.setExplicitVariableModeForCollection(collection, modeId);
+    const resolved = variable.resolveForConsumer(node);
+    return resolved ? (resolved.value as string | number | boolean | RGBA) : undefined;
+  } catch (e) {
+    Logger.log(`⚠️ Consumer-resolve failed for ${variable.name}: ${e instanceof Error ? e.message : 'unknown error'}`);
+    return undefined;
+  } finally {
+    if (node) {
+      node.remove();
+    }
+  }
 }
 
 // ============================================================================
@@ -2038,6 +2113,45 @@ const ColorParser = {
 // SECTION 6: VARIABLE CACHE (JSF Rule 4.18 - Resource Management)
 // ============================================================================
 
+// Decide which existing collection's copy of `aliasPath` an alias should bind
+// to when re-linking on import. Pure (no Figma deps) so it is unit-tested in
+// isolation — keep in sync with tests/alias-resolution.test.mjs.
+//
+// An external/library dependency is often imported into the target file under a
+// collection name that differs from the `$collectionName` baked into the export
+// (e.g. exported against "Tailwind CSS", imported as "Tailwind Primitives"). The
+// exact collection-qualified key then misses even though the target variable is
+// present. This recovers the link by matching on the variable path, refusing to
+// guess when the match is genuinely ambiguous.
+function chooseAliasCollection(
+  aliasCollection: string,
+  aliasPath: string,
+  exactExists: boolean,
+  pathCollections: readonly string[],
+  importingCollection: string
+): string | null {
+  // Fast path: the recorded collection has this exact path locally/in-library.
+  if (exactExists) return aliasCollection;
+  if (!pathCollections || pathCollections.length === 0) return null;
+  // Only one collection anywhere holds this path — unambiguous, link it.
+  if (pathCollections.length === 1) return pathCollections[0];
+  // Several collections hold the path. Disambiguate without guessing wildly.
+  // Collapse internal whitespace runs too: real-world files contain pairs like
+  // "☀️ Mode" (library) vs "☀️  Mode" (local) that differ only by a double space.
+  const norm = function (s: string): string { return String(s).replace(/\s+/g, ' ').trim().toLowerCase(); };
+  const target = norm(aliasCollection);
+  // 1) A collection whose name matches the recorded one apart from case/space.
+  for (let i = 0; i < pathCollections.length; i++) {
+    if (norm(pathCollections[i]) === target) return pathCollections[i];
+  }
+  // 2) Exactly one candidate that is not the collection currently importing —
+  //    an external dependency lives in some *other* collection by definition.
+  const external = pathCollections.filter(function (c): boolean { return c !== importingCollection; });
+  if (external.length === 1) return external[0];
+  // 3) Still ambiguous — refuse to guess (caller keeps the $localValue fallback).
+  return null;
+}
+
 class VariableCache {
   private collectionMap = new Map<string, VariableCollection>();
   private variableMap = new Map<string, Variable>();
@@ -2045,6 +2159,10 @@ class VariableCache {
   private libraryCollectionNames = new Set<string>(); // Names of connected library collections
   private initialized = false;
   private libraryIndexed = false;
+  // Lazy path -> [collection names] index across local + library variables, used
+  // to recover external-dependency alias links when the collection name drifts.
+  // Invalidated on any local mutation; rebuilt on demand.
+  private nameIndex: Map<string, string[]> | null = null;
 
   // Lazy readiness: build the local index once if not already done.
   async ensureReady(): Promise<void> {
@@ -2103,12 +2221,15 @@ class VariableCache {
   clearLocal(): void {
     this.collectionMap.clear();
     this.variableMap.clear();
+    this.nameIndex = null;
   }
 
   // Index library variables from connected team libraries
   private async indexLibraryVariables(): Promise<void> {
     this.libraryVariableMap.clear();
     this.libraryCollectionNames.clear();
+    this.nameIndex = null; // library variables feed the path index
+
     try {
       // Get all library variable collections available to this file
       const libraryCollections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
@@ -2159,8 +2280,49 @@ class VariableCache {
     return this.variableMap.get(key) || this.libraryVariableMap.get(key);
   }
 
+  // Build (memoized) a variable-name -> [collection names] index across local
+  // and library variables. The map keys are "collectionName/variableName"; the
+  // variable's own `.name` is used to strip the collection prefix exactly, so
+  // collection or variable names that themselves contain '/' stay correct.
+  private getNameIndex(): Map<string, string[]> {
+    if (this.nameIndex) return this.nameIndex;
+    const index = new Map<string, string[]>();
+    const add = function (collection: string, name: string): void {
+      const cols = index.get(name);
+      if (cols) {
+        if (cols.indexOf(collection) === -1) cols.push(collection);
+      } else {
+        index.set(name, [collection]);
+      }
+    };
+    const ingest = function (v: Variable, key: string): void {
+      const name = v.name;
+      // key === `${collection}/${name}` — strip the trailing "/name" exactly.
+      const collection = key.slice(0, key.length - name.length - 1);
+      add(collection, name);
+    };
+    this.variableMap.forEach(ingest);
+    this.libraryVariableMap.forEach(ingest);
+    this.nameIndex = index;
+    return index;
+  }
+
+  // Resolve a variable target by collection + path, tolerating external/library
+  // dependencies imported under a different collection name. Exact match is the
+  // fast path; on a miss it recovers the link by variable path (see
+  // chooseAliasCollection). Returns undefined when no safe match exists.
+  resolveTarget(collection: string, path: string, importingCollection: string = ''): Variable | undefined {
+    const exact = this.getVariable(`${collection}/${path}`);
+    if (exact) return exact;
+    const candidates = this.getNameIndex().get(path);
+    if (!candidates || candidates.length === 0) return undefined;
+    const chosen = chooseAliasCollection(collection, path, false, candidates, importingCollection);
+    return chosen ? this.getVariable(`${chosen}/${path}`) : undefined;
+  }
+
   setVariable(key: string, variable: Variable): void {
     this.variableMap.set(key, variable);
+    this.nameIndex = null;
   }
 
   setCollection(name: string, collection: VariableCollection): void {
@@ -2180,6 +2342,7 @@ class VariableCache {
     for (const key of keysToRemove) {
       this.variableMap.delete(key);
     }
+    this.nameIndex = null;
   }
 
   // Check if a collection is available (local or library)
@@ -2521,7 +2684,7 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
             if (colorStyle.boundVariables && paints.length === 0) {
               for (const [key, binding] of Object.entries(colorStyle.boundVariables)) {
                 if (binding.name && binding.collection) {
-                  const targetVar = cache.getVariable(`${binding.collection}/${binding.name}`);
+                  const targetVar = cache.resolveTarget(binding.collection, binding.name);
                   if (targetVar) {
                     try {
                       paint = figma.variables.setBoundVariableForPaint(paint, key as VariableBindablePaintField, targetVar);
@@ -2622,7 +2785,7 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
         if (colorStyle.boundVariables) {
           for (const [key, binding] of Object.entries(colorStyle.boundVariables)) {
             if (binding.name && binding.collection) {
-              const targetVar = cache.getVariable(`${binding.collection}/${binding.name}`);
+              const targetVar = cache.resolveTarget(binding.collection, binding.name);
               if (targetVar) {
                 try {
                   paint = figma.variables.setBoundVariableForPaint(paint, key as VariableBindablePaintField, targetVar);
@@ -2709,7 +2872,7 @@ const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
         if (textStyle.boundVariables) {
           for (const [key, binding] of Object.entries(textStyle.boundVariables)) {
             if (binding.name && binding.collection) {
-              const targetVar = cache.getVariable(`${binding.collection}/${binding.name}`);
+              const targetVar = cache.resolveTarget(binding.collection, binding.name);
               if (targetVar) {
                 try {
                   style.setBoundVariable(key as VariableBindableTextField, targetVar);
@@ -2816,7 +2979,7 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
         if (effectData.boundVariables) {
           for (const [key, binding] of Object.entries(effectData.boundVariables)) {
             if (binding.name && binding.collection) {
-              const targetVar = cache.getVariable(`${binding.collection}/${binding.name}`);
+              const targetVar = cache.resolveTarget(binding.collection, binding.name);
               if (targetVar) {
                 try {
                   const effects = [...style.effects];
@@ -2953,7 +3116,7 @@ const GridStyleProcessor: StyleProcessor<ExportGridStyle, GridStyle> = {
         if (gridData.boundVariables) {
           for (const [key, binding] of Object.entries(gridData.boundVariables)) {
             if (binding.name && binding.collection) {
-              const targetVar = cache.getVariable(`${binding.collection}/${binding.name}`);
+              const targetVar = cache.resolveTarget(binding.collection, binding.name);
               if (targetVar) {
                 try {
                   const grids = [...style.layoutGrids];
@@ -3413,7 +3576,13 @@ async function exportVariables(
               // If resolveAliases is true, resolve to the actual value
               if (resolveAliases) {
                 // Resolve the alias to its actual value
-                const resolvedValue = await resolveAliasValue(aliasVar, mode.modeId);
+                let resolvedValue = await resolveAliasValue(aliasVar, mode.modeId);
+                if (resolvedValue === '') {
+                  // Chain dead-ended on a library-internal variable the API
+                  // can't fetch — ask the rendering engine instead.
+                  const consumerValue = resolveViaConsumer(variable, collection, mode.modeId);
+                  if (consumerValue !== undefined) resolvedValue = consumerValue;
+                }
                 if (typeof resolvedValue === 'object' && resolvedValue !== null && 'r' in resolvedValue) {
                   exportValue = ColorConverter.toAllFormats(resolvedValue as RGBA);
                 } else {
@@ -3428,13 +3597,21 @@ async function exportVariables(
                 aliasRef = `{${aliasPath}}`;
                 exportValue = aliasRef;
                 
-                // Get the resolved local value for library aliases
+                // Get the resolved local value for library aliases. Resolve
+                // recursively: a library target whose value is itself an alias
+                // (a chain) must still yield a concrete fallback, otherwise the
+                // importer has nothing to fall back to and the token shows 0.
                 if (isLibraryAlias) {
-                  // Get the resolved value from the alias
-                  const resolvedValue = aliasVar.valuesByMode[Object.keys(aliasVar.valuesByMode)[0]];
+                  let resolvedValue = await resolveAliasValue(aliasVar, mode.modeId);
+                  if (resolvedValue === '') {
+                    // Chain dead-ended on a library-internal variable the API
+                    // can't fetch — ask the rendering engine instead.
+                    const consumerValue = resolveViaConsumer(variable, collection, mode.modeId);
+                    if (consumerValue !== undefined) resolvedValue = consumerValue;
+                  }
                   if (typeof resolvedValue === 'object' && resolvedValue !== null && 'r' in resolvedValue) {
                     localValue = ColorConverter.toAllFormats(resolvedValue as RGBA);
-                  } else if (!isVariableAlias(resolvedValue)) {
+                  } else if (resolvedValue !== '') {
                     localValue = resolvedValue as string | number | boolean;
                   }
                 }
@@ -3786,6 +3963,7 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
       modeId: string;
       aliasPath: string;
       aliasCollection: string;
+      importingCollection: string;
       fallbackValue: ExportVariableValue;
     }> = [];
 
@@ -3878,6 +4056,7 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
         modeId: string;
         aliasPath: string;
         aliasCollection: string;
+        importingCollection: string;
         fallbackValue: ExportVariableValue;
       }> = [];
 
@@ -3940,10 +4119,14 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
               modeId,
               aliasPath,
               aliasCollection,
+              importingCollection: collectionName,
               fallbackValue: modeValue
             });
-            // Set a temporary raw value in case alias resolution fails
-            setRawValue(variable, modeId, modeValue);
+            // Set a temporary raw value in case alias resolution fails. Prefer the
+            // exporter-preserved $localValue (the resolved value of an external/
+            // library alias) over the unparseable "{ref}" string, which would
+            // otherwise collapse to 0 / black.
+            setRawValue(variable, modeId, aliasFallbackValue(modeValue));
           } else {
             // Raw value - set immediately
             setRawValue(variable, modeId, modeValue);
@@ -3980,9 +4163,17 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
         modeId: string;
         aliasPath: string;
         aliasCollection: string;
+        importingCollection: string;
         fallbackValue: ExportVariableValue;
       }): void {
-      const targetVar = variableCache.getVariable(`${pending.aliasCollection}/${pending.aliasPath}`);
+      // Exact collection-qualified match first; on a miss, recover the link by
+      // path so external/library dependencies imported under a different
+      // collection name still bind instead of collapsing to the raw fallback.
+      const targetVar = variableCache.resolveTarget(
+        pending.aliasCollection,
+        pending.aliasPath,
+        pending.importingCollection
+      );
 
       if (targetVar) {
         try {
@@ -3994,7 +4185,7 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
           Logger.log(`  ⚠️ Could not set alias for ${pending.variable.name}: ${e}`);
         }
       } else {
-        // Target not found, raw value was already set as fallback
+        // Target not found anywhere — the $localValue/raw fallback set in pass 1 stands.
         aliasesFailed++;
         Logger.log(`  ⚠️ Alias target not found: ${pending.aliasCollection}/${pending.aliasPath}`);
       }
@@ -4112,6 +4303,22 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
       });
     }
   }
+}
+
+// Pick the raw value to write as a temporary fallback for an alias that has not
+// been linked yet. For external/library aliases the exporter preserves the
+// resolved value in $localValue; use it so an unresolved alias shows its
+// last-known value instead of collapsing to 0 / black (the "{ref}" string is
+// unparseable as a color/number). Returns the original value when there is no
+// preserved local value to fall back to.
+function aliasFallbackValue(value: ExportVariableValue): ExportVariableValue {
+  if (value.$localValue === undefined) return value;
+  return {
+    $scopes: value.$scopes,
+    $type: value.$type,
+    $value: value.$localValue,
+    ...(value.$description !== undefined && { $description: value.$description })
+  };
 }
 
 function setRawValue(variable: Variable, modeId: string, value: ExportVariableValue): void {
@@ -5003,37 +5210,71 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
       break;
 
     case 'check_libraries':
-      // Check if required library collections are available
+      // Check if required library collections are available — by name first,
+      // then by CONTENT: a library that is not connected still counts as
+      // satisfied when every variable path its refs target already exists in
+      // this file (imported locally or via another connected library), since
+      // the importer re-links those refs by path.
       try {
         const requiredCollections = msg.collections as string[];
-        
+        const requiredRefs = (msg.refs || []) as Array<{ collection: string; path: string; selfSatisfied?: boolean }>;
+
         // Initialize cache to index both local and library collections
         await variableCache.rebuild();
-        
+
         const availableCollections: string[] = [];
         const missingCollections: string[] = [];
-        
+        const collectionStatus: Array<{
+          name: string;
+          status: 'connected' | 'mapped' | 'partial' | 'missing';
+          satisfiable: number;
+          total: number;
+          fromImport: number;
+        }> = [];
+
         for (const collectionName of requiredCollections) {
+          const refs = requiredRefs.filter(function (r): boolean { return r.collection === collectionName; });
           if (variableCache.isCollectionAvailable(collectionName)) {
             availableCollections.push(collectionName);
+            collectionStatus.push({ name: collectionName, status: 'connected', satisfiable: refs.length, total: refs.length, fromImport: 0 });
+            continue;
+          }
+          // Name miss: a ref still resolves when the import payload itself
+          // provides the collection+path (selfSatisfied), or when the path
+          // matches variables already present (same matcher the importer uses).
+          let satisfiable = 0;
+          let fromImport = 0;
+          for (const r of refs) {
+            if (r.selfSatisfied) {
+              satisfiable++;
+              fromImport++;
+            } else if (variableCache.resolveTarget(r.collection, r.path)) {
+              satisfiable++;
+            }
+          }
+          if (refs.length > 0 && satisfiable === refs.length) {
+            availableCollections.push(collectionName);
+            collectionStatus.push({ name: collectionName, status: 'mapped', satisfiable, total: refs.length, fromImport });
+          } else if (satisfiable > 0) {
+            missingCollections.push(collectionName);
+            collectionStatus.push({ name: collectionName, status: 'partial', satisfiable, total: refs.length, fromImport });
           } else {
             missingCollections.push(collectionName);
+            collectionStatus.push({ name: collectionName, status: 'missing', satisfiable: 0, total: refs.length, fromImport: 0 });
           }
         }
-        
+
         Logger.log(`📚 Library check: ${availableCollections.length} available, ${missingCollections.length} missing`);
-        if (availableCollections.length > 0) {
-          Logger.log(`  ✅ Available: ${availableCollections.join(', ')}`);
+        for (const cs of collectionStatus) {
+          Logger.log(`  ${cs.status === 'missing' ? '❌' : cs.status === 'partial' ? '⚠️' : '✅'} ${cs.name}: ${cs.status} (${cs.satisfiable}/${cs.total} refs satisfiable)`);
         }
-        if (missingCollections.length > 0) {
-          Logger.log(`  ❌ Missing: ${missingCollections.join(', ')}`);
-        }
-        
+
         Logger.send('library_check_result', {
           allAvailable: missingCollections.length === 0,
           availableCollections,
           missingCollections,
-          requiredCollections
+          requiredCollections,
+          collectionStatus
         });
       } catch (e) {
         Logger.send('library_check_result', {
@@ -5041,6 +5282,7 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
           availableCollections: [],
           missingCollections: msg.collections || [],
           requiredCollections: msg.collections || [],
+          collectionStatus: [],
           error: e instanceof Error ? e.message : 'Library check failed'
         });
       }

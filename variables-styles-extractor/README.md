@@ -3,11 +3,11 @@
 [![Figma Plugin](https://img.shields.io/badge/Figma-Plugin-ff69b4)](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)
 [![Source: MIT](https://img.shields.io/badge/Source-MIT-yellow.svg)](./LICENSE)
 [![Distribution: CFRL](https://img.shields.io/badge/Figma%20Distribution-CFRL-blueviolet.svg)](https://www.figma.com/community-free-resource-license/)
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](./package.json)
+[![Version](https://img.shields.io/badge/version-2.1.2-blue.svg)](./package.json)
 
 **Move your design system anywhere. Export and import Figma variables and styles — selectively, safely, and in Tokens Studio–compatible JSON.**
 
-> 🔍 **Status:** v2.1.0 published to Figma Community · v2.0.0 first published 17 January 2026
+> 🔍 **Status:** v2.1.2 published to Figma Community · v2.0.0 first published 17 January 2026
 
 Variables & Styles Extractor moves complete design systems between Figma files — every variable collection, mode, alias, and style — as clean, re-importable JSON. It runs **100% locally** (zero network access) and stays responsive on large design systems thanks to a batched processing engine with live progress and a real Cancel button.
 
