@@ -1,5 +1,5 @@
 <!--
-  Variables & Styles Extractor - Figma Plugin v2.1.0
+  Variables & Styles Extractor - Figma Plugin v2.1.2
   Export and import Figma variables and styles with full fidelity
   
   Copyright (c) 2025 Tushar Kant Naik / The Keep Collective
@@ -16,10 +16,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Variables and Styles Extractor v2.1.0</title>
+  <title>Variables and Styles Extractor v2.1.2</title>
   <style>
     /* ==========================================================================
-       VARIABLES EXTRACTOR v2.1.0 - NEO-BRUTALIST DESIGN SYSTEM
+       VARIABLES EXTRACTOR v2.1.2 - NEO-BRUTALIST DESIGN SYSTEM
        
        Layout (from Figma):
        - Content: 1200×628px (Figma title bar is separate 52px)
@@ -3246,6 +3246,15 @@
       flex-shrink: 0;
     }
 
+    /* The undo slot must not occupy a flex position of its own: empty (or
+       holding a hidden undo section) it would still draw the 8px column gap
+       below the Import button, making the button sit off-center compared to
+       the other action rows. display:contents removes the slot box so its
+       children join the flex row directly — no phantom gap when empty. */
+    #simple-import-undo-slot {
+      display: contents;
+    }
+
     .simple-export-format-row {
       display: flex;
       align-items: center;
@@ -3924,21 +3933,21 @@
             <div class="import-behavior-content">
               <div class="import-behavior-toggle">
                 <label class="behavior-option">
-                  <input type="radio" name="import-behavior" value="smart-merge" checked onchange="updateCustomMergeVisibility()">
+                  <input type="radio" name="import-behavior" value="smart-merge" checked onchange="importBehaviorTouched = true; updateCustomMergeVisibility()">
                   <div class="behavior-content">
                     <span class="behavior-name">🔄 Smart Merge</span>
                     <span class="behavior-desc">Add new, update existing</span>
                   </div>
                 </label>
                 <label class="behavior-option">
-                  <input type="radio" name="import-behavior" value="clean-import" onchange="updateCustomMergeVisibility()">
+                  <input type="radio" name="import-behavior" value="clean-import" onchange="importBehaviorTouched = true; updateCustomMergeVisibility()">
                   <div class="behavior-content">
                     <span class="behavior-name">🧹 Clean Import</span>
                     <span class="behavior-desc">Clear first, then import</span>
                   </div>
                 </label>
                 <label class="behavior-option">
-                  <input type="radio" name="import-behavior" value="custom-merge" onchange="updateCustomMergeVisibility()">
+                  <input type="radio" name="import-behavior" value="custom-merge" onchange="importBehaviorTouched = true; updateCustomMergeVisibility()">
                   <div class="behavior-content">
                     <span class="behavior-name">🎯 Custom Merge</span>
                     <span class="behavior-desc">Choose what to clear</span>
@@ -4882,6 +4891,9 @@
       libraryStatus = null;
       fontStatus = null;
       importWithLibraryLinks = true;
+      importBehaviorTouched = false;
+      depsBehaviorApplied = false;
+      importDepsFileResolved = null;
       clearFileLoadedIndicator();
       
       // Clear parse cache when input is cleared
@@ -5652,6 +5664,12 @@
     let selectedModes = {}; // { collectionName: Set of selected mode names }
     let collectionModes = {}; // { collectionName: [array of mode names] }
     let libraryStatus = null; // { allAvailable, availableCollections, missingCollections }
+    // Import Behaviour defaulting: the dependency check picks Smart Merge when the
+    // external deps are already satisfied by THIS file (preserve them), Clean
+    // Import when they aren't. A manual user choice always wins.
+    let importBehaviorTouched = false;   // user clicked a behavior radio
+    let depsBehaviorApplied = false;     // dependency-aware default was applied
+    let importDepsFileResolved = null;   // null = no deps info; true/false = deps satisfied by file
     let importWithLibraryLinks = true; // Default to try library links
     let fontStatus = null; // { allAvailable, availableFonts, missingFonts }
     let importPreviewReviewed = false; // Must review import preview before importing
@@ -5975,36 +5993,89 @@
       
       const { requiredCollections, availableCollections, missingCollections, allAvailable } = result;
       const varCount = lastValidation?.libraryDependencies?.variableCount || 0;
-      
+
+      // Per-collection statuses: 'connected' (library enabled), 'mapped' (all its
+      // referenced paths match variables already in this file — importer re-links
+      // by name), 'partial' (some match), 'missing' (none). Older backends only
+      // send name lists — synthesize statuses from those for compatibility.
+      const statuses = (result.collectionStatus && result.collectionStatus.length > 0)
+        ? result.collectionStatus
+        : (requiredCollections || []).map(name => ({
+            name,
+            status: (availableCollections || []).indexOf(name) !== -1 ? 'connected' : 'missing',
+            satisfiable: 0,
+            total: 0
+          }));
+      const fullySatisfied = statuses.length > 0 && statuses.every(s => s.status === 'connected' || s.status === 'mapped');
+      const anySatisfied = statuses.some(s => s.status !== 'missing');
+
+      // Dependency-aware Import Behaviour default. "Present in this file" means a
+      // connected library or refs matched against existing variables — refs the
+      // import payload satisfies itself (fromImport) don't count, since nothing
+      // in the file needs preserving for those. Smart Merge protects the
+      // dependency variables from being wiped; Clean Import stays the default
+      // for a file with nothing to preserve. A manual radio choice always wins.
+      importDepsFileResolved = statuses.some(s =>
+        s.status === 'connected' ||
+        ((s.status === 'mapped' || s.status === 'partial') && s.satisfiable > (s.fromImport || 0)));
+      if (!importBehaviorTouched) {
+        const wanted = importDepsFileResolved ? 'smart-merge' : 'clean-import';
+        const radio = document.querySelector('input[name="import-behavior"][value="' + wanted + '"]');
+        if (radio && !radio.checked) {
+          radio.checked = true;
+          updateCustomMergeVisibility();
+          addLog(importDepsFileResolved
+            ? '🧠 Import behaviour → Smart Merge (external dependencies already present in this file)'
+            : '🧹 Import behaviour → Clean Import (external dependencies not present in this file)', 'info', 'import');
+        }
+        depsBehaviorApplied = true;
+      }
+
+      const itemFor = (s) => {
+        if (s.status === 'connected') {
+          return `<div class="library-collection-item available"><span class="status-icon">✅</span><span>${escapeHtml(s.name)} (connected)</span></div>`;
+        }
+        if (s.status === 'mapped') {
+          const how = (s.fromImport && s.fromImport === s.total)
+            ? 'provided by this import — links will be created'
+            : (s.fromImport > 0)
+              ? 'matched by name (partly provided by this import)'
+              : 'matched by name to variables in this file';
+          return `<div class="library-collection-item available"><span class="status-icon">🔗</span><span>${escapeHtml(s.name)} (${how})</span></div>`;
+        }
+        if (s.status === 'partial') {
+          return `<div class="library-collection-item missing"><span class="status-icon">⚠️</span><span>${escapeHtml(s.name)} (${escapeHtml(s.satisfiable)}/${escapeHtml(s.total)} references match existing variables — rest use fallback values)</span></div>`;
+        }
+        return `<div class="library-collection-item missing"><span class="status-icon">❌</span><span>${escapeHtml(s.name)} (not connected - will use fallback values)</span></div>`;
+      };
+      const listHtml = `<div class="library-collection-list">${statuses.map(itemFor).join('')}</div>`;
+
       let html = '';
       let cardClass = '';
-      
-      if (allAvailable) {
-        // All libraries connected - can restore links
+
+      if (fullySatisfied) {
+        // Every dependency is either a connected library or fully matched by
+        // name against variables already in this file — links will be restored.
+        const mappedCount = statuses.filter(s => s.status === 'mapped').length;
         cardClass = 'library-available';
         html = `
           <div class="library-status-header">
             <span class="library-status-icon">📚</span>
-            <span class="library-status-title">Asset Sources Detected!</span>
+            <span class="library-status-title">Asset Sources Resolved!</span>
           </div>
           <div class="library-status-message">
-            ${escapeHtml(varCount)} variables reference team library collections that are <strong>connected to this file</strong>.
-            Library links will be restored during import.
+            ${escapeHtml(varCount)} variables reference external library collections.
+            ${mappedCount > 0
+              ? 'All references are <strong>connected or matched by name</strong> to variables already in this file — links will be restored during import.'
+              : 'All referenced collections are <strong>connected to this file</strong>. Library links will be restored during import.'}
           </div>
-          <div class="library-collection-list">
-            ${availableCollections.map(col => `
-              <div class="library-collection-item available">
-                <span class="status-icon">✅</span>
-                <span>${escapeHtml(col)}</span>
-              </div>
-            `).join('')}
-          </div>
+          ${listHtml}
         `;
         importWithLibraryLinks = true;
         importBtn.textContent = '📥 Import Selected';
-        addLog(`📚 Library check: All ${availableCollections.length} required library collection(s) available`, 'success', 'import');
-      } else if (availableCollections.length > 0) {
-        // Partial - some libraries connected
+        addLog(`📚 Library check: all ${statuses.length} dependency collection(s) resolved (${mappedCount} matched by name)`, 'success', 'import');
+      } else if (anySatisfied) {
+        // Some dependencies resolve (connected / matched / partially matched)
         cardClass = 'library-partial';
         html = `
           <div class="library-status-header">
@@ -6012,35 +6083,23 @@
             <span class="library-status-title">Partial Asset Sources</span>
           </div>
           <div class="library-status-message">
-            ${escapeHtml(varCount)} variables reference team library collections. Some libraries are connected, but others are missing.
+            ${escapeHtml(varCount)} variables reference external library collections. Some references resolve here; the rest fall back to their last resolved values.
           </div>
-          <div class="library-collection-list">
-            ${availableCollections.map(col => `
-              <div class="library-collection-item available">
-                <span class="status-icon">✅</span>
-                <span>${escapeHtml(col)} (connected)</span>
-              </div>
-            `).join('')}
-            ${missingCollections.map(col => `
-              <div class="library-collection-item missing">
-                <span class="status-icon">❌</span>
-                <span>${escapeHtml(col)} (not connected - will use fallback values)</span>
-              </div>
-            `).join('')}
-          </div>
+          ${listHtml}
           <div class="library-import-options">
             <p style="font-size: 10px; margin-bottom: 6px; color: #6D4C00;"><strong>Import will:</strong></p>
             <ul style="font-size: 10px; margin: 0; padding-left: 16px; color: #6D4C00;">
-              <li>Restore library links for connected libraries</li>
-              <li>Use fallback values for missing libraries</li>
+              <li>Restore links for connected libraries</li>
+              <li>Re-link name-matched references to this file's variables</li>
+              <li>Use fallback values for anything unmatched</li>
             </ul>
           </div>
         `;
         importWithLibraryLinks = true;
         importBtn.textContent = '📥 Import Selected';
-        addLog(`⚠️ Library check: ${availableCollections.length} connected, ${missingCollections.length} missing`, 'warning', 'import');
+        addLog(`⚠️ Library check: ${statuses.filter(s => s.status !== 'missing').length} of ${statuses.length} dependency collection(s) resolve here`, 'warning', 'import');
       } else {
-        // No libraries connected - will use fallback values
+        // Nothing resolves - will use fallback values
         cardClass = 'library-missing';
         html = `
           <div class="library-status-header">
@@ -6048,26 +6107,19 @@
             <span class="library-status-title">Asset Sources Not Connected</span>
           </div>
           <div class="library-status-message">
-            ${escapeHtml(varCount)} variables reference team library collections that are <strong>not connected</strong> to this file.
+            ${escapeHtml(varCount)} variables reference team library collections that are <strong>not connected</strong> to this file, and no matching variables exist here yet.
             Variables will be imported with their <strong>fallback resolved values</strong>.
           </div>
-          <div class="library-collection-list">
-            ${missingCollections.map(col => `
-              <div class="library-collection-item missing">
-                <span class="status-icon">❌</span>
-                <span>${escapeHtml(col)}</span>
-              </div>
-            `).join('')}
-          </div>
+          ${listHtml}
           <div class="library-import-options">
             <p style="font-size: 10px; margin-bottom: 8px; color: #BF360C;">
-              <strong>💡 Tip:</strong> To restore library links, go to <em>Assets panel → Team Library</em> and enable the required libraries, then re-paste the JSON.
+              <strong>💡 Tip:</strong> Either enable the required libraries (Assets panel → Team Library), or import the dependency variables into this file first — then re-paste the JSON.
             </p>
           </div>
         `;
         importWithLibraryLinks = false;
         importBtn.textContent = '📥 Import Selected';
-        addLog(`📦 Library check: ${missingCollections.length} library collection(s) not connected - will use fallback values`, 'warning', 'import');
+        addLog(`📦 Library check: ${statuses.length} dependency collection(s) unresolved - will use fallback values`, 'warning', 'import');
       }
       
       // Update pre-proceed section
@@ -6119,17 +6171,22 @@
       // Auto-select import behavior based on diff:
       // - If there's overlap (modified or unchanged items), use Smart Merge
       // - If everything is new (no overlap with Figma), use Clean Import
-      const hasOverlap = (summary.variablesModified > 0 || summary.variablesUnchanged > 0 || 
-                          summary.stylesModified > 0 || modifiedCollections.length > 0);
-      const smartMergeRadio = document.querySelector('input[name="import-behavior"][value="smart-merge"]');
-      const cleanImportRadio = document.querySelector('input[name="import-behavior"][value="clean-import"]');
-      
-      if (hasOverlap) {
-        // Existing items in Figma match JSON - Smart Merge makes sense
-        if (smartMergeRadio) smartMergeRadio.checked = true;
-      } else {
-        // Everything is new, no overlap - Clean Import is recommended
-        if (cleanImportRadio) cleanImportRadio.checked = true;
+      // Skipped when the dependency-aware default already decided (external
+      // deps present in the file need Smart Merge even with zero name overlap
+      // — Clean Import would wipe them) or the user chose manually.
+      if (!depsBehaviorApplied && !importBehaviorTouched) {
+        const hasOverlap = (summary.variablesModified > 0 || summary.variablesUnchanged > 0 ||
+                            summary.stylesModified > 0 || modifiedCollections.length > 0);
+        const smartMergeRadio = document.querySelector('input[name="import-behavior"][value="smart-merge"]');
+        const cleanImportRadio = document.querySelector('input[name="import-behavior"][value="clean-import"]');
+
+        if (hasOverlap) {
+          // Existing items in Figma match JSON - Smart Merge makes sense
+          if (smartMergeRadio) smartMergeRadio.checked = true;
+        } else {
+          // Everything is new, no overlap - Clean Import is recommended
+          if (cleanImportRadio) cleanImportRadio.checked = true;
+        }
       }
       
       // Log summary (using already calculated values)
@@ -6743,6 +6800,13 @@
     // In Advanced mode: respect the user's radio selection
     function getImportBehavior() {
       if (!isAdvancedMode()) {
+        // Dependency-aware rule first: external deps satisfied by this file's
+        // variables must survive the import (Smart Merge) even when the diff
+        // shows zero name overlap — Clean Import would wipe them. No deps
+        // satisfied here → Clean Import for a fresh, predictable state.
+        if (importDepsFileResolved !== null) {
+          return importDepsFileResolved ? 'smart-merge' : 'clean-import';
+        }
         // In Simple mode, auto-determine based on diff data
         // If there's no overlap (all new items), use Clean Import
         // If there's overlap (modified/unchanged items), use Smart Merge
@@ -7206,7 +7270,10 @@
             parent.postMessage({
               pluginMessage: {
                 type: 'check_libraries',
-                collections: msg.data.libraryDependencies.collections
+                collections: msg.data.libraryDependencies.collections,
+                // (collection, path) pairs so availability is judged by content
+                // (can these refs be satisfied here?) — not just by library name
+                refs: msg.data.libraryDependencies.refs || []
               }
             }, '*');
           } else {

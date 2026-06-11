@@ -12,7 +12,7 @@ A multi-project workspace for Figma plugins and design tools.
 
 | Project | Folder | Status | Notes |
 |---------|--------|--------|-------|
-| Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.1.0 · first published 17 Jan 2026 | Figma plugin · [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
+| Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.1.2 · first published 17 Jan 2026 | Figma plugin · [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
 
 ---
 

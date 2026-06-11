@@ -10,11 +10,57 @@ All notable changes to this Figma plugin are documented here.
 
 ---
 
-## [2.1.0] - Unreleased
+## [2.1.2] - 2026-06-11
+
+### 🔗 External Library Dependency Resolution & Import Reliability
+
+Corrections release. Fixes imported variables that referenced external (team
+library) collections collapsing to `0` when the library was not connected to
+the target file, plus the detection and defaults around that workflow.
+
+### Fixed
+
+#### Alias re-linking on import
+- **Variables referencing unconnected libraries no longer import as `0`.**
+  Alias resolution now matches by content, in order: exact `collection/path`
+  → unique path match across all collections → loose collection-name match.
+  External refs re-link to same-named variables already present in the file
+  (e.g. tokens previously imported from another design system file), and only
+  genuinely ambiguous matches refuse to guess.
+- **Collection-name matching collapses whitespace runs** — real-world files
+  contain pairs like `☀️ Mode` (library, one space) vs `☀️  Mode` (local, two
+  spaces) that previously failed to match.
+
+#### Fallback value capture on export
+- **Chained library aliases now export a real `$localValue`.** A library token
+  whose own value is another alias previously exported no fallback at all;
+  the chain is now resolved recursively (per mode).
+- **Library-internal primitives resolve via the rendering engine.** When the
+  chain crosses into variables the Plugin API cannot fetch (e.g. unpublished
+  primitives inside the library file), the exporter asks Figma's own resolver
+  (`Variable.resolveForConsumer`) through a temporary hidden node pinned to
+  the exported mode — the measured value becomes the fallback. Applies to
+  both "preserve bindings" and "export as raw values" modes.
+
+#### Import UX
+- **Asset Sources card is content-aware.** Per-library status is now
+  `connected` / `matched by name to variables in this file` / `provided by
+  this import` / `partial` / `missing` — instead of the name-only
+  "not connected" warning that ignored satisfiable dependencies.
+- **Import Behaviour defaults follow the dependency check.** External deps
+  already present in the file → **Smart Merge** (protects the dependency
+  variables from being wiped by Clean Import); deps not present → **Clean
+  Import**. A manual choice always wins; Simple mode follows the same rule.
+- **Simple tab Import button spacing** — removed the phantom gap below the
+  button caused by the empty undo placeholder in its action row.
+
+---
+
+## [2.1.0] - 2026-06-10
 
 ### ✨ Simple Mode Redesign, Heavy-File Performance & Tokens Studio Export
 
-**Status:** In development — pending final manual testing in Figma Desktop before release
+**Status:** Published to Figma Community
 
 ### New Features
 
