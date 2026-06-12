@@ -186,13 +186,18 @@ See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the detailed plan. Build tooling fo
 
 ## Team
 
-Designed at the Lollypop Designathon 2025 by **Team 6**, mentored by **Karan Gautam**:
+A team of **eight product designers** — Team 6 — designed CREATIVIA in 24 hours at the Lollypop Designathon 2025, mentored by **Karan Gautam**. We split into pods the way a full product‑design team would:
 
-> Rajashekar · Drishti Jain · Akash Kumaraguru · Cherrisha U Shetty · Dharanitharan R · Anu Murugan · **Tushar Kant Naik** · Tamilselvan
+| Pod | Members | Focus |
+|-----|---------|-------|
+| **Product direction (PM)** | Rajashekar · Dharanitharan R | Holistic product management — scope, priorities, and keeping the concept coherent end to end |
+| **Persona & research** | Akash Kumaraguru · Cherrisha U Shetty | Building out Raj's persona, use cases, and pain points |
+| **Presentation & dashboards** | Drishti Jain · **Tushar Kant Naik** | The show‑reel/presentation and the practice & analytics dashboard screens |
+| **Graphics** | Anu Murugan · Tamilselvan | Visual assets, illustration, and brand graphics |
+
+**My role — Tushar Kant Naik.** With Drishti I built the **presentation and the dashboard** screens (the practice analytics / performance‑metrics views). Beyond that, I shaped several of the **niche features baked into the app** — the smaller, opinionated interactions that make CREATIVIA feel like a *partner, not a prompt box.*
 
 **Portfolio owner:** Tushar Kant Naik — this folder hosts the case study and the planned working demo for [tusharkantnaik.com](https://tusharkantnaik.com).
-
-> _My specific contribution on Team 6: **<to be filled in>.**_ <!-- TODO(tushar): replace with your role, e.g. research / interaction design / prototyping / visual design -->
 
 ---
 

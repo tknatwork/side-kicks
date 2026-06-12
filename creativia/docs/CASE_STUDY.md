@@ -203,9 +203,18 @@ Type pairs **Outfit** (titles) with **Inter** (body).
 
 ## 8. Team & attribution
 
-Designed by **Team 6**, mentored by **Karan Gautam**: Rajashekar · Drishti Jain · Akash
-Kumaraguru · Cherrisha U Shetty · Dharanitharan R · Anu Murugan · **Tushar Kant Naik** ·
-Tamilselvan.
+A team of **eight product designers** — Team 6 — built CREATIVIA in 24 hours, mentored by
+**Karan Gautam**, organised into pods like a full product‑design team:
+
+| Pod | Members | Focus |
+|-----|---------|-------|
+| Product direction (PM) | Rajashekar · Dharanitharan R | Holistic PM — scope, priorities, end‑to‑end coherence |
+| Persona & research | Akash Kumaraguru · Cherrisha U Shetty | Raj's persona, use cases, pain points |
+| Presentation & dashboards | Drishti Jain · **Tushar Kant Naik** | Show‑reel/presentation + practice & analytics dashboards |
+| Graphics | Anu Murugan · Tamilselvan | Visual assets, illustration, brand graphics |
+
+**Tushar Kant Naik (portfolio owner):** built the presentation and dashboard screens with
+Drishti, and shaped several of the niche features baked into the app.
 
 The concept and visual design are the team's collective work. This case study documents
 the entry for educational and portfolio purposes — see [`../LICENSE`](../LICENSE) for the

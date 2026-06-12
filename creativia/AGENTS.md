@@ -91,10 +91,10 @@ local; never rely on it being committed.
    document). Do not invent features, metrics, or research that weren't in the
    submission. If something is uncertain, mark it `<!-- TODO -->` rather than
    fabricating.
-2. **Attribute honestly.** This is **Team 6's** collective work. Credit the
-   whole team; do not overstate the portfolio owner's individual role. The
-   "My contribution" line in the README is a `TODO` for the owner to fill —
-   never guess it.
+2. **Attribute honestly.** This is **Team 6's** collective work, organised into
+   four design pods (PM, persona & research, presentation & dashboards, graphics
+   — see the README). Credit the whole team and keep the owner's documented role
+   (presentation & dashboards + niche features) accurate; do not inflate it.
 3. **Respect the Lollypop brand.** Document the entry for educational/portfolio
    use; don't imply endorsement or ownership of the Lollypop/Designathon marks.
 4. **Keep assets lean.** Screen images live in `assets/screens/` as optimised

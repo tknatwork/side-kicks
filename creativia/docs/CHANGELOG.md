@@ -35,8 +35,9 @@ first; the working demo is deferred to a later phase.
 
 ### Notes
 - `.gcc/` session memory is gitignored workspace‑wide (local only).
-- The owner's individual contribution line in the README is a `TODO` — credited to
-  the whole team until filled.
+- Team documented as four design pods (PM · persona & research · presentation &
+  dashboards · graphics); the owner's role (presentation & dashboards + niche
+  features) is credited within the wider Team 6 effort.
 
 ---
 
