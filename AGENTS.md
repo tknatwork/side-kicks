@@ -18,13 +18,14 @@ Index: README.md → table of projects
 
 ## What this repo is
 
-A workspace for Figma plugins and design tooling. It currently hosts a
-single active project (the former Nectar Design Toolkit and Design System
-Builder projects have been removed):
+A workspace for Figma plugins, design tooling, and design case studies. It
+currently hosts two active projects (the former Nectar Design Toolkit and
+Design System Builder projects have been removed):
 
-| Project | Folder | Status |
-|---------|--------|--------|
-| Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published on Figma Community ([1584331992332668732](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)) |
+| Project | Folder | Type | Status |
+|---------|--------|------|--------|
+| Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Figma plugin | Published on Figma Community ([1584331992332668732](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)) |
+| CREATIVIA | [`creativia/`](creativia/) | Design case study + planned demo | Content scaffold (v0.1.0) — Lollypop Designathon 2025, Team 6 |
 
 ---
 
@@ -54,7 +55,8 @@ banned without explicit user permission.
 
 | You're editing | You may also touch | You must NOT touch |
 |----------------|--------------------|--------------------|
-| `variables-styles-extractor/**` | Root `README.md`, `.github/` if it's a security/CI change you've been asked for | — |
+| `variables-styles-extractor/**` | Root `README.md`, `.github/` if it's a security/CI change you've been asked for | `creativia/**` and other project source unless explicitly asked |
+| `creativia/**` | Root `README.md`, `.github/` if it's a security/CI change you've been asked for | `variables-styles-extractor/**` and other project source unless explicitly asked |
 | Workspace root files (this file, README, `.gcc/`) | The project's README if cross-cutting | Per-project source unless explicitly asked |
 
 If a future change spans more than one project folder (e.g. extracting

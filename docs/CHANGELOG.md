@@ -6,12 +6,32 @@
 
 This changelog tracks **folder-level structure changes only**.
 
-For project-specific changes, see the active project's changelog:
+For project-specific changes, see each project's changelog:
 - `variables-styles-extractor/docs/CHANGELOG.md`
+- `creativia/docs/CHANGELOG.md`
 
 ---
 
-## [Unreleased] - Workspace reduced to a single project
+## [Unreleased] - New project: CREATIVIA (design case study)
+
+### Added
+- **`creativia/`** — CREATIVIA, an AI creative co‑pilot for musicians, captured as a
+  structured case study from the [Lollypop Designathon 2025](https://lollypop.design/designathon-2025/)
+  (Team 6, Musician persona). Content‑first scaffold: README case study, `docs/CASE_STUDY.md`,
+  `docs/BRAND.md`, `docs/ROADMAP.md`, an optimised screen gallery in `assets/screens/`, plus the
+  standard project files (`AGENTS.md`, `CLAUDE.md`, `LICENSE`, redirects, Copilot + issue templates).
+  A working demo for the portfolio is planned (see the project roadmap).
+- The workspace now hosts **two active projects** of different types: a Figma plugin
+  (`variables-styles-extractor/`) and a design case study (`creativia/`).
+
+### Changed
+- Root `README.md` and `AGENTS.md` updated from the single‑project layout to a
+  two‑project layout (Projects table, repository layout tree, project‑scope rules,
+  and "what this repo is" framing now includes design case studies).
+
+---
+
+## [Previous] - Workspace reduced to a single project
 
 ### Removed
 - **`nectar-design-toolkit/`** and **`Design System Builder/`** were removed from the repository. The workspace now hosts a single active project, `variables-styles-extractor`.

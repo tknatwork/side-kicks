@@ -1,6 +1,6 @@
 # Side-Kicks
 
-A multi-project workspace for Figma plugins and design tools.
+A multi-project workspace for Figma plugins, design tools, and design case studies.
 
 📖 **AI builders start here:** [AGENTS.md](AGENTS.md) — workspace-level canonical rules.
 🔒 **Reporting a vulnerability:** [`.github/SECURITY.md`](.github/SECURITY.md).
@@ -13,6 +13,7 @@ A multi-project workspace for Figma plugins and design tools.
 | Project | Folder | Status | Notes |
 |---------|--------|--------|-------|
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.1.2 · first published 17 Jan 2026 | Figma plugin · [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
+| CREATIVIA | [`creativia/`](creativia/) | Content scaffold v0.1.0 · working demo planned | Design case study — AI creative co‑pilot for musicians · [Lollypop Designathon 2025](https://lollypop.design/designathon-2025/), Team 6 |
 
 ---
 
@@ -54,7 +55,14 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── assets/                     ← Plugin logo (SVG) + icon
 │   ├── .github/copilot-instructions.md
 │   └── docs/                       ← CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
-└── (single active project: variables-styles-extractor)
+└── creativia/                       ← Project: design case study (+ planned demo)
+    ├── AGENTS.md                   ← Project AI rules (canonical)
+    ├── CLAUDE.md                   ← Pointer to project AGENTS.md
+    ├── README.md                   ← Public-facing case study
+    ├── LICENSE                     ← MIT + design-IP note
+    ├── assets/screens/             ← Optimised screen + process gallery
+    ├── .github/copilot-instructions.md + ISSUE_TEMPLATE/
+    └── docs/                       ← CASE_STUDY, BRAND, ROADMAP, CHANGELOG, redirects
 ```
 
 ---
