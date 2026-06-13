@@ -10,6 +10,35 @@ All notable changes to the CREATIVIA project are documented here.
 
 ---
 
+## [0.2.0] - 2026-06-13
+
+### 🔍 Enriched from the Figma design file
+
+Folded in content read directly from Team 6's Figma design file (design page `2:433`,
+research board `129:5851`) — richer and more accurate than the A4 PDF the v0.1.0 scaffold
+was built from.
+
+### Added
+- **User-interview research method** — four themes (🧠 Creative Process · 🎹 Practice &
+  Iteration · 🤝 Collaboration · 🤖 Tech & Tools) with their questions, in
+  [`../README.md`](../README.md) and [`CASE_STUDY.md`](CASE_STUDY.md).
+- **Affinity-board synthesis** (Target Audience · What Raj does · Needs · Pain points · Key
+  Pointers) and per-use-case breakdowns in `CASE_STUDY.md`.
+- New Figma-sourced assets in [`../assets/figma/`](../assets/figma/) — cover, "what are we
+  solving for", and the **User Interview** frame.
+- Note of additional design artifacts (a **Userflow** diagram and a **landing-page** mockup).
+
+### Changed / Fixed
+- **Brand tokens corrected to the documented Figma values:** primary gradient
+  **`#FF0F7B → #F89B29`** (was `#FE1E72→#F89030`) and **Accent Magenta `#E23670`** (was
+  `#E32678`). Updated `BRAND.md`, README (table + badges), and the CSS variables.
+- **Pain points 10 → 11** — added "Lack of instant validation and feedback"; needs stated as the canonical 5.
+- **Creative loop corrected:** Unrefined Skill → Practice → Document & Recall → Collaborate
+  → **Refined Skill** (was "Improvise").
+- Sources/attribution now credit the Figma design file (nodes `2:433`, `129:5851`).
+
+---
+
 ## [0.1.0] - 2026-06-12
 
 ### 🎸 Initial content scaffold — Designathon 2025 submission captured

@@ -1,7 +1,7 @@
 # CREATIVIA — A Creative Co‑Pilot for Musicians
 
-[![Event](https://img.shields.io/badge/Lollypop-Designathon%202025-ff2d70)](https://lollypop.design/designathon-2025/)
-[![Team](https://img.shields.io/badge/Team-6-f89030)](#team)
+[![Event](https://img.shields.io/badge/Lollypop-Designathon%202025-ff0f7b)](https://lollypop.design/designathon-2025/)
+[![Team](https://img.shields.io/badge/Team-6-f89b29)](#team)
 [![Persona](https://img.shields.io/badge/Persona-Musician%20(Raj)-2662d9)](#meet-raj)
 [![Status](https://img.shields.io/badge/status-concept%20%C2%B7%20case%20study-blueviolet)](#status--roadmap)
 [![Demo](https://img.shields.io/badge/working%20demo-planned-lightgrey)](#status--roadmap)
@@ -61,27 +61,35 @@ His creative life spans three recurring use cases from the brief:
 2. **Active listening** — learning solos and rhythm parts from his idols, documenting riffs to replicate live, aligning the band on a target sound.
 3. **Rehearsals** — songwriting rehearsals (editing ideas on the fly, take by take) and performance rehearsals (recalling lyrics, cues, and parts as setlists evolve).
 
+### How we researched
+
+We ran **user interviews** across four themes — 🧠 *Creative Process*, 🎹 *Practice & Iteration*, 🤝 *Collaboration*, 🤖 *Tech & Tools* — asking things like *"When do ideas strike? Have you ever lost a good one?"* and the question that shaped the whole product: ***"Would you want AI active or silent?"*** We synthesised the findings on an affinity board (Target Audience · What Raj does · Needs · Pain points · Key Pointers).
+
+![User interviews — the four research themes](assets/figma/figma-03-user-interview.jpg)
+
 ### What Raj needs
 
-1. To **practise** consistently and improve.
-2. To **document regular ideas** before they fade.
-3. To get **validation / feedback** — from AI *and* from collaborators.
-4. A **collaborative workspace** for the band.
+1. To **practise** to maintain form.
+2. To **document regular ideas** immediately.
+3. **Validation / feedback** — from AI *and* from collaborators.
+4. A **method to recall previous compositions**.
+5. A **collaborative workspace** for the band.
 
 ### Raj's pain points
 
 | # | Pain point |
 |---|------------|
-| 1 | **Loss of spontaneous ideas** — riffs, lyrics, melodies fade if not recorded immediately |
-| 2 | **Fragmented documentation** — ideas scattered across devices, apps, and notes; hard to retrieve |
-| 3 | **Limited exposure** — no structured way to explore trends and inspiration; creative growth stalls |
+| 1 | **Loss of spontaneous ideas** — new riffs, lyrics, or melodies fade if not recorded immediately |
+| 2 | **Fragmented documentation** — ideas scattered across devices, apps, or notes; retrieval is hard |
+| 3 | **Limited exposure** — no structured way to explore trends and inspiration; creative growth slows |
 | 4 | **Inefficient collaboration** — sharing ideas with bandmates is slow, delaying progress |
-| 5 | **Wasted creative triggers** — no effective prompts during mental blocks |
-| 6 | **Hard to recall old compositions** — past riffs, lyrics, and arrangements are easy to forget |
-| 7 | **Hard to track iterations** — snippets across songs aren't stored or accessible |
-| 8 | **Hard to maintain records** of renditions across versions |
-| 9 | **No edit‑history tracking** — changes over time aren't logged for comparison |
-| 10 | **Fear of plagiarism** when new ideas are composed |
+| 5 | **Lack of instant validation and feedback** |
+| 6 | **Missed creative triggers** — no effective prompts during mental blocks |
+| 7 | **Difficulty recalling older compositions** — past riffs, lyrics, or arrangements are hard to remember |
+| 8 | **No system to track inspirations** from other songs — snippets aren't stored or accessible |
+| 9 | **Difficulty maintaining records** of renditions |
+| 10 | **No edit‑history tracking** — changes over time aren't logged for comparison |
+| 11 | **Fear of plagiarism** when something new is composed |
 
 ![Raj's needs and pain points](assets/screens/03-needs-and-painpoints.jpg)
 
@@ -96,7 +104,7 @@ The team's guiding principle came from a line we kept coming back to:
 
 So we set a hard design constraint: **give the creative freedom back to the creator.** CREATIVIA does the dishes — capture, analysis, organisation, recall — so Raj keeps the art.
 
-Through research we found that creative work tends to cycle through a handful of activities — **unrefined skill → practice → document & recall → collaborate → improvise** — and that the loop is **non‑linear**. The product had to support *jumping between* these states, not march through them.
+Through research we found that creative work tends to cycle through a handful of states — **Unrefined Skill → Practice → Document & Recall → Collaborate → Refined Skill** — and that the loop is **non‑linear** (*"we know it's non‑linear; we tried our best to put it this way"*). The product had to support *jumping between* these states, not march through them.
 
 ![Creative freedom + the four core activities](assets/screens/04-creative-freedom-research.jpg)
 
@@ -147,9 +155,9 @@ A high‑energy palette on a calm, dark canvas — built so the bright colours c
 
 | Role | Token | Hex | Notes |
 |------|-------|-----|-------|
-| Primary | **AI Soundwave** (gradient) | `#FE1E72 → #F89030` | Pink for passion, orange for optimism — the spark that keeps momentum going |
+| Primary | **AI Soundwave** (gradient) | `#FF0F7B → #F89B29` | Pink for passion, orange for optimism — the spark that keeps momentum going |
 | Secondary | **Soundwave Blue** | `#2662D9` | Keeps things clear and steady |
-| Secondary | **Accent Magenta** | `#E32678` | A little playfulness without stealing the show |
+| Secondary | **Accent Magenta** | `#E23670` | A little playfulness without stealing the show |
 | Neutral | **Almost Black** | `#121212` | The calm canvas |
 | Neutral | **White** | `#FFFFFF` | Room for the eyes to rest |
 

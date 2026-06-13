@@ -66,7 +66,8 @@ creativia/
 ├── README.md                  ← Public-facing case study
 ├── LICENSE                    ← MIT (+ design-IP note)
 ├── assets/
-│   └── screens/               ← Optimised screen + process images (source of the gallery)
+│   ├── screens/               ← Optimised gallery rendered from the A4 PDF
+│   └── figma/                 ← Frames pulled directly from the Figma design file
 ├── .github/
 │   ├── copilot-instructions.md
 │   └── ISSUE_TEMPLATE/        ← bug + feature templates
@@ -135,7 +136,7 @@ Never delete — rewrite if the content becomes wrong:
 | `docs/CASE_STUDY.md`, `docs/BRAND.md`, `docs/ROADMAP.md` | Content |
 | `docs/CHANGELOG.md` | Version history (protected) |
 | `.github/copilot-instructions.md` | Copilot rules |
-| `assets/screens/**` | The source images for the gallery |
+| `assets/screens/**`, `assets/figma/**` | The source images (A4 gallery + Figma frames) |
 
 ---
 

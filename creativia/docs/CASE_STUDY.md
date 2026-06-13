@@ -8,6 +8,8 @@
 [Lollypop Designathon 2025](https://lollypop.design/designathon-2025/) by
 **Team 6**, around the persona of **Raj, a 24‑year‑old guitarist**.
 
+![CREATIVIA — cover](../assets/figma/figma-01-cover.jpg)
+
 ---
 
 ## 1. Context — the Designathon
@@ -94,29 +96,60 @@ band to align on a target sound and quality.
 
 ---
 
-## 4. Research → needs & pain points
+## 4. Research
 
-**Creative professionals lose time and ideas when inspiration, collaboration, and
-organisation are scattered across disconnected tools** — slowing progress, weakening
-teamwork, and making it hard to track a project's evolution.
+### Method — user interviews
 
-### What Raj needs
-1. To **practise** consistently and improve.
-2. To **document regular ideas** before they fade.
-3. To get **validation / feedback** — from AI *and* collaborators.
-4. A **collaborative workspace** for the band.
+Before designing, Team 6 ran **user interviews** structured around four themes (captured on
+the research frame in the design file):
 
-### Raj's pain points
-1. **Loss of spontaneous ideas** — riffs, lyrics, melodies fade if not recorded immediately.
-2. **Fragmented documentation** — ideas scattered across devices, apps, notes; hard to retrieve.
-3. **Limited exposure** — no structured way to explore trends and inspiration; growth stalls.
-4. **Inefficient collaboration** — sharing with bandmates is slow, delaying progress.
-5. **Wasted creative triggers** — no effective prompts during mental blocks.
-6. **Difficulty recalling old compositions** — past riffs, lyrics, arrangements are hard to remember.
-7. **Difficulty tracking iterations** — snippets across songs aren't stored or accessible.
-8. **Difficulty maintaining records** of renditions across versions.
-9. **No edit‑history tracking** — changes over time aren't logged for comparison.
-10. **Fear of plagiarism** when new ideas are composed.
+| Theme | Questions explored |
+|-------|--------------------|
+| 🧠 **Creative Process** | When do ideas strike? How do you capture them? Have you ever lost a good one? |
+| 🎹 **Practice & Iteration** | How do you recall variations? What helps you choose the best version? |
+| 🤝 **Collaboration** | How do you share ideas? What makes group rehearsals messy? |
+| 🤖 **Tech & Tools** | What's helpful vs disruptive? Would you want AI *active* or *silent*? |
+
+That last question — *active or silent?* — shaped the whole product: CREATIVIA stays
+ambient and on‑demand, never a chatbot demanding attention.
+
+![User Interview — the four research themes](../assets/figma/figma-03-user-interview.jpg)
+
+### Synthesis — the affinity board
+
+The interviews and persona were mapped on a large affinity board across five lenses —
+**Target Audience · What Raj does · Needs · Pain points · Key Pointers** — and broken down
+by the three use cases (Songwriting, Active Listening, Rehearsals). The "Key Pointers" lens
+framed *who* to build for: **Target‑Audience Discoverability, Geography, Relevance,
+Popularity.** Notable signals that surfaced here (and fed the features): *"needs a record of
+liked snippets — easily selectable & sharable," "requirement of triggers to remove mental
+blocks," "needs a history/timeline," "splice sections from multiple tracks," "maintaining
+file‑format consistency for smoother workflow,"* and *"align teammates on a singular aim in
+sound & quality."*
+
+**The problem, stated:** Creative professionals lose time and ideas when inspiration,
+collaboration, and organisation are scattered across disconnected tools — slowing progress,
+weakening teamwork, and making it hard to track a project's evolution.
+
+### What Raj needs (5)
+1. To **practise** to maintain form.
+2. To **document regular ideas** immediately.
+3. **Validation / feedback** — from AI *and* collaborators.
+4. A **method to recall previous compositions**.
+5. A **collaborative workspace** for the band.
+
+### Raj's pain points (11)
+1. **Loss of spontaneous ideas** — new riffs, lyrics, or melodies fade if not recorded immediately.
+2. **Fragmented documentation** — ideas scattered across devices, apps, or notes; retrieval is hard.
+3. **Limited exposure** — no structured way to explore trends and inspiration; creative growth slows.
+4. **Inefficient collaboration** — sharing ideas with bandmates is slow, delaying progress.
+5. **Lack of instant validation and feedback.**
+6. **Missed creative triggers** — no effective prompts during mental blocks.
+7. **Difficulty recalling older compositions** — past riffs, lyrics, or arrangements are hard to remember.
+8. **No system to track inspirations from other songs** — snippets aren't stored or accessible.
+9. **Difficulty maintaining records of renditions.**
+10. **No edit‑history tracking** — changes over time aren't logged for comparison.
+11. **Fear of plagiarism** when something new is composed.
 
 ---
 
@@ -131,9 +164,13 @@ So the constraint became: **give the creative freedom back to the creator.** CRE
 handles capture, analysis, organisation, and recall — the "dishes" — and leaves the art
 to Raj.
 
-Research showed creative work cycles through **unrefined skill → practice → document &
-recall → collaborate → improvise**, and that the loop is **non‑linear**. The product had
-to support jumping between these states rather than enforcing a sequence.
+Research showed creative work cycles through five states —
+**Unrefined Skill → Practice → Document & Recall → Collaborate → Refined Skill** — and that
+the loop is **non‑linear** (*"we know it's non‑linear; we tried our best to put it this
+way"*). The product had to support jumping between these states rather than enforcing a sequence.
+
+**Design process — three moves:** *understanding the space* → *understanding the user* →
+**building a co‑pilot partner, not a replacement.**
 
 **Design principles**
 - **A co‑pilot, not a replacement.** AI assists the craft; it never makes the art.
@@ -144,6 +181,8 @@ to support jumping between these states rather than enforcing a sequence.
 ---
 
 ## 6. The solution
+
+![What are we solving for → Solution](../assets/figma/figma-02-solving-for.jpg)
 
 Everything is reachable from one home prompt — **"Hey Buddy, what's on your mind now?"** —
 with four entry points: **Start Record · Upload · Messy Minds? · Find Trends.**
@@ -183,12 +222,13 @@ during practice and experimentation.
 | Fragmented documentation (2) | Media Library |
 | Limited exposure / trends (3) | Smart Analysis · Find Trends |
 | Inefficient collaboration (4) | Shared annotations · band workspace |
-| Wasted creative triggers (5) | "Messy Minds?" prompts |
-| Recalling old compositions (6) | Library + advanced search |
-| Tracking iterations (7) | Iterate / edit / export · Snippets Vault |
-| Maintaining records of renditions (8) | Versioned library |
-| No edit‑history tracking (9) | Iteration history |
-| Fear of plagiarism (10) | Similarity / reference comparison in Analysis |
+| Lack of instant validation & feedback (5) | Smart Analysis feedback |
+| Missed creative triggers (6) | "Messy Minds?" prompts |
+| Recalling older compositions (7) | Library + advanced search |
+| No system to track inspirations (8) | Snippets Vault |
+| Maintaining records of renditions (9) | Versioned library |
+| No edit‑history tracking (10) | Iteration history |
+| Fear of plagiarism (11) | Similarity / reference comparison in Analysis |
 
 ---
 
@@ -222,10 +262,18 @@ design‑IP note.
 
 ---
 
-## 9. Sources
+## 9. Artifacts & sources
 
+**Other design artifacts in the file** (beyond the screens shown here): a **Userflow**
+diagram and a **landing‑page** mockup for CREATIVIA.
+
+**Sources:**
 - Lollypop Designathon 2025 problem statement (brief, program flow, evaluation).
 - Musician persona brief (Raj — use cases 1–3).
-- Team 6's A4 process document (problem, needs, pain points, research, branding, feature
-  screens) — the source of the images in [`../assets/screens/`](../assets/screens/).
+- Team 6's **Figma design file** (`aY0lWks0P4pMxdAIB694TV`) — the design page (node
+  `2:433`) and the affinity/research board (node `129:5851`); the source of the brand
+  tokens, the user‑interview research, the canonical needs/pains, and the images in
+  [`../assets/figma/`](../assets/figma/).
+- Team 6's A4 process document (PDF) — the source of the gallery in
+  [`../assets/screens/`](../assets/screens/).
 - [Designathon 2025 event page](https://lollypop.design/designathon-2025/).
