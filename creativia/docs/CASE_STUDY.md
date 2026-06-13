@@ -178,6 +178,8 @@ way"*). The product had to support jumping between these states rather than enfo
 - **Beyond the chat box.** Visual, ambient, real‑time‑responsive interactions.
 - **Built for the band.** Individual flow that rolls up into shared work.
 
+![Userflow — early flow sketches mapping how the screens connect](../assets/figma/figma-05-userflow.jpg)
+
 ---
 
 ## 6. The solution
@@ -202,6 +204,8 @@ and more**. It returns **instant, actionable feedback**, pinpoints every mistake
 bottleneck, and visualises reference‑vs‑user waveforms and performance metrics — making
 each session focused, efficient, and measurable, with progress tracked over time.
 
+![Practice Session Analysis dashboard — reference-track waveforms, an improvisation insight card, and performance metrics (Overall Accuracy 78% · Chord Clarity 92% · Tempo Consistency 88%) split into "what you did well" vs "areas to improve"](../assets/figma/figma-04-practice-dashboard.jpg)
+
 ### 6.3 Iterate, edit & export
 Raj picks his best takes across iterations, **edits and exports** recordings, uploads
 files from his computer, or imports recordings from his library — turning rough sessions
@@ -213,6 +217,14 @@ discovery panel pulling inspiration from across the internet. **Advanced search 
 filtering** — by tune, instrument, lyric, or the smallest musical element — make ideas
 effortless to find, and the best moments land in a dedicated **Snippets Vault** built up
 during practice and experimentation.
+
+### The landing concept
+
+A **CREATIVIA landing page** was mocked alongside the product, distilling the design
+process behind it — *understanding the space → understanding the user → building a co‑pilot
+partner, not a replacement.*
+
+![The CREATIVIA landing concept + design process](../assets/figma/figma-06-landing-design-process.jpg)
 
 ### How the features answer the pain points
 
@@ -264,8 +276,10 @@ design‑IP note.
 
 ## 9. Artifacts & sources
 
-**Other design artifacts in the file** (beyond the screens shown here): a **Userflow**
-diagram and a **landing‑page** mockup for CREATIVIA.
+**Design artifacts captured** into [`../assets/figma/`](../assets/figma/): the cover, the
+**user‑interview** frame, the **Practice Session Analysis dashboard**, the **userflow**
+sketches, and the **landing‑page** concept. (The page itself is named *"Documentation"* in
+the Figma file.)
 
 **Sources:**
 - Lollypop Designathon 2025 problem statement (brief, program flow, evaluation).

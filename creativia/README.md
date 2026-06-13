@@ -133,7 +133,7 @@ Record any spontaneous idea the moment it strikes and analyse it immediately. Th
 
 During practice, Raj records a session and CREATIVIA analyses it across multiple parameters — **timing accuracy, pitch stability, tempo consistency, and more** — against a chosen reference track. It returns **instant, actionable feedback**, identifies every mistake and bottleneck, and tracks efficiency over time, making each session more focused, efficient, and measurable.
 
-![Smart Practice Assistant — performance metrics](assets/screens/10-smart-practice-assistant.jpg)
+![Smart Practice Assistant — the live practice dashboard: reference-track waveforms, an improvisation insight card, and performance metrics (Overall Accuracy · Chord Clarity · Tempo Consistency) with "what you did well" vs "areas to improve"](assets/figma/figma-04-practice-dashboard.jpg)
 
 ### 3 · Iterate, edit & export
 
@@ -146,6 +146,12 @@ Raj can pick his best takes across iterations, **edit and export** recordings, u
 A **centralised media library** consolidates Raj's own recordings, shared annotations, and a discovery panel pulling inspiration from across the internet. **Advanced search and filtering** — by tune, instrument, lyric, or the smallest musical element — make ideas effortless to locate, and the best moments drop into a dedicated **Snippets Vault** built up during practice and experimentation.
 
 ![Media library, filtering & snippets](assets/screens/11-media-library-snippets.jpg)
+
+### The landing concept
+
+The team also mocked a **CREATIVIA landing page** and distilled the design process behind it — *understanding the space → understanding the user → building a co‑pilot partner, not a replacement.*
+
+![The CREATIVIA landing concept + the design process](assets/figma/figma-06-landing-design-process.jpg)
 
 ---
 

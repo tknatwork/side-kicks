@@ -25,7 +25,9 @@ was built from.
 - **Affinity-board synthesis** (Target Audience · What Raj does · Needs · Pain points · Key
   Pointers) and per-use-case breakdowns in `CASE_STUDY.md`.
 - New Figma-sourced assets in [`../assets/figma/`](../assets/figma/) — cover, "what are we
-  solving for", and the **User Interview** frame.
+  solving for", the **User Interview** frame, the high-fidelity **Practice Session Analysis
+  dashboard**, the **userflow** sketches, and the **landing-page** concept (pulled from a
+  duplicate of the file once the live frames were shared).
 - Note of additional design artifacts (a **Userflow** diagram and a **landing-page** mockup).
 
 ### Changed / Fixed
