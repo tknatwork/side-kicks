@@ -9,19 +9,19 @@ importers:
   .:
     devDependencies:
       '@figma/plugin-typings':
-        specifier: ^1.128.0
-        version: 1.128.0
+        specifier: ^1.129.0
+        version: 1.129.0
       terser:
         specifier: ^5.48.0
         version: 5.48.0
       typescript:
-        specifier: ^5.9.0
-        version: 5.9.3
+        specifier: ^6.0.3
+        version: 6.0.3
 
 packages:
 
-  '@figma/plugin-typings@1.128.0':
-    resolution: {integrity: sha512-4hJeQj6E4bJiothKriow32MjV4bh2E7jPbeINdfmMQbISfSYSE8gU6YaUc6OioYXXiNiZqPN7RqYF2HBK8YRoQ==}
+  '@figma/plugin-typings@1.129.0':
+    resolution: {integrity: sha512-LW3UhslmR0QMPwvycDhxLGh3ACjb4Ebh1MjSG5PnyYlmJiOVQ/I+98XLyEtJSXbeGs3DDiJxGuu8Xa+PBoon4w==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -62,14 +62,14 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
-  typescript@5.9.3:
-    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
 snapshots:
 
-  '@figma/plugin-typings@1.128.0': {}
+  '@figma/plugin-typings@1.129.0': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -110,4 +110,4 @@ snapshots:
       commander: 2.20.3
       source-map-support: 0.5.21
 
-  typescript@5.9.3: {}
+  typescript@6.0.3: {}

@@ -10,9 +10,9 @@
     "test": "node tests/alias-resolution.test.mjs"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "^1.128.0",
+    "@figma/plugin-typings": "^1.129.0",
     "terser": "^5.48.0",
-    "typescript": "^5.9.0"
+    "typescript": "^6.0.3"
   },
   "keywords": [
     "figma",
