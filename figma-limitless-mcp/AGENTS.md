@@ -10,7 +10,7 @@ rate limits, exposes **locally-installed fonts**, authors **variables/grid/
 annotations/motion/shaders** the official MCP cannot, and gives AI sessions a
 persistent **journal + checkpoint + lock** layer for crash-safe, multi-agent
 work. v0.1.0 created 2026-07-13 for the portfolio DS font pass (file
-`yIzO6LwpGMO8z11XYx5PIW`); v0.2.0 (same day) added the limitless layer. See
+`yIzO6LwpGMO8z11XYx5PIW`); v0.2.0 added the limitless layer; v0.3.0 added prototyping/components/screens/styles/library/dev-resources/code-mapping (72 tools; manifest now carries the teamlibrary permission). See
 `docs/figma-mcp-distillation.md` for the official-MCP mental model.
 
 ## Architecture (2 packages)
