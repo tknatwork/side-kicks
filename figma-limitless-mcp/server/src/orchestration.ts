@@ -22,6 +22,7 @@ import { VERSION } from "./version.js";
 const STATE_ROOT = path.join(homedir(), ".figma-limitless-mcp");
 const JOURNAL_DIR = path.join(STATE_ROOT, "journal");
 const CHECKPOINT_DIR = path.join(STATE_ROOT, "checkpoints");
+const CODE_MAPPING_DIR = path.join(STATE_ROOT, "code-mappings");
 const LOCKS_FILE = path.join(STATE_ROOT, "locks.json");
 
 const JOURNAL_ROTATE_BYTES = 5 * 1024 * 1024;
@@ -94,6 +95,20 @@ export const JOURNALED_TOOLS = new Set([
   "set_annotation",
   "apply_animation_style",
   "apply_shader",
+  "set_reactions",
+  "set_flow_starting_point",
+  "create_component_from_node",
+  "combine_as_variants",
+  "add_component_property",
+  "instantiate_component",
+  "set_instance_properties",
+  "swap_instance",
+  "apply_style",
+  "create_paint_style",
+  "create_effect_style",
+  "import_library_asset",
+  "create_slot",
+  "dev_resources",
 ]);
 
 /** Journaled for audit, but never a document mutation — must not invalidate digests. */
@@ -107,6 +122,8 @@ export const META_TOOLS = new Set([
   "acquire_lock",
   "release_lock",
   "get_workspace_status",
+  "set_code_mapping",
+  "get_code_mappings",
 ]);
 
 const sanitize = (value: string): string =>
@@ -129,6 +146,7 @@ export class Orchestrator {
   constructor() {
     mkdirSync(JOURNAL_DIR, { recursive: true });
     mkdirSync(CHECKPOINT_DIR, { recursive: true });
+    mkdirSync(CODE_MAPPING_DIR, { recursive: true });
     this.loadLocks();
     this.seq = this.recoverSeq();
   }
@@ -473,6 +491,77 @@ export class Orchestrator {
     this.activity.delete(fileKey);
   }
 
+  // ---------------------------------------------------------- code mappings
+
+  private codeMappingPath(fileKey: string): string {
+    return path.join(CODE_MAPPING_DIR, sanitize(fileKey || GLOBAL_BUCKET) + ".json");
+  }
+
+  private readCodeMappings(fileKey: string): Record<string, unknown> {
+    const p = this.codeMappingPath(fileKey);
+    try {
+      if (existsSync(p)) return JSON.parse(readFileSync(p, "utf8"));
+    } catch {
+      /* corrupt — start clean */
+    }
+    return {};
+  }
+
+  /**
+   * Local Code-Connect equivalent: durable node/component → source-code
+   * mappings, stored server-side and served to any agent. Independent
+   * tooling — nothing here touches Figma's Code Connect service.
+   */
+  setCodeMapping(params: Record<string, unknown>): unknown {
+    const target = typeof params.target === "string" ? params.target : "";
+    if (!target) {
+      throw new Error("target is required (a nodeId, component key, or component name)");
+    }
+    const fileKey =
+      typeof params.fileKey === "string" && params.fileKey
+        ? params.fileKey
+        : GLOBAL_BUCKET;
+    const mappings = this.readCodeMappings(fileKey);
+
+    if (params.remove === true) {
+      delete mappings[target];
+    } else {
+      const source = typeof params.source === "string" ? params.source : "";
+      if (!source) throw new Error("source is required (e.g. 'src/components/Button.tsx')");
+      mappings[target] = {
+        source,
+        ...(typeof params.snippet === "string" ? { snippet: params.snippet } : {}),
+        ...(typeof params.language === "string" ? { language: params.language } : {}),
+        ...(typeof params.notes === "string" ? { notes: params.notes } : {}),
+        agent: typeof params.agent === "string" ? params.agent : "unknown",
+        ts: new Date().toISOString(),
+      };
+    }
+    writeFileSync(this.codeMappingPath(fileKey), JSON.stringify(mappings, null, 2));
+    return {
+      saved: params.remove !== true,
+      removed: params.remove === true,
+      target,
+      fileKey,
+      totalMappings: Object.keys(mappings).length,
+    };
+  }
+
+  getCodeMappings(params: Record<string, unknown>): unknown {
+    const fileKey =
+      typeof params.fileKey === "string" && params.fileKey
+        ? params.fileKey
+        : GLOBAL_BUCKET;
+    const mappings = this.readCodeMappings(fileKey);
+    const targets = Array.isArray(params.targets)
+      ? (params.targets as unknown[]).filter((t): t is string => typeof t === "string")
+      : null;
+    const selected = targets
+      ? Object.fromEntries(targets.map((t) => [t, mappings[t] ?? null]))
+      : mappings;
+    return { fileKey, count: Object.keys(selected).length, mappings: selected };
+  }
+
   // ----------------------------------------------------------------- status
 
   getWorkspaceStatus(connectedFiles: Array<{ fileKey: string; fileName: string }>): unknown {
@@ -541,6 +630,10 @@ export class Orchestrator {
         return this.releaseLock(params);
       case "get_workspace_status":
         return this.getWorkspaceStatus(connectedFiles);
+      case "set_code_mapping":
+        return this.setCodeMapping(params);
+      case "get_code_mappings":
+        return this.getCodeMappings(params);
       default:
         throw new Error(`Unknown meta tool: ${tool}`);
     }

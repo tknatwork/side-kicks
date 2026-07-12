@@ -762,6 +762,233 @@ export const applyShaderInput = z.object({
   fileKey: fileKeyField,
 });
 
+export const setReactionsInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("Node whose prototype reactions to replace"),
+  reactions: z
+    .array(z.record(z.string(), z.unknown()))
+    .describe(
+      "Full replacement Reaction[] (pass [] to clear). Each: {trigger: {type:'ON_CLICK'|'ON_HOVER'|'ON_PRESS'|'AFTER_TIMEOUT'|'ON_DRAG'|'MOUSE_ENTER'|'MOUSE_LEAVE'|'ON_KEY_DOWN', ...}, actions: [{type:'NODE', destinationId, navigation:'NAVIGATE'|'OVERLAY'|'SWAP'|'SCROLL_TO'|'CHANGE_TO', transition: null | {type:'DISSOLVE'|'SMART_ANIMATE'|'MOVE_IN'|..., easing:{type:'EASE_OUT'|...}, duration: seconds} } | {type:'BACK'|'CLOSE'} | {type:'URL', url}]}. SMART_ANIMATE matches layers BY NAME across screens. Figma validates deeply and errors name the offending field."
+    ),
+  fileKey: fileKeyField,
+});
+
+export const setFlowStartingPointInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("Top-level frame that starts the flow"),
+  name: z.string().optional().describe("Flow name (defaults to the frame name)"),
+  remove: z.boolean().optional().describe("Remove this node's flow starting point"),
+  fileKey: fileKeyField,
+});
+
+export const createComponentFromNodeInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("Frame/node to convert into a master component (in place)"),
+  name: z.string().optional().describe("Component name (slash-grouped, e.g. 'Buttons/Primary')"),
+  fileKey: fileKeyField,
+});
+
+export const combineAsVariantsInput = z.object({
+  nodeIds: z
+    .array(createFigmaNodeIdSchema())
+    .min(2)
+    .describe("COMPONENT nodes to merge into one variant set. Name each 'Prop=Value' (e.g. 'State=Default') BEFORE combining."),
+  parentId: createFigmaNodeIdSchema().optional().describe("Parent for the new set (defaults to the first component's page)"),
+  name: z.string().optional().describe("Component-set name"),
+  arrange: z
+    .boolean()
+    .optional()
+    .describe("Stack variants vertically after combining (default true — they otherwise pile at 0,0)"),
+  fileKey: fileKeyField,
+});
+
+export const addComponentPropertyInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("COMPONENT or COMPONENT_SET"),
+  name: z.string().min(1).describe("Property name"),
+  propertyType: z
+    .enum(["TEXT", "BOOLEAN", "INSTANCE_SWAP", "SLOT"])
+    .describe("Property type (VARIANT properties come from variant names, not this tool). Use INSTANCE_SWAP for icon slots — never a variant per icon."),
+  defaultValue: z
+    .union([z.string(), z.boolean()])
+    .optional()
+    .describe("TEXT: default string; BOOLEAN: default bool; INSTANCE_SWAP: default component id"),
+  preferredValues: z
+    .array(z.record(z.string(), z.unknown()))
+    .optional()
+    .describe("INSTANCE_SWAP/SLOT: [{type:'COMPONENT'|'COMPONENT_SET', key}]"),
+  description: z.string().optional().describe("SLOT only"),
+  slotSettings: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("SLOT only: {stretchChildOnInsert?, displayEmptyByDefault?, minChildren?, maxChildren?, allowPreferredValuesOnly?}"),
+  fileKey: fileKeyField,
+});
+
+export const instantiateComponentShape = z.object({
+  componentKey: z
+    .string()
+    .optional()
+    .describe("Published library component/set key (imports it first)"),
+  componentId: createFigmaNodeIdSchema()
+    .optional()
+    .describe("Local COMPONENT or COMPONENT_SET id (sets instantiate their default variant)"),
+  parentId: createFigmaNodeIdSchema().optional().describe("Parent to append the instance into"),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  name: z.string().optional(),
+  properties: z
+    .record(z.string(), z.union([z.string(), z.boolean()]))
+    .optional()
+    .describe("Component properties to set — use EXACT keys incl. '#' suffixes; variant props use plain names. Errors list the available keys."),
+  textOverrides: z
+    .array(z.object({ childName: z.string(), text: z.string() }))
+    .optional()
+    .describe("Override text children by layer name (fonts load automatically)"),
+  fileKey: fileKeyField,
+});
+
+export const instantiateComponentInput = instantiateComponentShape.refine(
+  (v) => v.componentKey !== undefined || v.componentId !== undefined,
+  "componentKey or componentId is required"
+);
+
+export const setInstancePropertiesInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("INSTANCE node"),
+  properties: z
+    .record(z.string(), z.union([z.string(), z.boolean()]))
+    .describe("Property assignments — exact keys incl. '#' suffixes; variant properties by plain name"),
+  fileKey: fileKeyField,
+});
+
+export const swapInstanceShape = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("INSTANCE to swap"),
+  componentKey: z.string().optional().describe("Published component key to swap to"),
+  componentId: createFigmaNodeIdSchema().optional().describe("Local component id to swap to"),
+  fileKey: fileKeyField,
+});
+
+export const swapInstanceInput = swapInstanceShape.refine(
+  (v) => v.componentKey !== undefined || v.componentId !== undefined,
+  "componentKey or componentId is required"
+);
+
+export const applyStyleShape = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("Node to style"),
+  styleType: z.enum(["fill", "stroke", "effect", "grid"]).describe("Which style slot to set (text styles: use apply_text_style)"),
+  styleId: z.string().optional().describe("Style id (preferred)"),
+  styleName: z.string().optional().describe("Exact local style name (first match)"),
+  fileKey: fileKeyField,
+});
+
+export const applyStyleInput = applyStyleShape.refine(
+  (v) => v.styleId !== undefined || v.styleName !== undefined,
+  "styleId or styleName is required"
+);
+
+export const createPaintStyleShape = z.object({
+  name: z.string().min(1).describe("Style name (slash-grouped)"),
+  hex: createHexColorSchema().optional().describe("Solid color"),
+  opacity: z.number().min(0).max(1).optional(),
+  gradientType: z.enum(["LINEAR", "RADIAL", "ANGULAR", "DIAMOND"]).optional(),
+  gradientStops: z
+    .array(
+      z.object({
+        position: z.number().min(0).max(1),
+        hex: createHexColorSchema(),
+        opacity: z.number().min(0).max(1).optional(),
+      })
+    )
+    .min(2)
+    .optional()
+    .describe("Gradient stops (alternative to hex)"),
+  description: z.string().optional(),
+  skipIfExists: z.boolean().optional(),
+  fileKey: fileKeyField,
+});
+
+export const createPaintStyleInput = createPaintStyleShape.refine(
+  (v) => v.hex !== undefined || v.gradientStops !== undefined,
+  "hex or gradientStops is required"
+);
+
+export const createEffectStyleInput = z.object({
+  name: z.string().min(1).describe("Style name (e.g. 'Elevation/Raised')"),
+  effects: z
+    .array(effectInput)
+    .min(1)
+    .describe("Effects list — same shape as set_effects (multi-shadow elevation styles supported)"),
+  description: z.string().optional(),
+  skipIfExists: z.boolean().optional(),
+  fileKey: fileKeyField,
+});
+
+export const importLibraryAssetInput = z.object({
+  kind: z
+    .enum(["component", "component_set", "style", "variable"])
+    .describe("What to import"),
+  key: z
+    .string()
+    .min(1)
+    .describe("The published asset's key (from library search, list_library_variables, or a teammate)"),
+  fileKey: fileKeyField,
+});
+
+export const listLibraryVariablesInput = z.object({
+  collectionKey: z
+    .string()
+    .optional()
+    .describe("Omit to list available library variable collections; pass a key to list its variables"),
+  fileKey: fileKeyField,
+});
+
+export const createSlotInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("COMPONENT to add a slot frame to"),
+  fileKey: fileKeyField,
+});
+
+export const devResourcesShape = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("Target node"),
+  action: z.enum(["get", "add", "edit", "delete"]),
+  url: z.string().optional().describe("Resource URL (required for add/edit/delete)"),
+  name: z.string().optional().describe("add: display name"),
+  newName: z.string().optional().describe("edit: new display name"),
+  newUrl: z.string().optional().describe("edit: replacement URL"),
+  includeChildren: z.boolean().optional().describe("get: include descendants' resources"),
+  fileKey: fileKeyField,
+});
+
+export const devResourcesInput = devResourcesShape.refine(
+  (v) => v.action === "get" || (typeof v.url === "string" && v.url.length > 0),
+  "url is required for add/edit/delete"
+);
+
+export const setCodeMappingShape = z.object({
+  target: z
+    .string()
+    .min(1)
+    .describe("What the code maps to: a nodeId, component key, or stable component name"),
+  source: z
+    .string()
+    .optional()
+    .describe("Code location, e.g. 'src/components/Button.tsx' (required unless remove)"),
+  snippet: z.string().optional().describe("Representative usage snippet"),
+  language: z.string().optional().describe("e.g. 'tsx', 'swift'"),
+  notes: z.string().optional(),
+  remove: z.boolean().optional().describe("Delete the mapping for target"),
+  agent: z.string().optional(),
+  fileKey: fileKeyField,
+});
+
+export const setCodeMappingInput = setCodeMappingShape.refine(
+  (v) => v.remove === true || (typeof v.source === "string" && v.source.length > 0),
+  "source is required unless remove: true"
+);
+
+export const getCodeMappingsInput = z.object({
+  targets: z
+    .array(z.string())
+    .optional()
+    .describe("Specific targets to look up (omit for all mappings for the file)"),
+  fileKey: fileKeyField,
+});
+
 export const setEffectsShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("The node ID to update"),
   effects: z
@@ -1331,6 +1558,40 @@ export const toolInputSchemas = {
   list_shaders: listShadersInput,
 
   apply_shader: applyShaderInput,
+
+  set_reactions: setReactionsInput,
+
+  set_flow_starting_point: setFlowStartingPointInput,
+
+  create_component_from_node: createComponentFromNodeInput,
+
+  combine_as_variants: combineAsVariantsInput,
+
+  add_component_property: addComponentPropertyInput,
+
+  instantiate_component: instantiateComponentInput,
+
+  set_instance_properties: setInstancePropertiesInput,
+
+  swap_instance: swapInstanceInput,
+
+  apply_style: applyStyleInput,
+
+  create_paint_style: createPaintStyleInput,
+
+  create_effect_style: createEffectStyleInput,
+
+  import_library_asset: importLibraryAssetInput,
+
+  list_library_variables: listLibraryVariablesInput,
+
+  create_slot: createSlotInput,
+
+  dev_resources: devResourcesInput,
+
+  set_code_mapping: setCodeMappingInput,
+
+  get_code_mappings: getCodeMappingsInput,
 } as const;
 
 type ToolName = keyof typeof toolInputSchemas;
@@ -1410,6 +1671,35 @@ const rpcToArgs: Record<
   }),
   list_shaders: (_nodeIds, params) => ({ ...params }),
   apply_shader: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_reactions: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_flow_starting_point: (nodeIds, params) => ({
+    ...params,
+    nodeId: nodeIds?.[0],
+  }),
+  create_component_from_node: (nodeIds, params) => ({
+    ...params,
+    nodeId: nodeIds?.[0],
+  }),
+  combine_as_variants: (nodeIds, params) => ({ nodeIds, ...params }),
+  add_component_property: (nodeIds, params) => ({
+    ...params,
+    nodeId: nodeIds?.[0],
+  }),
+  instantiate_component: (_nodeIds, params) => ({ ...params }),
+  set_instance_properties: (nodeIds, params) => ({
+    ...params,
+    nodeId: nodeIds?.[0],
+  }),
+  swap_instance: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  apply_style: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  create_paint_style: (_nodeIds, params) => ({ ...params }),
+  create_effect_style: (_nodeIds, params) => ({ ...params }),
+  import_library_asset: (_nodeIds, params) => ({ ...params }),
+  list_library_variables: (_nodeIds, params) => ({ ...params }),
+  create_slot: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  dev_resources: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  set_code_mapping: (_nodeIds, params) => ({ ...params }),
+  get_code_mappings: (_nodeIds, params) => ({ ...params }),
 };
 
 /**

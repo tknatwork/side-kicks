@@ -51,6 +51,29 @@ import {
   applyAnimationStyleInput,
   listShadersInput,
   applyShaderInput,
+  setReactionsInput,
+  setFlowStartingPointInput,
+  createComponentFromNodeInput,
+  combineAsVariantsInput,
+  addComponentPropertyInput,
+  instantiateComponentShape,
+  instantiateComponentInput,
+  setInstancePropertiesInput,
+  swapInstanceShape,
+  swapInstanceInput,
+  applyStyleShape,
+  applyStyleInput,
+  createPaintStyleShape,
+  createPaintStyleInput,
+  createEffectStyleInput,
+  importLibraryAssetInput,
+  listLibraryVariablesInput,
+  createSlotInput,
+  devResourcesShape,
+  devResourcesInput,
+  setCodeMappingShape,
+  setCodeMappingInput,
+  getCodeMappingsInput,
   toolInputSchemas,
 } from "./schema.js";
 import type { BridgeResponse } from "./types.js";
@@ -882,6 +905,229 @@ export function registerTools(
       if (properties) params.properties = properties;
       return renderResponse(() =>
         node.sendWithParams("apply_shader", [nodeId], params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_reactions",
+    "Author prototype interactions — replace a node's Reaction[] (triggers + actions/transitions). The official MCP cannot wire prototypes. SMART_ANIMATE transitions match layers BY NAME across screens, so name layers consistently. Pass [] to clear. Wire flows with set_flow_starting_point.",
+    setReactionsInput.shape,
+    async ({ nodeId, reactions, fileKey }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_reactions", [nodeId], { reactions }, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_flow_starting_point",
+    "Declare (or remove) a prototype flow starting point on a top-level frame — what the Play button presents. Completes prototype wiring after set_reactions.",
+    setFlowStartingPointInput.shape,
+    async ({ nodeId, name, remove, fileKey }): Promise<ToolResult> => {
+      const params: Record<string, unknown> = {};
+      if (name) params.name = name;
+      if (remove !== undefined) params.remove = remove;
+      return renderResponse(() =>
+        node.sendWithParams("set_flow_starting_point", [nodeId], params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_component_from_node",
+    "Convert an existing frame into a master COMPONENT in place (preserves children/auto-layout). Returns the component id + publishable key. Build order for a full set: create/refine frames → name each 'Prop=Value' → create_component_from_node each → combine_as_variants → add_component_property.",
+    createComponentFromNodeInput.shape,
+    async ({ nodeId, name, fileKey }): Promise<ToolResult> => {
+      const params: Record<string, unknown> = {};
+      if (name) params.name = name;
+      return renderResponse(() =>
+        node.sendWithParams("create_component_from_node", [nodeId], params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "combine_as_variants",
+    "Merge COMPONENT nodes into one variant set. Components MUST be named 'Prop=Value' (e.g. 'State=Default', 'State=Hover') before combining — the names become the variant properties. Variants are auto-arranged vertically (they otherwise stack at 0,0); pass arrange:false to skip.",
+    combineAsVariantsInput.shape,
+    async ({ nodeIds, parentId, name, arrange, fileKey }): Promise<ToolResult> => {
+      const params: Record<string, unknown> = {};
+      if (parentId) params.parentId = parentId;
+      if (name) params.name = name;
+      if (arrange !== undefined) params.arrange = arrange;
+      return renderResponse(() =>
+        node.sendWithParams("combine_as_variants", nodeIds, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "add_component_property",
+    "Add a TEXT / BOOLEAN / INSTANCE_SWAP / SLOT property to a component or set. Returns the property key WITH its '#' suffix — instances must use that exact key in setProperties. Use INSTANCE_SWAP (with preferredValues) for icon slots instead of a variant per icon; SLOT properties take slotSettings.",
+    addComponentPropertyInput.shape,
+    async ({ nodeId, fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("add_component_property", [nodeId], params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "instantiate_component",
+    "One-call screen assembly: import a component (by published key) or use a local one (by id; sets use their default variant), create an instance, append it to a parent, position it, set properties (exact '#'-suffixed keys — errors list what's available), and override text children by name (fonts auto-load). Rolls back the instance on failure.",
+    instantiateComponentShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(instantiateComponentInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("instantiate_component", undefined, params, fileKey, {
+          timeoutMs: 60_000,
+        })
+      );
+    }
+  );
+
+  server.tool(
+    "set_instance_properties",
+    "Set component properties on an existing INSTANCE (variant values by plain name, TEXT/BOOLEAN/INSTANCE_SWAP by '#'-suffixed key). Errors list the available keys. Slot properties cannot be set this way — append children into the slot instead.",
+    setInstancePropertiesInput.shape,
+    async ({ nodeId, properties, fileKey }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_instance_properties", [nodeId], { properties }, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "swap_instance",
+    "Swap an INSTANCE to a different component (local id or published key), preserving compatible overrides — the mechanism behind INSTANCE_SWAP-style icon systems.",
+    swapInstanceShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(swapInstanceInput, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeId, fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("swap_instance", [nodeId], params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "apply_style",
+    "Apply a local fill / stroke / effect / grid style to a node by styleId or exact name (structured styling — prefer styles over raw values, variables over styles where bound). Text styles: apply_text_style.",
+    applyStyleShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(applyStyleInput, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeId, fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("apply_style", [nodeId], params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_paint_style",
+    "Create a local paint style (solid hex or gradient) with optional description. skipIfExists makes reruns idempotent by name.",
+    createPaintStyleShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(createPaintStyleInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("create_paint_style", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_effect_style",
+    "Create a local effect style with a FULL effects list (multi-shadow elevation styles supported — same effect shape as set_effects). skipIfExists for idempotent reruns.",
+    createEffectStyleInput.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(toolInputSchemas.create_effect_style, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("create_effect_style", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "import_library_asset",
+    "Materialize a PUBLISHED library asset into this file by key: component, component_set, style, or variable — the plugin-API library access that needs no Enterprise REST API. Keys come from list_library_variables, published-component metadata, or teammates.",
+    importLibraryAssetInput.shape,
+    async ({ kind, key, fileKey }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("import_library_asset", undefined, { kind, key }, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "list_library_variables",
+    "Enumerate variable collections from enabled team libraries (omit collectionKey), or list a collection's variables with their import keys — then import_library_asset kind:'variable' to use them. Library token access without the Enterprise REST API.",
+    listLibraryVariablesInput.shape,
+    async ({ collectionKey, fileKey }): Promise<ToolResult> => {
+      const params: Record<string, unknown> = {};
+      if (collectionKey) params.collectionKey = collectionKey;
+      return renderResponse(() =>
+        node.sendWithParams("list_library_variables", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_slot",
+    "Add a slot frame to a COMPONENT (Slots, GA June 2026): a flexible area where instance users freely add content without detaching. Expose it via add_component_property propertyType SLOT + slotSettings. Note: slot frames reject GRID layout; instances fill slots by appending children, not setProperties.",
+    createSlotInput.shape,
+    async ({ nodeId, fileKey }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_slot", [nodeId], undefined, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "dev_resources",
+    "Read/add/edit/delete dev resources (links to tickets, docs, storybook) attached to nodes — the Dev-Mode handoff surface, editable here without a Dev seat's UI.",
+    devResourcesShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(devResourcesInput, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeId, fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("dev_resources", [nodeId], params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_code_mapping",
+    "Local Code-Connect equivalent (Figma gates Code Connect to Org/Enterprise): durably map a component/node to its source code (path + snippet + language), stored server-side per file. Any agent then resolves design→code via get_code_mappings. Independent tooling — does not touch Figma's Code Connect service.",
+    setCodeMappingShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(setCodeMappingInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("set_code_mapping", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "get_code_mappings",
+    "Resolve design→code mappings saved with set_code_mapping — all mappings for the file, or specific targets (nodeIds / component keys / names). Use when implementing designs as code: check for an existing mapping before writing new markup.",
+    getCodeMappingsInput.shape,
+    async ({ targets, fileKey }): Promise<ToolResult> => {
+      const params: Record<string, unknown> = {};
+      if (targets && targets.length > 0) params.targets = targets;
+      return renderResponse(() =>
+        node.sendWithParams("get_code_mappings", undefined, params, fileKey)
       );
     }
   );

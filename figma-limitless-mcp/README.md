@@ -33,7 +33,7 @@ connection via leader/follower election.
 | `get_effect_styles` | Local effect styles with full effects + bindings (elevation verification). |
 | `execute_code` | Escape hatch: run Plugin-API JavaScript in the sandbox (top-level await, `figma` in scope, JSON return only) — a local `use_figma` equivalent. |
 
-Total surface: **55 tools**. Plus the ~30 upstream read/write tools (document/selection/node/styles/variables
+Total surface: **72 tools**. Plus the ~30 upstream read/write tools (document/selection/node/styles/variables
 reads, screenshots, text/fill/effect/stroke/auto-layout patches, frame/text/shape/
 image creation, duplicate/reparent/group, guarded delete).
 

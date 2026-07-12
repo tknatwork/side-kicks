@@ -47,7 +47,22 @@ type RequestType =
   | "get_motion"
   | "apply_animation_style"
   | "list_shaders"
-  | "apply_shader";
+  | "apply_shader"
+  | "set_reactions"
+  | "set_flow_starting_point"
+  | "create_component_from_node"
+  | "combine_as_variants"
+  | "add_component_property"
+  | "instantiate_component"
+  | "set_instance_properties"
+  | "swap_instance"
+  | "apply_style"
+  | "create_paint_style"
+  | "create_effect_style"
+  | "import_library_asset"
+  | "list_library_variables"
+  | "create_slot"
+  | "dev_resources";
 
 type ServerRequestParams = Record<string, unknown> & {
   format?: "PNG" | "SVG" | "JPG" | "PDF";
@@ -630,6 +645,100 @@ const resolveActionRefs = (
   return resolved;
 };
 
+/** Builds a validated Effect[] from raw tool params (shared by set_effects and create_effect_style). */
+const buildEffectsFromParams = (rawEffects: unknown): Effect[] => {
+  if (!Array.isArray(rawEffects)) {
+    throw new Error("effects must be an array (pass [] to clear)");
+  }
+  return (rawEffects as Array<Record<string, unknown>>).map((raw, i): Effect => {
+    const type = raw.type;
+    if (type === "DROP_SHADOW" || type === "INNER_SHADOW") {
+      if (typeof raw.color !== "string") {
+        throw new Error(`effects[${i}].color must be a hex string`);
+      }
+      const offset = raw.offset as { x?: unknown; y?: unknown } | undefined;
+      if (!offset || typeof offset.x !== "number" || typeof offset.y !== "number") {
+        throw new Error(`effects[${i}].offset must be {x,y} numbers`);
+      }
+      if (typeof raw.radius !== "number") {
+        throw new Error(`effects[${i}].radius must be a number`);
+      }
+      const rgb = parseHexColor(raw.color);
+      const alpha = typeof raw.opacity === "number" ? raw.opacity : 1;
+      return {
+        type,
+        color: { r: rgb.r, g: rgb.g, b: rgb.b, a: alpha },
+        offset: { x: offset.x, y: offset.y },
+        radius: raw.radius,
+        spread: typeof raw.spread === "number" ? raw.spread : 0,
+        visible: raw.visible === undefined ? true : Boolean(raw.visible),
+        blendMode:
+          typeof raw.blendMode === "string" ? (raw.blendMode as BlendMode) : "NORMAL",
+      };
+    }
+    if (type === "LAYER_BLUR" || type === "BACKGROUND_BLUR") {
+      if (typeof raw.radius !== "number") {
+        throw new Error(`effects[${i}].radius must be a number`);
+      }
+      return {
+        type,
+        radius: raw.radius,
+        visible: raw.visible === undefined ? true : Boolean(raw.visible),
+      } as Effect;
+    }
+    throw new Error(`Unsupported effect type at effects[${i}]: ${String(type)}`);
+  });
+};
+
+/** Finds the page that contains a node (walks up the parent chain). */
+const getPageOfNode = (node: BaseNode): PageNode => {
+  let current: BaseNode | null = node;
+  while (current && current.type !== "PAGE") {
+    current = current.parent;
+  }
+  if (!current) throw new Error(`Node is not on any page: ${node.id}`);
+  return current as PageNode;
+};
+
+/** Resolves a local component (or a set's default variant) for instancing/swapping. */
+const resolveComponentForInstance = async (
+  componentId: unknown,
+  componentKey: unknown
+): Promise<ComponentNode> => {
+  if (typeof componentKey === "string" && componentKey) {
+    try {
+      return await figma.importComponentByKeyAsync(componentKey);
+    } catch {
+      // The key may belong to a component SET — fall through to set import.
+      const set = await figma.importComponentSetByKeyAsync(componentKey);
+      return set.defaultVariant;
+    }
+  }
+  if (typeof componentId === "string" && componentId) {
+    const node = await figma.getNodeByIdAsync(componentId);
+    if (!node) throw new Error(`Component not found: ${componentId}`);
+    if (node.type === "COMPONENT") return node;
+    if (node.type === "COMPONENT_SET") return node.defaultVariant;
+    throw new Error(
+      `Node ${componentId} is ${node.type}, expected COMPONENT or COMPONENT_SET`
+    );
+  }
+  throw new Error("componentKey or componentId is required");
+};
+
+/** Property keys on a component/set, with '#' suffixes — for helpful errors. */
+const listComponentPropertyKeys = (main: ComponentNode): string[] => {
+  const owner =
+    main.parent?.type === "COMPONENT_SET" ? main.parent : main;
+  try {
+    return Object.keys(
+      (owner as ComponentNode | ComponentSetNode).componentPropertyDefinitions
+    );
+  } catch {
+    return [];
+  }
+};
+
 const requireMotionApi = (): MotionAPI => {
   if (!("motion" in figma)) {
     throw new Error(
@@ -664,9 +773,22 @@ const EDIT_REQUEST_TYPES = new Set<RequestType>([
   "write_variables",
   "set_grid_layout",
   // set_annotation deliberately NOT gated: annotations are Dev Mode's
-  // legitimate write surface.
+  // legitimate write surface. dev_resources likewise.
   "apply_animation_style",
   "apply_shader",
+  "set_reactions",
+  "set_flow_starting_point",
+  "create_component_from_node",
+  "combine_as_variants",
+  "add_component_property",
+  "instantiate_component",
+  "set_instance_properties",
+  "swap_instance",
+  "apply_style",
+  "create_paint_style",
+  "create_effect_style",
+  "import_library_asset",
+  "create_slot",
 ]);
 
 const requireEditorMode = (toolName: RequestType): void => {
@@ -1310,56 +1432,7 @@ const handleRequest = async (
         }
 
         const params = request.params ?? {};
-        if (!Array.isArray(params.effects)) {
-          throw new Error("effects must be an array (pass [] to clear)");
-        }
-
-        const built = (params.effects as Array<Record<string, unknown>>).map(
-          (raw, i): Effect => {
-            const type = raw.type;
-            if (type === "DROP_SHADOW" || type === "INNER_SHADOW") {
-              if (typeof raw.color !== "string") {
-                throw new Error(`effects[${i}].color must be a hex string`);
-              }
-              const offset = raw.offset as { x?: unknown; y?: unknown } | undefined;
-              if (
-                !offset ||
-                typeof offset.x !== "number" ||
-                typeof offset.y !== "number"
-              ) {
-                throw new Error(`effects[${i}].offset must be {x,y} numbers`);
-              }
-              if (typeof raw.radius !== "number") {
-                throw new Error(`effects[${i}].radius must be a number`);
-              }
-              const rgb = parseHexColor(raw.color);
-              const alpha = typeof raw.opacity === "number" ? raw.opacity : 1;
-              return {
-                type,
-                color: { r: rgb.r, g: rgb.g, b: rgb.b, a: alpha },
-                offset: { x: offset.x, y: offset.y },
-                radius: raw.radius,
-                spread: typeof raw.spread === "number" ? raw.spread : 0,
-                visible: raw.visible === undefined ? true : Boolean(raw.visible),
-                blendMode:
-                  typeof raw.blendMode === "string"
-                    ? (raw.blendMode as BlendMode)
-                    : "NORMAL",
-              };
-            }
-            if (type === "LAYER_BLUR" || type === "BACKGROUND_BLUR") {
-              if (typeof raw.radius !== "number") {
-                throw new Error(`effects[${i}].radius must be a number`);
-              }
-              return {
-                type,
-                radius: raw.radius,
-                visible: raw.visible === undefined ? true : Boolean(raw.visible),
-              } as Effect;
-            }
-            throw new Error(`Unsupported effect type at effects[${i}]: ${String(type)}`);
-          }
-        );
+        const built = buildEffectsFromParams(params.effects);
 
         (node as BlendMixin & { effects: ReadonlyArray<Effect> }).effects = built;
 
@@ -3024,6 +3097,567 @@ const handleRequest = async (
             // -1 = previous paints were mixed; otherwise the count replaced.
             replacedPaints,
           },
+        };
+      }
+      case "set_reactions": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for set_reactions");
+        const node = await getSceneNodeById(nodeId);
+        if (!("setReactionsAsync" in node)) {
+          throw new Error(`Node type does not support reactions: ${node.type}`);
+        }
+        const reactions = request.params?.reactions;
+        if (!Array.isArray(reactions)) {
+          throw new Error("reactions must be an array (pass [] to clear)");
+        }
+        // Figma's runtime validates the Reaction union deeply — surface its
+        // errors as-is; they name the offending field.
+        await (node as SceneNode & ReactionMixin).setReactionsAsync(
+          reactions as unknown as Reaction[]
+        );
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: node.id,
+            reactionCount: reactions.length,
+          },
+        };
+      }
+      case "set_flow_starting_point": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for set_flow_starting_point");
+        const node = await getSceneNodeById(nodeId);
+        const page = getPageOfNode(node);
+        const params = request.params ?? {};
+        const existing = page.flowStartingPoints.filter(
+          (f) => f.nodeId !== node.id
+        );
+        if (params.remove === true) {
+          page.flowStartingPoints = existing;
+        } else {
+          const name =
+            typeof params.name === "string" && params.name
+              ? params.name
+              : node.name;
+          page.flowStartingPoints = [...existing, { nodeId: node.id, name }];
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            pageId: page.id,
+            flows: page.flowStartingPoints.map((f) => ({ ...f })),
+          },
+        };
+      }
+      case "create_component_from_node": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for create_component_from_node");
+        const node = await getSceneNodeById(nodeId);
+        const component = figma.createComponentFromNode(node);
+        if (typeof request.params?.name === "string") {
+          component.name = request.params.name;
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            componentId: component.id,
+            name: component.name,
+            key: component.key,
+          },
+        };
+      }
+      case "combine_as_variants": {
+        if (!request.nodeIds || request.nodeIds.length < 2) {
+          throw new Error("combine_as_variants needs at least 2 component nodeIds");
+        }
+        const params = request.params ?? {};
+        const components: ComponentNode[] = [];
+        for (const id of request.nodeIds) {
+          const node = await figma.getNodeByIdAsync(id);
+          if (!node || node.type !== "COMPONENT") {
+            throw new Error(
+              `combine_as_variants requires COMPONENT nodes; ${id} is ${node?.type ?? "missing"}. Variant names must be 'Prop=Value' (e.g. 'State=Hover').`
+            );
+          }
+          components.push(node);
+        }
+        const parent =
+          typeof params.parentId === "string"
+            ? await getParentNodeById(params.parentId)
+            : getPageOfNode(components[0]);
+        const set = figma.combineAsVariants(components, parent);
+        if (typeof params.name === "string") set.name = params.name;
+        // Variants stack at 0,0 after combining — lay them out unless told not to.
+        if (params.arrange !== false) {
+          let y = 0;
+          for (const variant of set.children) {
+            variant.y = y;
+            variant.x = 0;
+            y += variant.height + 24;
+          }
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            componentSetId: set.id,
+            name: set.name,
+            key: set.key,
+            variants: set.children.map((c) => ({ id: c.id, name: c.name })),
+          },
+        };
+      }
+      case "add_component_property": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for add_component_property");
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node || (node.type !== "COMPONENT" && node.type !== "COMPONENT_SET")) {
+          throw new Error(`add_component_property needs a COMPONENT or COMPONENT_SET, got ${node?.type ?? "missing"}`);
+        }
+        const params = request.params ?? {};
+        const { name, propertyType } = params;
+        if (typeof name !== "string" || typeof propertyType !== "string") {
+          throw new Error("name and propertyType are required");
+        }
+        const options: Record<string, unknown> = {};
+        if (Array.isArray(params.preferredValues)) {
+          options.preferredValues = params.preferredValues;
+        }
+        if (typeof params.description === "string") {
+          options.description = params.description;
+        }
+        if (params.slotSettings && typeof params.slotSettings === "object") {
+          options.slotSettings = params.slotSettings;
+        }
+        const defaultValue =
+          typeof params.defaultValue === "string" || typeof params.defaultValue === "boolean"
+            ? params.defaultValue
+            : propertyType === "BOOLEAN"
+              ? false
+              : "";
+        const propertyKey = (node as ComponentNode).addComponentProperty(
+          name,
+          propertyType as ComponentPropertyType,
+          defaultValue,
+          Object.keys(options).length > 0
+            ? (options as ComponentPropertyOptions)
+            : undefined
+        );
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: node.id,
+            // Includes the '#' suffix — use THIS exact key in setProperties.
+            propertyKey,
+          },
+        };
+      }
+      case "instantiate_component": {
+        const params = request.params ?? {};
+        const component = await resolveComponentForInstance(
+          params.componentId,
+          params.componentKey
+        );
+        const instance = component.createInstance();
+        try {
+          if (typeof params.name === "string") instance.name = params.name;
+          await appendToParentIfProvided(instance, params.parentId);
+          positionNode(instance, params.x, params.y);
+
+          if (params.properties && typeof params.properties === "object") {
+            try {
+              instance.setProperties(
+                params.properties as Record<string, string | boolean>
+              );
+            } catch (err) {
+              const keys = listComponentPropertyKeys(component);
+              throw new Error(
+                `${err instanceof Error ? err.message : String(err)} — available property keys (use EXACT strings incl. '#' suffixes): ${keys.join(", ") || "(none)"}`
+              );
+            }
+          }
+
+          const overrides: Array<Record<string, unknown>> = [];
+          if (Array.isArray(params.textOverrides)) {
+            for (const raw of params.textOverrides as Array<Record<string, unknown>>) {
+              if (typeof raw.childName !== "string" || typeof raw.text !== "string") {
+                throw new Error("textOverrides entries need childName and text");
+              }
+              const match = instance
+                .findAllWithCriteria({ types: ["TEXT"] })
+                .find((t) => t.name === raw.childName);
+              if (!match) {
+                overrides.push({ childName: raw.childName, error: "text child not found" });
+                continue;
+              }
+              await loadFontsForTextNode(match);
+              match.characters = raw.text;
+              overrides.push({ childName: raw.childName, applied: true });
+            }
+          }
+
+          return {
+            type: request.type,
+            requestId: request.requestId,
+            data: {
+              instanceId: instance.id,
+              name: instance.name,
+              componentId: component.id,
+              parentId: instance.parent?.id,
+              textOverrides: overrides,
+            },
+          };
+        } catch (err) {
+          instance.remove();
+          throw err;
+        }
+      }
+      case "set_instance_properties": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for set_instance_properties");
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node || node.type !== "INSTANCE") {
+          throw new Error(`set_instance_properties needs an INSTANCE, got ${node?.type ?? "missing"}`);
+        }
+        const properties = request.params?.properties;
+        if (!properties || typeof properties !== "object") {
+          throw new Error("properties is required");
+        }
+        try {
+          node.setProperties(properties as Record<string, string | boolean>);
+        } catch (err) {
+          const main = await node.getMainComponentAsync();
+          const keys = main ? listComponentPropertyKeys(main) : [];
+          throw new Error(
+            `${err instanceof Error ? err.message : String(err)} — available property keys: ${keys.join(", ") || "(none)"}`
+          );
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: node.id,
+            componentProperties: toSerializableResult(
+              node.componentProperties,
+              "set_instance_properties"
+            ),
+          },
+        };
+      }
+      case "swap_instance": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for swap_instance");
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node || node.type !== "INSTANCE") {
+          throw new Error(`swap_instance needs an INSTANCE, got ${node?.type ?? "missing"}`);
+        }
+        const params = request.params ?? {};
+        const component = await resolveComponentForInstance(
+          params.componentId,
+          params.componentKey
+        );
+        node.swapComponent(component);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, swappedTo: component.name, componentId: component.id },
+        };
+      }
+      case "apply_style": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for apply_style");
+        const node = await getSceneNodeById(nodeId);
+        const params = request.params ?? {};
+        const styleType = params.styleType;
+        if (
+          styleType !== "fill" &&
+          styleType !== "stroke" &&
+          styleType !== "effect" &&
+          styleType !== "grid"
+        ) {
+          throw new Error("styleType must be fill | stroke | effect | grid");
+        }
+
+        let styleId = typeof params.styleId === "string" ? params.styleId : "";
+        if (!styleId) {
+          const styleName =
+            typeof params.styleName === "string" ? params.styleName : "";
+          if (!styleName) throw new Error("styleId or styleName is required");
+          const pool =
+            styleType === "effect"
+              ? await figma.getLocalEffectStylesAsync()
+              : styleType === "grid"
+                ? await figma.getLocalGridStylesAsync()
+                : await figma.getLocalPaintStylesAsync();
+          const match = pool.find((s) => s.name === styleName);
+          if (!match) {
+            throw new Error(
+              `Style not found by name: "${styleName}". Local ${styleType} styles: ${pool.map((s) => s.name).join(", ") || "(none)"}`
+            );
+          }
+          styleId = match.id;
+        }
+
+        if (styleType === "fill") {
+          if (!("setFillStyleIdAsync" in node)) {
+            throw new Error(`Node does not support fill styles: ${node.id}`);
+          }
+          await node.setFillStyleIdAsync(styleId);
+        } else if (styleType === "stroke") {
+          if (!("setStrokeStyleIdAsync" in node)) {
+            throw new Error(`Node does not support stroke styles: ${node.id}`);
+          }
+          await node.setStrokeStyleIdAsync(styleId);
+        } else if (styleType === "effect") {
+          if (!("setEffectStyleIdAsync" in node)) {
+            throw new Error(`Node does not support effect styles: ${node.id}`);
+          }
+          await node.setEffectStyleIdAsync(styleId);
+        } else {
+          if (!("setGridStyleIdAsync" in node)) {
+            throw new Error(`Node does not support grid styles: ${node.id}`);
+          }
+          await node.setGridStyleIdAsync(styleId);
+        }
+
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, styleType, styleId },
+        };
+      }
+      case "create_paint_style": {
+        const params = request.params ?? {};
+        const { name } = params;
+        if (typeof name !== "string" || !name) {
+          throw new Error("name is required for create_paint_style");
+        }
+        if (params.skipIfExists === true) {
+          const existing = (await figma.getLocalPaintStylesAsync()).find(
+            (s) => s.name === name
+          );
+          if (existing) {
+            return {
+              type: request.type,
+              requestId: request.requestId,
+              data: { existed: true, styleId: existing.id, name: existing.name },
+            };
+          }
+        }
+        let paint: Paint;
+        if (Array.isArray(params.gradientStops)) {
+          const gradientType =
+            typeof params.gradientType === "string" ? params.gradientType : "LINEAR";
+          paint = buildGradientPaint(
+            `GRADIENT_${gradientType}` as GradientPaintType,
+            params.gradientStops as GradientStopInput[],
+            undefined,
+            typeof params.opacity === "number" ? params.opacity : undefined
+          );
+        } else if (typeof params.hex === "string") {
+          paint = {
+            type: "SOLID",
+            color: parseHexColor(params.hex),
+            opacity: typeof params.opacity === "number" ? params.opacity : 1,
+          };
+        } else {
+          throw new Error("create_paint_style needs hex or gradientStops");
+        }
+        const style = figma.createPaintStyle();
+        try {
+          style.name = name;
+          style.paints = [paint];
+          if (typeof params.description === "string") {
+            style.description = params.description;
+          }
+        } catch (err) {
+          style.remove();
+          throw err;
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { existed: false, styleId: style.id, name: style.name },
+        };
+      }
+      case "create_effect_style": {
+        const params = request.params ?? {};
+        const { name } = params;
+        if (typeof name !== "string" || !name) {
+          throw new Error("name is required for create_effect_style");
+        }
+        if (params.skipIfExists === true) {
+          const existing = (await figma.getLocalEffectStylesAsync()).find(
+            (s) => s.name === name
+          );
+          if (existing) {
+            return {
+              type: request.type,
+              requestId: request.requestId,
+              data: { existed: true, styleId: existing.id, name: existing.name },
+            };
+          }
+        }
+        const effects = buildEffectsFromParams(params.effects);
+        const style = figma.createEffectStyle();
+        try {
+          style.name = name;
+          style.effects = effects;
+          if (typeof params.description === "string") {
+            style.description = params.description;
+          }
+        } catch (err) {
+          style.remove();
+          throw err;
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { existed: false, styleId: style.id, name: style.name, effectCount: effects.length },
+        };
+      }
+      case "import_library_asset": {
+        const params = request.params ?? {};
+        const { kind, key } = params;
+        if (typeof key !== "string" || !key) throw new Error("key is required");
+        if (kind === "component") {
+          const component = await figma.importComponentByKeyAsync(key);
+          return {
+            type: request.type,
+            requestId: request.requestId,
+            data: { kind, id: component.id, name: component.name },
+          };
+        }
+        if (kind === "component_set") {
+          const set = await figma.importComponentSetByKeyAsync(key);
+          return {
+            type: request.type,
+            requestId: request.requestId,
+            data: {
+              kind,
+              id: set.id,
+              name: set.name,
+              defaultVariantId: set.defaultVariant.id,
+            },
+          };
+        }
+        if (kind === "style") {
+          const style = await figma.importStyleByKeyAsync(key);
+          return {
+            type: request.type,
+            requestId: request.requestId,
+            data: { kind, id: style.id, name: style.name, styleType: style.type },
+          };
+        }
+        if (kind === "variable") {
+          const variable = await figma.variables.importVariableByKeyAsync(key);
+          return {
+            type: request.type,
+            requestId: request.requestId,
+            data: {
+              kind,
+              id: variable.id,
+              name: variable.name,
+              resolvedType: variable.resolvedType,
+            },
+          };
+        }
+        throw new Error("kind must be component | component_set | style | variable");
+      }
+      case "list_library_variables": {
+        const collectionKey =
+          typeof request.params?.collectionKey === "string"
+            ? request.params.collectionKey
+            : "";
+        if (!collectionKey) {
+          const collections =
+            await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+          return {
+            type: request.type,
+            requestId: request.requestId,
+            data: {
+              collections: collections.map((c) => ({
+                key: c.key,
+                name: c.name,
+                libraryName: c.libraryName,
+              })),
+            },
+          };
+        }
+        const variables =
+          await figma.teamLibrary.getVariablesInLibraryCollectionAsync(collectionKey);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            collectionKey,
+            variables: variables.map((v) => ({
+              key: v.key,
+              name: v.name,
+              resolvedType: v.resolvedType,
+            })),
+          },
+        };
+      }
+      case "create_slot": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for create_slot");
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node || node.type !== "COMPONENT") {
+          throw new Error(`create_slot needs a COMPONENT, got ${node?.type ?? "missing"}`);
+        }
+        const slot = node.createSlot();
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            componentId: node.id,
+            slotId: slot.id,
+            hint: "Expose it via add_component_property with propertyType SLOT + slotSettings.",
+          },
+        };
+      }
+      case "dev_resources": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for dev_resources");
+        const node = await getSceneNodeById(nodeId);
+        const params = request.params ?? {};
+        const action = params.action;
+        if (action === "get") {
+          const resources = await node.getDevResourcesAsync({
+            includeChildren: params.includeChildren === true,
+          });
+          return {
+            type: request.type,
+            requestId: request.requestId,
+            data: { nodeId: node.id, resources: toSerializableResult(resources, "dev_resources") },
+          };
+        }
+        const url = typeof params.url === "string" ? params.url : "";
+        if (!url) throw new Error(`dev_resources ${String(action)} needs url`);
+        if (action === "add") {
+          await node.addDevResourceAsync(
+            url,
+            typeof params.name === "string" ? params.name : undefined
+          );
+        } else if (action === "edit") {
+          await node.editDevResourceAsync(url, {
+            ...(typeof params.newName === "string" ? { name: params.newName } : {}),
+            ...(typeof params.newUrl === "string" ? { url: params.newUrl } : {}),
+          });
+        } else if (action === "delete") {
+          await node.deleteDevResourceAsync(url);
+        } else {
+          throw new Error("action must be get | add | edit | delete");
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, action, url },
         };
       }
       case "execute_code": {
