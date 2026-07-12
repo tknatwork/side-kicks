@@ -1,0 +1,30 @@
+{
+  "name": "figma-limitless-mcp",
+  "version": "0.2.0",
+  "description": "Limitless local Figma MCP: bridges a Figma Desktop plugin to AI tools with no REST rate limits \u2014 local-font enumeration/loading, text/effect style tooling, multi-agent orchestration, persistent op-journal + checkpoints, and a Plugin-API execute_code escape hatch.",
+  "type": "module",
+  "bin": {
+    "figma-limitless-mcp": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "ws": "^8.18.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.0",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
