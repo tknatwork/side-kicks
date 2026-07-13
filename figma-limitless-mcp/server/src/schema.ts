@@ -622,7 +622,11 @@ const variableAction = z.object({
     .min(0)
     .optional()
     .describe("bind_to_node fills/strokes: which paint (default 0)"),
-});
+})
+  // Unknown fields must FAIL, not silently strip: a misnamed field (e.g.
+  // 'values' instead of 'valuesByMode') would otherwise create variables
+  // with default values while the tool reports success.
+  .strict();
 
 export const writeVariablesInput = z.object({
   actions: z
