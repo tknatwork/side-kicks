@@ -11,8 +11,8 @@
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.130.0",
-    "terser": "^5.48.0",
-    "typescript": "^6.0.3"
+    "terser": "^5.49.0",
+    "typescript": "^7.0.2"
   },
   "keywords": [
     "figma",
