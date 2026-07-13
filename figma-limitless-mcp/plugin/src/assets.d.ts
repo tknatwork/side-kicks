@@ -12,3 +12,6 @@ declare module "*.jpg" {
   const src: string;
   export default src;
 }
+
+// Side-effect CSS imports (bundled by Vite; no runtime export).
+declare module "*.css";

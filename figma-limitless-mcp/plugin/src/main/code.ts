@@ -1,4 +1,4 @@
-import { serializeNode } from "./serializer";
+import { serializeNode, type SerializableNode } from "./serializer";
 
 type RequestType =
   | "get_document"
@@ -992,7 +992,7 @@ const handleRequest = async (
         const depth =
           typeof request.params?.depth === "number" ? request.params.depth : 2;
         const serializeWithDepth = async (
-          node: unknown,
+          node: SerializableNode,
           currentDepth: number
         ): Promise<ReturnType<typeof serializeNode>> => {
           const serialized = serializeNode(node);
@@ -1039,10 +1039,7 @@ const handleRequest = async (
                 selection.map((node) => serializeWithDepth(node, 0))
               )
             : [
-                await serializeWithDepth(
-                  figma.currentPage as unknown as SceneNode,
-                  0
-                ),
+                await serializeWithDepth(figma.currentPage, 0),
               ];
 
         return {
@@ -1372,7 +1369,7 @@ const handleRequest = async (
 
         if (typeof params.x === "number" || typeof params.y === "number") {
           if (!("x" in node) || !("y" in node)) {
-            throw new Error(`Node does not support x/y positioning: ${node.id}`);
+            throw new Error(`Node does not support x/y positioning: ${nodeId}`);
           }
           positionNode(node, params.x, params.y);
           applied.x = node.x;
@@ -1403,9 +1400,12 @@ const handleRequest = async (
 
         if (typeof params.cornerRadius === "number") {
           if (!("cornerRadius" in node)) {
-            throw new Error(`Node does not support cornerRadius: ${node.id}`);
+            throw new Error(`Node does not support cornerRadius: ${nodeId}`);
           }
-          node.cornerRadius = params.cornerRadius;
+          // cornerRadius is writable on CornerMixin nodes (rect/frame/etc.);
+          // the narrowed SceneNode union types it readonly, so target the mixin
+          // for the write. The read-back below is already allowed.
+          (node as CornerMixin).cornerRadius = params.cornerRadius;
           applied.cornerRadius = node.cornerRadius;
         }
 
@@ -1824,6 +1824,9 @@ const handleRequest = async (
         } else {
           node = figma.createRectangle();
         }
+        // Capture the id up front: the defensive "prop in node" guards below
+        // narrow `node` to `never` in their (unreachable) throw branches.
+        const nodeId = node.id;
 
         if (typeof params.name === "string") {
           node.name = params.name;
@@ -1853,7 +1856,7 @@ const handleRequest = async (
 
         if (typeof params.strokeHex === "string") {
           if (!("strokes" in node)) {
-            throw new Error(`Node does not support strokes: ${node.id}`);
+            throw new Error(`Node does not support strokes: ${nodeId}`);
           }
           const strokeOpacity =
             typeof params.strokeOpacity === "number" ? params.strokeOpacity : undefined;

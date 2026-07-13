@@ -1,4 +1,9 @@
 // --- Serialized paint types (discriminated union) ---
+// The serializer handles scene nodes and pages (its children recurse to scene
+// nodes). The document root is never serialized here — narrowing to this union
+// (rather than BaseNode) keeps child nodes typed as SceneNode.
+export type SerializableNode = SceneNode | PageNode;
+
 type SerializedSolidPaint = {
   type: "SOLID";
   color: string;
@@ -206,7 +211,7 @@ const serializeLetterSpacing = (letterSpacing: LetterSpacing | symbol) => {
   return { value: letterSpacing.value, unit: letterSpacing.unit };
 };
 
-const getBounds = (node: SceneNode): SerializedBounds | undefined => {
+const getBounds = (node: SerializableNode): SerializedBounds | undefined => {
   if ("x" in node && "y" in node && "width" in node && "height" in node) {
     return {
       x: node.x,
@@ -253,7 +258,7 @@ const serializeText = (node: TextNode, base: SerializedNode) => {
   };
 };
 
-const serializeStyles = (node: SceneNode): SerializedStyles => {
+const serializeStyles = (node: SerializableNode): SerializedStyles => {
   const styles: SerializedStyles = {};
 
   if ("opacity" in node) {
@@ -366,7 +371,9 @@ const serializeStyles = (node: SceneNode): SerializedStyles => {
   return styles;
 };
 
-export const serializeNode = (node: SceneNode): SerializedNode => {
+// Accepts any node (BaseNode) — every field beyond id/name/type is read
+// behind a "prop in node" guard, so pages and the document serialize safely.
+export const serializeNode = (node: SerializableNode): SerializedNode => {
   const base: SerializedNode = {
     id: node.id,
     name: node.name,
