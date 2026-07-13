@@ -56,6 +56,33 @@ abort an import or its rollback.
 - New regression suite `tests/type-mapper.test.mjs` (forward-compat mapping,
   scope filtering, effect defaults, motion classification) wired into `pnpm test`.
 
+### Performance (large design systems)
+- **Export**: variables are prefetched in parallel chunks per collection
+  (previously one serial round-trip each), and alias targets, their
+  collections, resolved chain values, style-binding lookups, and
+  consumer-resolver results are memoized per export — thousands of repeated
+  async lookups collapse to one per unique target. The consumer resolver now
+  reuses a single hidden frame instead of creating/removing one per
+  dead-ended library chain.
+- **Import**: the pre-import undo snapshot memoizes alias lookups (seeded
+  from the batched prefetch), only embeds image bytes when styles are being
+  imported, and reports determinate progress; the local variable cache
+  rebuilds from one bulk `getLocalVariablesAsync` call; the team-library
+  index no longer triggers for ordinary in-payload cross-collection aliases
+  (previously it imported every variable of every enabled library for
+  nothing); Clean Import removes collections natively (cascade) instead of
+  variable-by-variable; snapshot restore yields per variable batch instead of
+  per collection so one huge collection can't freeze Figma.
+- **Safety**: an import that fails before touching the file now just reports
+  the error — it no longer routes through the destructive clear-and-rebuild
+  rollback for nothing.
+- **UI**: collection/style selection changes no longer re-send the entire
+  JSON payload to the sandbox for revalidation on every click (validation
+  runs on paste and plan changes, where its inputs actually change).
+- Verified on a 712-variable / 1059-alias / 114-style system: paste→preview
+  ~1s, full import ~6s (5s of which is font loading for 102 text styles),
+  full export ~1-2s, byte-identical round-trip.
+
 ### Fixed
 - **CRITICAL — silent Clean Import data loss (present since 2.0.0)**: in Simple
   mode, importing JSON with zero name overlap against the file (e.g. one brand

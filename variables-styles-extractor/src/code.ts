@@ -1118,13 +1118,28 @@ const NamingConverter = {
   }
 } as const;
 
-// Helper function to resolve alias value recursively
-async function resolveAliasValue(variable: Variable, preferredModeId: string, maxDepth: number = 10): Promise<string | number | boolean | RGBA> {
+// Helper function to resolve alias value recursively. The optional per-export
+// memos collapse fan-in (many tokens aliasing the same primitive) to one chain
+// walk / one fetch per unique target: memo caches results per (variable, mode),
+// varMemo caches Variable lookups by id. Both MUST be scoped to a single
+// export invocation — never module-level — so edits between exports are seen.
+async function resolveAliasValue(
+  variable: Variable,
+  preferredModeId: string,
+  maxDepth: number = 10,
+  memo?: Map<string, string | number | boolean | RGBA>,
+  varMemo?: Map<string, Variable | null>
+): Promise<string | number | boolean | RGBA> {
+  const memoKey = `${variable.id}|${preferredModeId}`;
+  if (memo) {
+    const hit = memo.get(memoKey);
+    if (hit !== undefined) return hit;
+  }
   if (maxDepth <= 0) {
     Logger.log(`⚠️ Max alias resolution depth reached for ${variable.name}`);
     return '';
   }
-  
+
   // Try to get value for preferred mode, fallback to first available mode
   let value = variable.valuesByMode[preferredModeId];
   if (value === undefined) {
@@ -1133,22 +1148,34 @@ async function resolveAliasValue(variable: Variable, preferredModeId: string, ma
       value = variable.valuesByMode[modeIds[0]];
     }
   }
-  
+
   if (value === undefined) {
     return '';
   }
-  
+
   // If it's another alias, resolve recursively
   if (isVariableAlias(value)) {
-    const nextVar = await figma.variables.getVariableByIdAsync(value.id);
+    let nextVar: Variable | null;
+    if (varMemo && varMemo.has(value.id)) {
+      nextVar = varMemo.get(value.id) as Variable | null;
+    } else {
+      nextVar = await figma.variables.getVariableByIdAsync(value.id);
+      if (varMemo) varMemo.set(value.id, nextVar);
+    }
     if (nextVar) {
-      return resolveAliasValue(nextVar, preferredModeId, maxDepth - 1);
+      const resolved = await resolveAliasValue(nextVar, preferredModeId, maxDepth - 1, memo, varMemo);
+      // Only cache real results: '' can mean a depth-truncated chain, which
+      // must not poison a later resolution that starts with a full budget.
+      if (memo && resolved !== '') memo.set(memoKey, resolved);
+      return resolved;
     }
     return '';
   }
-  
+
   // Return the raw value
-  return value as string | number | boolean | RGBA;
+  const raw = value as string | number | boolean | RGBA;
+  if (memo && raw !== '') memo.set(memoKey, raw);
+  return raw;
 }
 
 // Resolve a variable's value through Figma's own rendering engine. Used when
@@ -1157,25 +1184,56 @@ async function resolveAliasValue(variable: Variable, preferredModeId: string, ma
 // that a referenced library token aliases), but the renderer resolves the full
 // chain regardless. A throwaway hidden node pinned to the wanted mode of the
 // exporting collection provides the resolution context.
+// Shared resolver state for one export: a single hidden frame reused across
+// resolutions (instead of one create/remove document mutation per dead-ended
+// chain), with mode pins cleared between uses so context matches a fresh frame.
+interface ConsumerResolverReuse {
+  node: FrameNode | null;
+  pinned: VariableCollection[];
+}
+
 function resolveViaConsumer(
   variable: Variable,
   collection: VariableCollection,
-  modeId: string
+  modeId: string,
+  reuse?: ConsumerResolverReuse
 ): string | number | boolean | RGBA | undefined {
   let node: FrameNode | null = null;
+  let owned = false;
   try {
-    node = figma.createFrame();
-    node.name = '__vse-alias-resolver';
-    node.visible = false;
-    node.resize(1, 1);
-    node.setExplicitVariableModeForCollection(collection, modeId);
+    if (reuse) {
+      if (!reuse.node) {
+        reuse.node = figma.createFrame();
+        reuse.node.name = '__vse-alias-resolver';
+        reuse.node.visible = false;
+        reuse.node.resize(1, 1);
+      }
+      node = reuse.node;
+      // Clear pins from previous resolutions so a reused frame resolves with
+      // exactly the context a fresh frame would have.
+      for (let i = 0; i < reuse.pinned.length; i++) {
+        if (reuse.pinned[i].id !== collection.id) {
+          try { node.clearExplicitVariableModeForCollection(reuse.pinned[i]); } catch { /* collection gone */ }
+        }
+      }
+      reuse.pinned.length = 0;
+      node.setExplicitVariableModeForCollection(collection, modeId);
+      reuse.pinned.push(collection);
+    } else {
+      node = figma.createFrame();
+      node.name = '__vse-alias-resolver';
+      node.visible = false;
+      node.resize(1, 1);
+      node.setExplicitVariableModeForCollection(collection, modeId);
+      owned = true;
+    }
     const resolved = variable.resolveForConsumer(node);
     return resolved ? (resolved.value as string | number | boolean | RGBA) : undefined;
   } catch (e) {
     Logger.log(`⚠️ Consumer-resolve failed for ${variable.name}: ${e instanceof Error ? e.message : 'unknown error'}`);
     return undefined;
   } finally {
-    if (node) {
+    if (owned && node) {
       node.remove();
     }
   }
@@ -2243,24 +2301,20 @@ class VariableCache {
     this.clearLocal();
 
     const collections = await figma.variables.getLocalVariableCollectionsAsync();
+    const nameById = new Map<string, string>();
     for (let c = 0; c < collections.length; c++) {
-      const col = collections[c];
-      this.collectionMap.set(col.name, col);
+      this.collectionMap.set(collections[c].name, collections[c]);
+      nameById.set(collections[c].id, collections[c].name);
+    }
 
-      // Batch the per-variable async lookups instead of awaiting one at a time.
-      const ids = col.variableIds;
-      const resolved = await runBatchedAsync(
-        ids,
-        BATCH.ASYNC_LOOKUP,
-        function (varId: string): Promise<Variable | null> {
-          return figma.variables.getVariableByIdAsync(varId);
-        }
-      );
-      for (let i = 0; i < resolved.length; i++) {
-        const v = resolved[i];
-        if (v) {
-          this.variableMap.set(`${col.name}/${v.name}`, v);
-        }
+    // One bulk fetch for every local variable instead of thousands of per-id
+    // round-trips (the previous per-collection batched lookups).
+    const allVars = await figma.variables.getLocalVariablesAsync();
+    for (let i = 0; i < allVars.length; i++) {
+      const v = allVars[i];
+      const colName = nameById.get(v.variableCollectionId);
+      if (colName !== undefined) {
+        this.variableMap.set(`${colName}/${v.name}`, v);
       }
     }
   }
@@ -2546,24 +2600,51 @@ const TypeMapper = {
 // SECTION 8: BINDING UTILITIES
 // ============================================================================
 
+// Per-export memo for style variable bindings: the same few bound variables
+// (color/size tokens) are referenced by many styles, so resolve each unique
+// one once. Reset at the start of EVERY style-processor export so renames are
+// always picked up (covers both the export flow and the snapshot flow).
+const bindingInfoMemo = new Map<string, VariableBinding>();
+const bindingCollectionNameMemo = new Map<string, string | undefined>();
+function resetBindingMemos(): void {
+  bindingInfoMemo.clear();
+  bindingCollectionNameMemo.clear();
+}
+
 async function getVariableBindingInfo(
-  boundVariables: Record<string, VariableAlias | undefined> | undefined, 
+  boundVariables: Record<string, VariableAlias | undefined> | undefined,
   key: string
 ): Promise<VariableBinding> {
   if (!boundVariables?.[key]) return {};
-  
+
   const alias = boundVariables[key];
   if (!alias) return {};
-  
+
+  const cached = bindingInfoMemo.get(alias.id);
+  if (cached) return cached;
+
   const variable = await figma.variables.getVariableByIdAsync(alias.id);
-  if (!variable) return { id: alias.id };
-  
-  const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
-  return {
+  if (!variable) {
+    const miss = { id: alias.id };
+    bindingInfoMemo.set(alias.id, miss);
+    return miss;
+  }
+
+  let collectionName: string | undefined;
+  if (bindingCollectionNameMemo.has(variable.variableCollectionId)) {
+    collectionName = bindingCollectionNameMemo.get(variable.variableCollectionId);
+  } else {
+    const collection = await figma.variables.getVariableCollectionByIdAsync(variable.variableCollectionId);
+    collectionName = collection?.name;
+    bindingCollectionNameMemo.set(variable.variableCollectionId, collectionName);
+  }
+  const info = {
     id: alias.id,
     name: variable.name,
-    collection: collection?.name
+    collection: collectionName
   };
+  bindingInfoMemo.set(alias.id, info);
+  return info;
 }
 
 async function extractBindings(
@@ -2634,6 +2715,7 @@ interface StyleProcessor<TExport, TFigma> {
 // Color Style Processor - supports SOLID, GRADIENT, and IMAGE paint styles
 const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
   async export(options?: { includeImages?: boolean }): Promise<ExportColorStyle[]> {
+    resetBindingMemos();
     const includeImages = options?.includeImages ?? false;
     const styles: ExportColorStyle[] = [];
 
@@ -3001,6 +3083,7 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
 // Text Style Processor
 const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
   async export(_options?: { includeImages?: boolean }): Promise<ExportTextStyle[]> {
+    resetBindingMemos();
     const styles: ExportTextStyle[] = [];
 
     const localTextStyles = await figma.getLocalTextStylesAsync();
@@ -3131,6 +3214,7 @@ function applyEffectDefaults(e: Record<string, unknown>): void {
 
 const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
   async export(_options?: { includeImages?: boolean }): Promise<ExportEffectStyle[]> {
+    resetBindingMemos();
     const styles: ExportEffectStyle[] = [];
 
     const localEffectStyles = await figma.getLocalEffectStylesAsync();
@@ -3309,6 +3393,7 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
 // Grid Style Processor
 const GridStyleProcessor: StyleProcessor<ExportGridStyle, GridStyle> = {
   async export(_options?: { includeImages?: boolean }): Promise<ExportGridStyle[]> {
+    resetBindingMemos();
     const styles: ExportGridStyle[] = [];
 
     const localGridStyles = await figma.getLocalGridStylesAsync();
@@ -3778,7 +3863,10 @@ async function exportVariables(
   if (selectedModes) {
     Logger.log(`  selectedModes: ${JSON.stringify(selectedModes)}`);
   }
-  
+
+  // Reusable consumer-resolver frame (see resolveViaConsumer) — declared out
+  // here so the catch path can also clean it up.
+  const consumerReuse: ConsumerResolverReuse = { node: null, pinned: [] };
   try {
     let collections = await figma.variables.getLocalVariableCollectionsAsync();
     
@@ -3800,6 +3888,14 @@ async function exportVariables(
       grandTotal += collections[gc].variableIds.length;
     }
     let processedVars = 0;
+
+    // Per-export memos: alias targets, their collections, resolved chain
+    // values, and consumer-resolver results are shared by MANY (variable,
+    // mode) occurrences — fetch/resolve each unique one once per export.
+    const aliasVarMemo = new Map<string, Variable | null>();
+    const aliasColMemo = new Map<string, { name: string; remote: boolean } | null>();
+    const aliasResolveMemo = new Map<string, string | number | boolean | RGBA>();
+    const consumerMemo = new Map<string, string | number | boolean | RGBA | undefined>();
 
     for (const collection of collections) {
       Logger.log(`Processing collection: ${collection.name}`);
@@ -3830,14 +3926,28 @@ async function exportVariables(
         // We'll handle original mode names in metadata if needed
       }
       
+      // Prefetch this collection's Variable objects in async chunks (50-way
+      // Promise.all) instead of one serial await per variable inside the loop —
+      // same pattern as getCollections. Cuts N serial round-trips to N/50.
+      const prefetchBase = processedVars;
+      const prefetched = await runBatchedAsync(
+        collection.variableIds,
+        BATCH.ASYNC_LOOKUP,
+        function (variableId: string): Promise<Variable | null> {
+          return figma.variables.getVariableByIdAsync(variableId);
+        },
+        function (done: number): void {
+          progress.report('export_variables', 'Reading variables', prefetchBase + done, grandTotal);
+        }
+      );
+
       // Process variables sequentially (shared nested structure mutation), batched
       // with periodic yields so the UI can repaint on large collections.
       await runSequentialAsync(
-        collection.variableIds,
+        prefetched,
         BATCH.SEQ_EXPORT,
-        async function (variableId: string): Promise<void> {
+        async function (variable: Variable | null): Promise<void> {
         processedVars++;
-        const variable = await figma.variables.getVariableByIdAsync(variableId);
         if (!variable) return;
 
         // Group filtering (Simple mode): key absent for a collection => export ALL its variables
@@ -3880,21 +3990,41 @@ async function exportVariables(
           let localValue: string | number | boolean | ExportColorValue | undefined = undefined;
           
           if (isVariableAlias(value)) {
-            const aliasVar = await figma.variables.getVariableByIdAsync(value.id);
+            let aliasVar: Variable | null;
+            if (aliasVarMemo.has(value.id)) {
+              aliasVar = aliasVarMemo.get(value.id) as Variable | null;
+            } else {
+              aliasVar = await figma.variables.getVariableByIdAsync(value.id);
+              aliasVarMemo.set(value.id, aliasVar);
+            }
             if (aliasVar) {
-              const aliasCol = await figma.variables.getVariableCollectionByIdAsync(aliasVar.variableCollectionId);
+              let aliasColInfo: { name: string; remote: boolean } | null;
+              if (aliasColMemo.has(aliasVar.variableCollectionId)) {
+                aliasColInfo = aliasColMemo.get(aliasVar.variableCollectionId) as { name: string; remote: boolean } | null;
+              } else {
+                const aliasCol = await figma.variables.getVariableCollectionByIdAsync(aliasVar.variableCollectionId);
+                aliasColInfo = aliasCol ? { name: aliasCol.name, remote: aliasCol.remote } : null;
+                aliasColMemo.set(aliasVar.variableCollectionId, aliasColInfo);
+              }
               isAlias = true;
-              aliasCollection = aliasCol?.name ?? '';
-              isLibraryAlias = aliasCol?.remote ?? false;
+              aliasCollection = aliasColInfo ? aliasColInfo.name : '';
+              isLibraryAlias = aliasColInfo ? aliasColInfo.remote : false;
               
               // If resolveAliases is true, resolve to the actual value
               if (resolveAliases) {
                 // Resolve the alias to its actual value
-                let resolvedValue = await resolveAliasValue(aliasVar, mode.modeId);
+                let resolvedValue = await resolveAliasValue(aliasVar, mode.modeId, 10, aliasResolveMemo, aliasVarMemo);
                 if (resolvedValue === '') {
                   // Chain dead-ended on a library-internal variable the API
                   // can't fetch — ask the rendering engine instead.
-                  const consumerValue = resolveViaConsumer(variable, collection, mode.modeId);
+                  const consumerKey = `${variable.id}:${mode.modeId}`;
+                  let consumerValue: string | number | boolean | RGBA | undefined;
+                  if (consumerMemo.has(consumerKey)) {
+                    consumerValue = consumerMemo.get(consumerKey);
+                  } else {
+                    consumerValue = resolveViaConsumer(variable, collection, mode.modeId, consumerReuse);
+                    consumerMemo.set(consumerKey, consumerValue);
+                  }
                   if (consumerValue !== undefined) resolvedValue = consumerValue;
                 }
                 if (typeof resolvedValue === 'object' && resolvedValue !== null && 'r' in resolvedValue) {
@@ -3916,11 +4046,18 @@ async function exportVariables(
                 // (a chain) must still yield a concrete fallback, otherwise the
                 // importer has nothing to fall back to and the token shows 0.
                 if (isLibraryAlias) {
-                  let resolvedValue = await resolveAliasValue(aliasVar, mode.modeId);
+                  let resolvedValue = await resolveAliasValue(aliasVar, mode.modeId, 10, aliasResolveMemo, aliasVarMemo);
                   if (resolvedValue === '') {
                     // Chain dead-ended on a library-internal variable the API
                     // can't fetch — ask the rendering engine instead.
-                    const consumerValue = resolveViaConsumer(variable, collection, mode.modeId);
+                    const consumerKey = `${variable.id}:${mode.modeId}`;
+                    let consumerValue: string | number | boolean | RGBA | undefined;
+                    if (consumerMemo.has(consumerKey)) {
+                      consumerValue = consumerMemo.get(consumerKey);
+                    } else {
+                      consumerValue = resolveViaConsumer(variable, collection, mode.modeId, consumerReuse);
+                      consumerMemo.set(consumerKey, consumerValue);
+                    }
                     if (consumerValue !== undefined) resolvedValue = consumerValue;
                   }
                   if (typeof resolvedValue === 'object' && resolvedValue !== null && 'r' in resolvedValue) {
@@ -4052,9 +4189,18 @@ async function exportVariables(
       Logger.log(`✅ Export complete: ${stats.collections} collections, ${stats.variables} variables`);
     }
     
+    if (consumerReuse.node) {
+      try { consumerReuse.node.remove(); } catch { /* already gone */ }
+      consumerReuse.node = null;
+    }
+
     await sendExportInChunks(outputData, stats, exportFormat);
 
   } catch (e) {
+    if (consumerReuse.node) {
+      try { consumerReuse.node.remove(); } catch { /* already gone */ }
+      consumerReuse.node = null;
+    }
     if (isCancelError(e)) {
       Logger.log('🛑 Export cancelled');
       figma.ui.postMessage({
@@ -4129,20 +4275,24 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
   Logger.log('📥 Starting import...');
   Logger.log(`📋 Import options: merge=${options.merge}, clearFirst=${options.clearFirst}, importStyles=${options.importStyles}`);
   
+  // Heavy-load handling is created first so the snapshot phase gets
+  // determinate progress too.
+  const progress = createProgress('import');
+
   // Create a snapshot BEFORE making any changes for automatic rollback on error
   Logger.log('📸 Creating pre-import snapshot for automatic rollback...');
   let preImportSnapshot: UndoSnapshot | null = null;
   try {
-    preImportSnapshot = await createUndoSnapshot();
+    preImportSnapshot = await createUndoSnapshot(progress, options.importStyles === true);
     Logger.log('✅ Pre-import snapshot created');
   } catch (snapshotError) {
     Logger.log(`⚠️ Could not create pre-import snapshot: ${snapshotError}`);
     // Continue without snapshot - user will be warned if import fails
   }
 
-  // Heavy-load handling: throttled progress + a mutation-started flag so the
-  // cancel/rollback paths know whether the file was actually touched yet.
-  const progress = createProgress('import');
+  // Mutation-started flag: the cancel/rollback paths use it to know whether
+  // the file was actually touched yet. (Progress was created above so the
+  // snapshot phase reports too.)
   let mutationStarted = false;
 
   try {
@@ -4210,6 +4360,32 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
     }> = [];
     let importGrandTotal = 0;
     let needsLibraryIndex = false;
+
+    // Names of every collection carried by THIS import payload: an alias
+    // pointing at any of them is satisfied in-payload and must NOT trigger the
+    // (expensive) team-library index. Previously each alias was only compared
+    // against the collection currently being scanned, so ordinary in-file
+    // cross-collection aliases (semantic -> primitive) indexed every enabled
+    // library for nothing.
+    const importCollectionNames = new Set<string>();
+    for (let icn = 0; icn < collectionData.length; icn++) {
+      const icnObj = collectionData[icn];
+      const icnName = Object.keys(icnObj)[0];
+      importCollectionNames.add(icnName);
+      const icnOriginal = icnObj[icnName].$originalName;
+      if (icnOriginal) importCollectionNames.add(icnOriginal);
+    }
+    const scanForLibraryNeeds = function (paths: FlatVariable[]): void {
+      for (let fp = 0; fp < paths.length; fp++) {
+        const v = paths[fp].value;
+        if (v.$libraryRef) {
+          needsLibraryIndex = true;
+        } else if (v.$collectionName && !importCollectionNames.has(v.$collectionName)) {
+          needsLibraryIndex = true;
+        }
+      }
+    };
+
     for (let pc = 0; pc < collectionData.length; pc++) {
       const collectionObj = collectionData[pc];
       const jsonName = Object.keys(collectionObj)[0];
@@ -4220,15 +4396,11 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
       preflattened.push({ collectionObj: collectionObj, flatPaths: flatPaths });
       importGrandTotal += flatPaths.length;
 
-      // Scan for library needs: a $libraryRef, or an alias pointing at a
-      // collection name that is not one of the collections in this import file.
-      for (let fp = 0; fp < flatPaths.length; fp++) {
-        const v = flatPaths[fp].value;
-        if (v.$libraryRef) {
-          needsLibraryIndex = true;
-        } else if (v.$collectionName && v.$collectionName !== (content.$originalName || jsonName)) {
-          needsLibraryIndex = true;
-        }
+      scanForLibraryNeeds(flatPaths);
+      // A library ref can appear only in a non-first mode — scan those too
+      // (cheap CPU-only flatten; skipped once the flag is already set).
+      for (let mk = 1; mk < modeKeys.length && !needsLibraryIndex; mk++) {
+        scanForLibraryNeeds(flattenVariables(content.modes[modeKeys[mk]], ''));
       }
     }
 
@@ -4576,16 +4748,24 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
   } catch (e) {
     const cancelled = isCancelError(e);
 
-    // Cancelled before any mutation: nothing to roll back.
-    if (cancelled && !mutationStarted) {
-      Logger.log('🛑 Import cancelled before any changes were made');
-      figma.ui.postMessage({
-        type: 'operation_cancelled',
-        operation: 'import',
-        phase: 'snapshot',
-        rolledBack: false,
-        message: 'Import cancelled. No changes were made.'
-      });
+    // Nothing was mutated yet (everything before the mutation boundary is
+    // read-only by invariant): never run the destructive restore path for a
+    // pre-mutation failure — just report it.
+    if (!mutationStarted) {
+      if (cancelled) {
+        Logger.log('🛑 Import cancelled before any changes were made');
+        figma.ui.postMessage({
+          type: 'operation_cancelled',
+          operation: 'import',
+          phase: 'snapshot',
+          rolledBack: false,
+          message: 'Import cancelled. No changes were made.'
+        });
+      } else {
+        const preMsg = e instanceof Error ? e.message : String(e);
+        Logger.log(`❌ Import error (before any changes): ${preMsg}`);
+        Logger.send('error', { message: `Import failed: ${preMsg}. No changes were made to your file.` });
+      }
       return;
     }
 
@@ -4946,6 +5126,19 @@ async function clearVariables(silent: boolean = false): Promise<void> {
     let done = 0;
     for (let g = 0; g < gathered.length; g++) {
       const entry = gathered[g];
+      if (silent) {
+        // Internal clears (Clean Import / restore): removing the collection
+        // cascades to all its variables natively — skip the per-variable
+        // fetch+remove round-trips entirely. One yield per collection keeps
+        // the host responsive and cancellation collection-granular.
+        checkCancelled();
+        deletedVariables += entry.ids.length;
+        entry.collection.remove();
+        deletedCollections++;
+        done += entry.ids.length;
+        await yieldToHost();
+        continue;
+      }
       // Resolve the variable objects for this collection in async chunks.
       const resolved = await runBatchedAsync(
         entry.ids,
@@ -5134,7 +5327,7 @@ async function clearAll(silent: boolean = false): Promise<void> {
 
 // Create a snapshot of current variables and styles for undo. Read-only, so it
 // is cancellable. An optional progress reporter surfaces determinate progress.
-async function createUndoSnapshot(reporter?: ProgressReporter): Promise<UndoSnapshot> {
+async function createUndoSnapshot(reporter?: ProgressReporter, includeImages: boolean = true): Promise<UndoSnapshot> {
   Logger.log('📸 Creating snapshot of current file state...');
 
   // Export all collections using simplified internal format
@@ -5144,6 +5337,10 @@ async function createUndoSnapshot(reporter?: ProgressReporter): Promise<UndoSnap
   // Memoize variableCollectionId -> collection name for alias dereferencing so
   // we don't re-fetch the same collection once per alias.
   const collectionNameById = new Map<string, string>();
+  // Memoize alias-target Variable lookups: locals are seeded from the batched
+  // prefetch below, so only unique non-local targets ever hit the API — and
+  // each exactly once (previously one serial await per alias occurrence).
+  const aliasVarById = new Map<string, Variable | null>();
 
   // Grand total for determinate progress.
   let totalVars = 0;
@@ -5175,6 +5372,11 @@ async function createUndoSnapshot(reporter?: ProgressReporter): Promise<UndoSnap
     );
     processedVars += collection.variableIds.length;
 
+    for (let sv = 0; sv < resolvedVars.length; sv++) {
+      const seeded = resolvedVars[sv];
+      if (seeded) aliasVarById.set(seeded.id, seeded);
+    }
+
     for (let rv = 0; rv < resolvedVars.length; rv++) {
       const variable = resolvedVars[rv];
       if (!variable) continue;
@@ -5192,7 +5394,13 @@ async function createUndoSnapshot(reporter?: ProgressReporter): Promise<UndoSnap
         if (typeof value === 'object' && value !== null && 'type' in value && value.type === 'VARIABLE_ALIAS') {
           // Handle alias
           const aliasId = (value as VariableAlias).id;
-          const aliasVariable = await figma.variables.getVariableByIdAsync(aliasId);
+          let aliasVariable: Variable | null;
+          if (aliasVarById.has(aliasId)) {
+            aliasVariable = aliasVarById.get(aliasId) as Variable | null;
+          } else {
+            aliasVariable = await figma.variables.getVariableByIdAsync(aliasId);
+            aliasVarById.set(aliasId, aliasVariable);
+          }
           if (aliasVariable) {
             let aliasCollectionName = collectionNameById.get(aliasVariable.variableCollectionId);
             if (aliasCollectionName === undefined) {
@@ -5229,9 +5437,12 @@ async function createUndoSnapshot(reporter?: ProgressReporter): Promise<UndoSnap
     snapshotCollections.push(collectionSnapshot);
   }
 
-  // Export all styles
+  // Export all styles. Image BYTES are only embedded when the import will
+  // touch styles: within the same file, restore falls back to imageHash,
+  // which stays valid — skipping base64 keeps the snapshot orders of
+  // magnitude smaller for variables-only imports.
   const stylesExport: StylesExport = {
-    colorStyles: await ColorStyleProcessor.export({ includeImages: true }),
+    colorStyles: await ColorStyleProcessor.export({ includeImages }),
     textStyles: await TextStyleProcessor.export(),
     effectStyles: await EffectStyleProcessor.export(),
     gridStyles: await GridStyleProcessor.export()
@@ -5314,36 +5525,45 @@ async function restoreFromSnapshot(snapshot: UndoSnapshot): Promise<void> {
     aliasCollection: string;
   }> = [];
 
-  await runBatched(
-    snapshotCollections,
-    BATCH.SYNC_CREATE,
-    function (collSnapshot: SnapshotCollection): void {
-    // Create collection
+  // Create collections + modes up-front (cheap, few of them), then restore the
+  // variables in yielded batches PER VARIABLE — batching per collection meant
+  // one huge collection restored with zero yields, freezing the host.
+  const flatRestoreVars: Array<{
+    newCollection: VariableCollection;
+    modeMap: Record<string, string>;
+    collName: string;
+    modes: SnapshotCollection['modes'];
+    varSnapshot: SnapshotCollection['variables'][number];
+  }> = [];
+  for (const collSnapshot of snapshotCollections) {
     const newCollection = figma.variables.createVariableCollection(collSnapshot.name);
     variableCache.setCollection(collSnapshot.name, newCollection);
 
-    // Setup modes
     if (collSnapshot.modes.length > 0) {
-      // Rename first mode
       newCollection.renameMode(newCollection.modes[0].modeId, collSnapshot.modes[0].name);
-
-      // Add additional modes
       for (let i = 1; i < collSnapshot.modes.length; i++) {
         newCollection.addMode(collSnapshot.modes[i].name);
       }
     }
 
-    // Get mode mapping
     const modeMap: Record<string, string> = {};
     for (const mode of newCollection.modes) {
       modeMap[mode.name] = mode.modeId;
     }
 
-    // Process variables
     for (const varSnapshot of collSnapshot.variables) {
+      flatRestoreVars.push({ newCollection, modeMap, collName: collSnapshot.name, modes: collSnapshot.modes, varSnapshot });
+    }
+  }
+
+  await runBatched(
+    flatRestoreVars,
+    BATCH.SYNC_CREATE,
+    function (entry: (typeof flatRestoreVars)[number]): void {
+      const { newCollection, modeMap, collName, modes, varSnapshot } = entry;
       // Create variable - pass collection node, not ID (required for incremental mode)
       const newVar = figma.variables.createVariable(varSnapshot.name, newCollection, varSnapshot.type);
-      variableCache.setVariable(`${collSnapshot.name}/${varSnapshot.name}`, newVar);
+      variableCache.setVariable(`${collName}/${varSnapshot.name}`, newVar);
 
       // Set scopes if available (fall back to known scopes, never throw)
       if (varSnapshot.scopes && varSnapshot.scopes.length > 0) {
@@ -5357,7 +5577,7 @@ async function restoreFromSnapshot(snapshot: UndoSnapshot): Promise<void> {
       }
 
       // Set values for each mode
-      for (const modeSnapshot of collSnapshot.modes) {
+      for (const modeSnapshot of modes) {
         const modeId = modeMap[modeSnapshot.name];
         const modeValue = varSnapshot.values[modeSnapshot.name];
 
@@ -5369,7 +5589,7 @@ async function restoreFromSnapshot(snapshot: UndoSnapshot): Promise<void> {
             variable: newVar,
             modeId,
             aliasPath: modeValue.aliasName,
-            aliasCollection: modeValue.aliasCollection || collSnapshot.name
+            aliasCollection: modeValue.aliasCollection || collName
           });
         } else if (modeValue.value !== undefined) {
           // Set raw value
@@ -5384,7 +5604,6 @@ async function restoreFromSnapshot(snapshot: UndoSnapshot): Promise<void> {
           newVar.setValueForMode(modeId, rawValue);
         }
       }
-    }
     },
     function (done: number, total: number): void {
       restoreProgress.report('undo_restore', 'Restoring variables', done, total);

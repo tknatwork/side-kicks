@@ -5267,13 +5267,10 @@
       // Update source JSON plan banner
       updateSourceJsonPlanBanner();
       
-      // Trigger plan detection for target file
+      // Trigger plan detection for target file — its handler re-validates
+      // unconditionally, so a second validate here would just double the
+      // full-payload round-trip.
       parent.postMessage({ pluginMessage: { type: 'detect_plan' } }, '*');
-      
-      // Re-validate now that we're on selection face
-      if (importData) {
-        validateImport();
-      }
       
       addLog('▶️ Proceeded to selection', 'success', 'import');
     }
@@ -8691,11 +8688,11 @@
       
       // Re-check plan mismatch (may remove warning if exceeding collection is unchecked)
       checkPlanMismatch();
-      
-      // Re-validate import
-      if (importData) {
-        validateImport();
-      }
+      // NOTE: no re-validation here — validation depends on the payload and
+      // plan, not on which collections are ticked. Re-stringifying and
+      // re-posting the full multi-MB JSON to the sandbox on every checkbox
+      // click made big-file selection sluggish. Validation still runs on
+      // paste and on plan detection/change.
     }
 
     function selectAllImport(select) {
@@ -8725,11 +8722,8 @@
       
       // Re-check plan mismatch
       checkPlanMismatch();
-      
-      // Re-validate import
-      if (importData) {
-        validateImport();
-      }
+      // NOTE: no re-validation here (see updateImportSelection) — payload and
+      // plan are unchanged by select-all.
     }
 
     function updateImportStatus() {
