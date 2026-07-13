@@ -8764,13 +8764,22 @@
       
       // Determine merge/overwrite based on import behavior
       let importBehavior = getImportBehavior();
-      // Destructive gate: Clean Import deletes every existing variable
-      // collection and local style before importing. Require explicit,
-      // informed consent every time (same policy as the confirm-gated
-      // Clear buttons). Cancel falls back to the additive Smart Merge.
+      // Destructive gate: Clean Import (and Custom Merge with clear boxes
+      // ticked) deletes existing content before importing. Require explicit,
+      // informed consent every time (same policy as the confirm-gated Clear
+      // buttons). Cancel falls back to the additive Smart Merge.
       if (importBehavior === 'clean-import') {
         const proceed = confirm('⚠️ Clean Import will DELETE ALL existing variable collections, variables, and local styles in this file before importing.\n\nOK = delete everything, then import\nCancel = keep existing content and import with Smart Merge instead');
         if (!proceed) importBehavior = 'smart-merge';
+      } else if (importBehavior === 'custom-merge') {
+        const opts = getCustomMergeOptions();
+        if (opts && (opts.clearVariables || opts.clearStyles)) {
+          const what = opts.clearVariables && opts.clearStyles
+            ? 'ALL existing variable collections, variables, AND local styles'
+            : (opts.clearVariables ? 'ALL existing variable collections and variables' : 'ALL existing local styles');
+          const proceed = confirm('⚠️ Custom Merge is set to clear ' + what + ' in this file before importing.\n\nOK = clear, then import\nCancel = keep existing content and import with Smart Merge instead');
+          if (!proceed) importBehavior = 'smart-merge';
+        }
       }
       const shouldMerge = importBehavior === 'smart-merge';
       const shouldOverwrite = true; // Always overwrite existing variables when they match
