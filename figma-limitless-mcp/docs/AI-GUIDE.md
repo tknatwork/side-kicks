@@ -87,6 +87,16 @@ For large reads and writes, keep the payload out of your context:
 4. **Order by dependency.** Create primitive collections before the semantic collections that alias them; create variables before the styles/components that bind them.
 5. Checkpoint after each phase so a failure resumes mid-copy, not from scratch.
 
+## execute_code under dynamic-page
+
+The plugin runs with `documentAccess: "dynamic-page"`. Inside `execute_code`, use the **Async** API variants — the sync ones throw:
+
+- `figma.getNodeByIdAsync(id)`, not `getNodeById`
+- `node.setFillStyleIdAsync / setStrokeStyleIdAsync / setEffectStyleIdAsync / setGridStyleIdAsync / setTextStyleIdAsync`, not the `*StyleId =` setters
+- `figma.setCurrentPageAsync(page)` and `page.loadAsync()` / `figma.loadAllPagesAsync()` before touching off-page nodes
+
+(The dedicated tools already do this — the rule is only for hand-written `execute_code`.)
+
 ## Multi-agent and resume
 
 - `acquire_lock` on what you mutate (`styles:text`, `page:<id>`). Locks expire on TTL — a dead agent never wedges the workspace.
