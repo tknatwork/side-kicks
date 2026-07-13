@@ -93,9 +93,18 @@ type PluginResponse = {
 
 let cachedFallbackFileKey: string | null = null;
 
+// figma.fileKey is unavailable to this plugin, so the fallback key must be
+// DETERMINISTIC per file — server-side state (journal, checkpoints, code
+// mappings) is bucketed by fileKey and would orphan on every plugin re-run
+// with a random key. Derive it from the file name (djb2). Caveat: renaming
+// the file re-buckets its state; same-named files collide locally.
 const generateFallbackFileKey = (): string => {
-  const random = Math.random().toString(36).slice(2, 10);
-  return `unsaved-${Date.now().toString(36)}-${random}`;
+  const name = figma.root.name;
+  let hash = 5381;
+  for (let i = 0; i < name.length; i++) {
+    hash = ((hash << 5) + hash + name.charCodeAt(i)) | 0;
+  }
+  return `local-${(hash >>> 0).toString(36)}`;
 };
 
 const getFileKey = (): string => {
@@ -708,10 +717,19 @@ const resolveComponentForInstance = async (
   if (typeof componentKey === "string" && componentKey) {
     try {
       return await figma.importComponentByKeyAsync(componentKey);
-    } catch {
-      // The key may belong to a component SET — fall through to set import.
-      const set = await figma.importComponentSetByKeyAsync(componentKey);
-      return set.defaultVariant;
+    } catch (componentErr) {
+      // The key may belong to a component SET — try that before failing,
+      // but keep BOTH errors visible when neither import works.
+      try {
+        const set = await figma.importComponentSetByKeyAsync(componentKey);
+        return set.defaultVariant;
+      } catch (setErr) {
+        throw new Error(
+          `Component import failed (${componentErr instanceof Error ? componentErr.message : String(componentErr)}); ` +
+            `component-set import failed (${setErr instanceof Error ? setErr.message : String(setErr)}) — ` +
+            `check that the key belongs to a PUBLISHED component or component set`
+        );
+      }
     }
   }
   if (typeof componentId === "string" && componentId) {
@@ -3190,14 +3208,20 @@ const handleRequest = async (
             : getPageOfNode(components[0]);
         const set = figma.combineAsVariants(components, parent);
         if (typeof params.name === "string") set.name = params.name;
-        // Variants stack at 0,0 after combining — lay them out unless told not to.
+        // Variants stack at 0,0 after combining — lay them out unless told not
+        // to. The set frame does NOT auto-resize when children move via the
+        // API, so resize it to fit or the variants overflow its bounds.
         if (params.arrange !== false) {
-          let y = 0;
+          const PAD = 16;
+          let y = PAD;
+          let maxWidth = 0;
           for (const variant of set.children) {
+            variant.x = PAD;
             variant.y = y;
-            variant.x = 0;
             y += variant.height + 24;
+            if (variant.width > maxWidth) maxWidth = variant.width;
           }
+          set.resizeWithoutConstraints(maxWidth + PAD * 2, y - 24 + PAD);
         }
         return {
           type: request.type,
@@ -3231,6 +3255,17 @@ const handleRequest = async (
         }
         if (params.slotSettings && typeof params.slotSettings === "object") {
           options.slotSettings = params.slotSettings;
+        }
+        // INSTANCE_SWAP requires a main-component node id — Figma's own error
+        // for '' is opaque, so validate up front. SLOT takes '' (its
+        // defaultValue is positional-mandatory but not user-suppliable).
+        if (
+          propertyType === "INSTANCE_SWAP" &&
+          (typeof params.defaultValue !== "string" || !params.defaultValue)
+        ) {
+          throw new Error(
+            "defaultValue (a main component node id, e.g. '2:22') is required for INSTANCE_SWAP properties"
+          );
         }
         const defaultValue =
           typeof params.defaultValue === "string" || typeof params.defaultValue === "boolean"
@@ -3610,14 +3645,22 @@ const handleRequest = async (
         if (!node || node.type !== "COMPONENT") {
           throw new Error(`create_slot needs a COMPONENT, got ${node?.type ?? "missing"}`);
         }
+        // createSlot AUTO-creates the SLOT component property — capture its
+        // key by diffing property definitions, so callers don't create a
+        // duplicate via add_component_property.
+        const keysBefore = new Set(listComponentPropertyKeys(node));
         const slot = node.createSlot();
+        const newKey = listComponentPropertyKeys(node).find(
+          (k) => !keysBefore.has(k)
+        );
         return {
           type: request.type,
           requestId: request.requestId,
           data: {
             componentId: node.id,
             slotId: slot.id,
-            hint: "Expose it via add_component_property with propertyType SLOT + slotSettings.",
+            slotPropertyKey: newKey ?? null,
+            hint: "The SLOT component property was created automatically — do NOT add another via add_component_property; adjust it with editComponentProperty (execute_code) if slotSettings need changing.",
           },
         };
       }

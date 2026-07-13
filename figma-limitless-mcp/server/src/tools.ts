@@ -1082,7 +1082,7 @@ export function registerTools(
 
   server.tool(
     "create_slot",
-    "Add a slot frame to a COMPONENT (Slots, GA June 2026): a flexible area where instance users freely add content without detaching. Expose it via add_component_property propertyType SLOT + slotSettings. Note: slot frames reject GRID layout; instances fill slots by appending children, not setProperties.",
+    "Add a slot frame to a COMPONENT (Slots, GA June 2026): a flexible area where instance users freely add content without detaching. The SLOT component property is created AUTOMATICALLY — the response returns its key; do not add another via add_component_property. Note: slot frames reject GRID layout; instances fill slots by appending children, not setProperties.",
     createSlotInput.shape,
     async ({ nodeId, fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>

@@ -151,6 +151,10 @@ export class Leader {
     startedAt: number
   ): void {
     if (!JOURNALED_TOOLS.has(tool)) return;
+    // dev_resources 'get' is a pure read that shares a tool name with the
+    // mutating actions — journaling it would pollute the audit log and
+    // spuriously invalidate the digest cache.
+    if (tool === "dev_resources" && params?.action === "get") return;
     const resolvedKey = this.resolveSingleFileKey(fileKey) ?? "global";
     this.orchestrator.record({
       agent: agent ?? "unknown",
