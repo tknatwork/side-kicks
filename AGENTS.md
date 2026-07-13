@@ -18,18 +18,15 @@ Index: README.md → table of projects
 
 ## What this repo is
 
-A workspace for Figma plugins and design tooling. It currently hosts a
-single active project (the former Nectar Design Toolkit and Design System
-Builder projects have been removed):
+A workspace for Figma plugins and design tooling. Active projects:
 
 | Project | Folder | Status |
 |---------|--------|--------|
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published on Figma Community ([1584331992332668732](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)) |
-| Figma Limitless MCP | [`figma-limitless-mcp/`](figma-limitless-mcp/) | Active (v0.3.0, 2026-07-13) — local Figma MCP server + Desktop plugin giving AI full, unthrottled Figma access: local fonts, variable/component/prototype authoring, crash-safe orchestration (72 tools). Portions derive from an MIT-licensed upstream (notice retained in its LICENSE.md). |
+| Figma Limitless MCP | [`figma-limitless-mcp/`](figma-limitless-mcp/) | Active (v0.3.0, 2026-07-13) — local Figma MCP server + Desktop plugin giving AI full, unthrottled Figma access: local fonts, variable/component/prototype authoring, crash-safe orchestration (72 tools). |
 
-Also on disk but **not** part of the repo: `figma-mcp-bridge-main/` (pristine
-upstream reference ZIP — do not modify), and the gutted relics `Design System
-Builder/` and `nectar-design-toolkit/` (dist-only remains of pre-purge tooling).
+Local working copies may contain extra untracked folders (references,
+retired experiments). They are not part of the repo — ignore them.
 
 ---
 

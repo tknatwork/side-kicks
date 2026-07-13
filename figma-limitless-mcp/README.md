@@ -87,10 +87,10 @@ Multiple AI clients can register the same command — the first becomes the
 leader on :1994, the rest proxy through it automatically. Multiple Figma files
 connect simultaneously (run the plugin in each; target them by `fileKey`).
 
-## How an AI should use this (the short version)
+## How an AI should use this
 
-Point your AI at [docs/structural-conventions.md](docs/structural-conventions.md)
-— it's written for AI consumption. The essentials:
+Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails,
+recipes, and an error playbook, written for AI consumption. The essentials:
 
 1. **Orient first**: `get_workspace_status` → `get_file_digest` (token-lean file
    map, served from cache in ~1ms when nothing changed). Never start with
@@ -110,32 +110,28 @@ Point your AI at [docs/structural-conventions.md](docs/structural-conventions.md
 
 ## Tool surface (72 tools)
 
-**Reads**: file digest (cached), document/node/selection trees, styles (+ full
-text/effect style detail), variables (deep, all modes, alias-resolved),
-fonts, screenshots (base64 or saved to disk), annotations, reactions, motion,
-shaders, library variable collections, dev resources, code mappings, journal,
-checkpoints, workspace status.
+| Category | Tools |
+|---|---|
+| Orientation | `get_workspace_status` · `get_file_digest` (cached) · `list_files` · `get_metadata` |
+| Reads | `get_document` · `get_node` · `get_selection` · `get_design_context` · `get_styles` · `get_text_styles` · `get_effect_styles` · `get_variables_deep` · `get_variable_defs` · `get_annotations` · `get_reactions` · `get_motion` · `list_shaders` · `list_fonts` · `list_library_variables` |
+| Create | `create_frame` · `create_text` · `create_shape` · `create_image` |
+| Style writes | `set_solid_fill` · `set_gradient_fill` · `set_effects` · `set_stroke_properties` · `apply_style` · `create_paint_style` · `create_effect_style` |
+| Text | `set_text_content` · `set_text_properties` · `create_text_style` · `update_text_style` · `apply_text_style` · `load_fonts` |
+| Layout | `set_auto_layout` · `set_grid_layout` · `set_node_properties` · `set_node_visibility` |
+| Structure | `duplicate_nodes` · `reparent_nodes` · `group_nodes` · `ungroup_node` · `delete_nodes` (confirm-gated) |
+| Variables | `write_variables` (batched authoring with `$N.field` refs) |
+| Components | `create_component_from_node` · `combine_as_variants` · `add_component_property` · `create_slot` |
+| Instances | `instantiate_component` · `set_instance_properties` · `swap_instance` |
+| Prototyping | `set_reactions` · `set_flow_starting_point` |
+| Motion / shaders (beta) | `apply_animation_style` · `apply_shader` |
+| Handoff | `set_annotation` · `dev_resources` · `set_code_mapping` · `get_code_mappings` |
+| Library | `import_library_asset` |
+| Viewport | `set_selection` · `scroll_and_zoom_into_view` |
+| Media | `get_screenshot` · `save_screenshots` |
+| Sessions | `save_checkpoint` · `load_checkpoint` · `get_journal` · `acquire_lock` · `release_lock` |
+| Escape hatch | `execute_code` (Plugin-API JS, top-level await, `timeoutMs` ≤ 300s) |
 
-**Writes**: frames/text/shapes/images, fills (solid/gradient), effects,
-strokes, auto-layout **and CSS-grid layout**, node properties, visibility,
-duplicate/reparent/group/ungroup, guarded delete, text content + properties,
-**text styles (create/update/apply)**, paint + effect styles, **variables
-(collections, modes, variables, values, aliases, node bindings)**, **master
-components (create from node, combine as variants, component properties,
-slots)**, **instances (one-call instantiate with properties + text overrides,
-set properties, swap)**, **prototype reactions + flow starting points**,
-annotations, dev resources, Motion animation styles (beta), WebGPU shaders
-(beta), `execute_code` (arbitrary Plugin-API JS with top-level await — the
-escape hatch for anything not yet a dedicated tool).
-
-**Orchestration**: `save_checkpoint` / `load_checkpoint` (durable resume
-ledgers), `get_journal` (every mutation logged with agent identity),
-`acquire_lock` / `release_lock` (TTL mutexes for parallel agents),
-`get_file_digest` (cached orientation), `get_workspace_status`,
-`set_code_mapping` / `get_code_mappings` (durable design→code mappings — a
-local Code-Connect equivalent).
-
-All state lives in `~/.figma-limitless-mcp/` and survives restarts.
+All session state lives in `~/.figma-limitless-mcp/` and survives restarts.
 
 ## Troubleshooting
 
@@ -183,5 +179,4 @@ keys, or accounts.
 
 ## License
 
-MIT — see [LICENSE.md](LICENSE.md) (includes the retained notice from the
-MIT-licensed bridge this project derived portions from).
+MIT — see [LICENSE.md](LICENSE.md).

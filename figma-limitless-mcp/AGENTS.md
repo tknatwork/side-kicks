@@ -4,16 +4,12 @@
 
 ## What this is
 
-A local Figma MCP server + Figma Desktop plugin (portions derive from an
-MIT-licensed upstream — notice retained in LICENSE.md) that bypasses Figma REST
-rate limits, exposes **locally-installed fonts**, authors **variables/grid/
-annotations/motion/shaders** the official MCP cannot, and gives AI sessions a
-persistent **journal + checkpoint + lock** layer for crash-safe, multi-agent
-work. v0.1.0 (2026-07-13) shipped the local-font + text-style core; v0.2.0
-added the limitless orchestration layer; v0.3.0 added
-prototyping/components/screens/styles/library/dev-resources/code-mapping
-(72 tools; manifest carries the teamlibrary permission). See
-`docs/figma-mcp-distillation.md` for the official-MCP mental model.
+A local Figma MCP server + Figma Desktop plugin. No REST calls, no rate
+limits. 72 tools: local fonts, text/paint/effect styles, variable authoring,
+grid layout, master components, instances, prototyping, annotations, dev
+resources, Motion/shaders (beta), plus a crash-safe orchestration layer
+(journal, checkpoints, TTL locks, cached digests). AI operating rules:
+`docs/AI-GUIDE.md`.
 
 ## Architecture (2 packages)
 
@@ -69,5 +65,5 @@ via Plugins > Development > Import plugin from manifest… → `plugin/manifest.
 
 ## Boundaries
 
-- The retained MIT notice in `LICENSE.md` is a legal requirement — protected, never remove.
-- Never bake user-specific font names, file keys, or account details into code, schemas, or docs — this is a public repo; examples stay generic.
+- `LICENSE.md` ships intact with every copy — never edit or remove it.
+- No user-specific font names, file keys, or account details in code, schemas, or docs — examples stay generic.

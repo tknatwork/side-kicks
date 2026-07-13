@@ -370,6 +370,25 @@ const decodeBase64ToBytes = (base64: string): Uint8Array => {
 
 const FONT_LOAD_BATCH_SIZE = 5;
 const MAX_EXECUTE_RESULT_CHARS = 1_000_000;
+// Guardrail: heavy reads on detail-rich files can serialize multi-MB trees,
+// stalling the bridge and blowing the caller's context window. Cap and
+// redirect to the context-efficient alternatives.
+const MAX_READ_RESULT_CHARS = 1_500_000;
+const HEAVY_READ_HINTS: { [key: string]: string } = {
+  get_document:
+    "use get_file_digest for orientation, get_design_context with a small depth, or get_node on a specific subtree",
+  get_selection:
+    "select fewer nodes, or use get_design_context with a small depth",
+  get_node:
+    "target a smaller subtree, or use get_design_context with a small depth",
+  get_design_context: "reduce depth",
+  get_styles:
+    "use get_text_styles / get_effect_styles for just the detailed sets you need",
+};
+
+/** Yields to Figma's UI thread so long batches never freeze the editor. */
+const yieldToUI = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
 
 type FontPairInput = { family: string; style: string };
 
@@ -402,6 +421,7 @@ const loadFontsBatched = async (
       })
     );
     results.push(...settled);
+    if (i + FONT_LOAD_BATCH_SIZE < fonts.length) await yieldToUI();
   }
   return results;
 };
@@ -2624,6 +2644,8 @@ const handleRequest = async (
             });
             if (stopOnError) break;
           }
+          // Keep the editor responsive during large token batches.
+          if (i > 0 && i % 10 === 0) await yieldToUI();
         }
 
         const failed = results.filter((r) => r.error !== undefined).length;
@@ -3809,6 +3831,37 @@ figma.on("currentpagechange", () => {
   sendStatus();
 });
 
+/**
+ * Guardrail: applies the heavy-read size cap to a response before it crosses
+ * the bridge. Screenshots are exempt (intentionally large, base64).
+ */
+const applyReadCap = (
+  request: ServerRequest,
+  response: PluginResponse
+): PluginResponse => {
+  const hint = HEAVY_READ_HINTS[request.type];
+  if (!hint || response.error) return response;
+  try {
+    const size = JSON.stringify(response.data).length;
+    if (size > MAX_READ_RESULT_CHARS) {
+      return {
+        type: response.type,
+        requestId: response.requestId,
+        error: `Response too large (${size} chars > ${MAX_READ_RESULT_CHARS}). Guardrail: ${hint}.`,
+      };
+    }
+  } catch {
+    /* size check is best-effort */
+  }
+  return response;
+};
+
+// Guardrail: mutations must never interleave — two agents patching the same
+// subtree mid-flight produce corrupt intermediate states. Writes (including
+// execute_code, which can mutate) run strictly one-at-a-time; reads stay
+// fully parallel.
+let mutationChain: Promise<void> = Promise.resolve();
+
 figma.ui.onmessage = async (message) => {
   if (message.type === "ui-ready") {
     sendStatus();
@@ -3816,15 +3869,24 @@ figma.ui.onmessage = async (message) => {
   }
 
   if (message.type === "server-request") {
-    const response = await handleRequest(message.payload as ServerRequest);
-    try {
-      figma.ui.postMessage(response);
-    } catch (err) {
-      figma.ui.postMessage({
-        type: response.type,
-        requestId: response.requestId,
-        error: err instanceof Error ? err.message : String(err),
-      });
+    const request = message.payload as ServerRequest;
+    const run = async (): Promise<void> => {
+      const response = applyReadCap(request, await handleRequest(request));
+      try {
+        figma.ui.postMessage(response);
+      } catch (err) {
+        figma.ui.postMessage({
+          type: response.type,
+          requestId: response.requestId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    };
+
+    if (EDIT_REQUEST_TYPES.has(request.type) || request.type === "execute_code") {
+      mutationChain = mutationChain.then(run, run);
+    } else {
+      void run();
     }
   }
 };

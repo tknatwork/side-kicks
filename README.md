@@ -59,11 +59,11 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
     ├── AGENTS.md                   ← Project AI rules (canonical)
     ├── CLAUDE.md                   ← Pointer to project AGENTS.md
     ├── README.md                   ← Public-facing docs (install, AI usage, tools)
-    ├── LICENSE.md                  ← MIT (+ retained upstream notice)
+    ├── LICENSE.md                  ← MIT
     ├── server/                     ← MCP server (TypeScript → dist/, built locally)
     ├── plugin/                     ← Figma Desktop plugin (TypeScript/React → dist/)
     ├── scripts/e2e-live-test.mjs   ← Live end-to-end tool suite
-    ├── docs/                       ← structural-conventions, figma-mcp-distillation
+    ├── docs/                       ← AI-GUIDE (operating rules for AI sessions)
     └── .gcc/                       ← Project session memory + build log
 ```
 
