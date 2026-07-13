@@ -9118,7 +9118,8 @@
       parent.postMessage({
         pluginMessage: {
           type: 'undo_import',
-          snapshot: lastImportSnapshot
+          // Token only — the snapshot itself lives sandbox-side.
+          snapshotId: lastImportSnapshot.snapshotId
         }
       }, '*');
     }

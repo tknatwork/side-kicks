@@ -79,6 +79,18 @@ abort an import or its rollback.
 - **UI**: collection/style selection changes no longer re-send the entire
   JSON payload to the sandbox for revalidation on every click (validation
   runs on paste and plan changes, where its inputs actually change).
+- **Team libraries**: the `teamlibrary` permission is now declared, so
+  library dependency detection actually works. The Asset Sources check uses
+  a names-only library scan (nothing is imported just to answer
+  "available?"), and when an import does need library variables, only the
+  REFERENCED ones are imported — previously every variable of every enabled
+  library was imported wholesale. Style bindings to library variables are
+  included in the referenced set.
+- **Undo snapshot stays in the plugin sandbox**: the UI now holds only a
+  small token instead of the entire stringified file state — importing a
+  large system no longer posts a multi-megabyte snapshot to the UI and back
+  again on undo. (Undo restore itself now yields per variable batch, so it
+  can't freeze Figma on one huge collection.)
 - Verified on a 712-variable / 1059-alias / 114-style system: paste→preview
   ~1s, full import ~6s (5s of which is font loading for 102 text styles),
   full export ~1-2s, byte-identical round-trip.

@@ -308,6 +308,11 @@ interface UndoSnapshot {
   readonly styles: string;       // JSON stringified styles data
 }
 
+// The (potentially multi-megabyte) undo snapshot stays sandbox-side; the UI
+// only ever holds an opaque token { snapshotId }. Replaced on every import,
+// which also frees the previous snapshot.
+let storedUndoSnapshot: { id: number; snap: UndoSnapshot } | null = null;
+
 // Stats
 interface ExportStats {
   readonly collections: number;
@@ -2271,7 +2276,15 @@ class VariableCache {
   private libraryVariableMap = new Map<string, Variable>(); // Library/remote variables
   private libraryCollectionNames = new Set<string>(); // Names of connected library collections
   private initialized = false;
-  private libraryIndexed = false;
+  // What the library index currently covers: null = nothing, a Set = only
+  // those variable names were imported, 'all' = the full index was built.
+  private libraryIndexedFor: Set<string> | 'all' | null = null;
+  // Names-only knowledge from the library LISTING (no imports): used by the
+  // availability check, which judges by names/paths and never needs the
+  // (expensive) imported Variable objects.
+  private libraryNamesScanned = false;
+  private libraryNamesOnlyKeys = new Set<string>();
+  private libraryNamesOnlyPairs: Array<{ collection: string; name: string }> = [];
   // Lazy path -> [collection names] index across local + library variables, used
   // to recover external-dependency alias links when the collection name drifts.
   // Invalidated on any local mutation; rebuilt on demand.
@@ -2319,11 +2332,68 @@ class VariableCache {
     }
   }
 
-  // Build the library/remote variable index once. Idempotent.
-  async ensureLibraryIndex(): Promise<void> {
-    if (this.libraryIndexed) return;
-    await this.indexLibraryVariables();
-    this.libraryIndexed = true;
+  // Build the library/remote variable index. With refNames, only variables
+  // whose NAME is referenced get imported (incremental across calls);
+  // without, the full index is built. Previously every variable of every
+  // enabled library was imported whenever any library ref existed.
+  async ensureLibraryIndex(refNames?: Set<string>): Promise<void> {
+    if (this.libraryIndexedFor === 'all') return;
+    if (refNames === undefined) {
+      await this.indexLibraryVariables();
+      this.libraryIndexedFor = 'all';
+      return;
+    }
+    const missing = new Set<string>();
+    const already = this.libraryIndexedFor;
+    refNames.forEach(function (n: string): void {
+      if (already === null || !(already as Set<string>).has(n)) missing.add(n);
+    });
+    if (missing.size === 0) return;
+    await this.indexLibraryVariables(missing);
+    if (this.libraryIndexedFor === null) this.libraryIndexedFor = new Set<string>();
+    const target = this.libraryIndexedFor as Set<string>;
+    missing.forEach(function (n: string): void { target.add(n); });
+  }
+
+  // Names-only library scan: fills collection names and a name index from the
+  // library LISTING without importing a single variable. Enough for the
+  // Asset Sources availability check. Idempotent; a full/filtered import
+  // index supersedes nothing here (both can coexist).
+  async scanLibraryNamesOnly(): Promise<void> {
+    if (this.libraryNamesScanned) return;
+    try {
+      const libraryCollections = await figma.teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+      for (let c = 0; c < libraryCollections.length; c++) {
+        const libCol = libraryCollections[c];
+        this.libraryCollectionNames.add(libCol.name);
+        try {
+          const libraryVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libCol.key);
+          for (let v = 0; v < libraryVars.length; v++) {
+            this.libraryNamesOnlyKeys.add(`${libCol.name}/${libraryVars[v].name}`);
+            this.libraryNamesOnlyPairs.push({ collection: libCol.name, name: libraryVars[v].name });
+          }
+        } catch (e) {
+          Logger.log(`  ⚠️ Could not list library collection "${libCol.name}": ${e}`);
+        }
+      }
+      this.nameIndex = null;
+      if (this.libraryCollectionNames.size > 0) {
+        Logger.log(`📚 Scanned ${this.libraryNamesOnlyKeys.size} library variable names from ${this.libraryCollectionNames.size} connected libraries (names only, nothing imported)`);
+      }
+    } catch (e) {
+      Logger.log(`⚠️ Could not access team library: ${e}`);
+    }
+    this.libraryNamesScanned = true;
+  }
+
+  // Truthiness-only variant of resolveTarget for the availability check:
+  // consults names-only library knowledge too, so it works without imports.
+  isTargetSatisfiable(collection: string, path: string, importingCollection: string = ''): boolean {
+    if (this.getVariable(`${collection}/${path}`)) return true;
+    if (this.libraryNamesOnlyKeys.has(`${collection}/${path}`)) return true;
+    const candidates = this.getNameIndex().get(path);
+    if (!candidates || candidates.length === 0) return false;
+    return chooseAliasCollection(collection, path, false, candidates, importingCollection) !== null;
   }
 
   // Synchronously clear only the local collection + variable maps.
@@ -2333,10 +2403,14 @@ class VariableCache {
     this.nameIndex = null;
   }
 
-  // Index library variables from connected team libraries
-  private async indexLibraryVariables(): Promise<void> {
-    this.libraryVariableMap.clear();
-    this.libraryCollectionNames.clear();
+  // Index library variables from connected team libraries. With refNames the
+  // import is INCREMENTAL and filtered to referenced variable names — a big
+  // enabled library no longer gets imported wholesale for a handful of refs.
+  private async indexLibraryVariables(refNames?: Set<string>): Promise<void> {
+    if (refNames === undefined) {
+      this.libraryVariableMap.clear();
+      this.libraryCollectionNames.clear();
+    }
     this.nameIndex = null; // library variables feed the path index
 
     try {
@@ -2350,10 +2424,14 @@ class VariableCache {
         // Get variables in this library collection
         try {
           const libraryVars = await figma.teamLibrary.getVariablesInLibraryCollectionAsync(libCol.key);
+          const wanted = refNames === undefined
+            ? libraryVars
+            : libraryVars.filter(function (lv): boolean { return refNames.has(lv.name); });
+          if (wanted.length === 0) continue;
           // Import variables in batches so a large library does not block the host.
           const libColName = libCol.name;
           await runBatchedAsync(
-            libraryVars,
+            wanted,
             BATCH.ASYNC_LIBRARY,
             async (libVar): Promise<void> => {
               // Import the variable so we can reference it by ID
@@ -2373,7 +2451,7 @@ class VariableCache {
       }
 
       if (this.libraryCollectionNames.size > 0) {
-        Logger.log(`📚 Indexed ${this.libraryVariableMap.size} library variables from ${this.libraryCollectionNames.size} connected libraries`);
+        Logger.log(`📚 Indexed ${this.libraryVariableMap.size} library variables from ${this.libraryCollectionNames.size} connected libraries${refNames !== undefined ? ' (filtered to referenced names)' : ''}`);
       }
     } catch (e) {
       Logger.log(`⚠️ Could not access team library: ${e}`);
@@ -2412,6 +2490,9 @@ class VariableCache {
     };
     this.variableMap.forEach(ingest);
     this.libraryVariableMap.forEach(ingest);
+    for (let p = 0; p < this.libraryNamesOnlyPairs.length; p++) {
+      add(this.libraryNamesOnlyPairs[p].collection, this.libraryNamesOnlyPairs[p].name);
+    }
     this.nameIndex = index;
     return index;
   }
@@ -4375,13 +4456,19 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
       const icnOriginal = icnObj[icnName].$originalName;
       if (icnOriginal) importCollectionNames.add(icnOriginal);
     }
+    const libraryRefNames = new Set<string>();
     const scanForLibraryNeeds = function (paths: FlatVariable[]): void {
       for (let fp = 0; fp < paths.length; fp++) {
         const v = paths[fp].value;
-        if (v.$libraryRef) {
+        const isLib = !!v.$libraryRef;
+        const isForeign = !!(v.$collectionName && !importCollectionNames.has(v.$collectionName));
+        if (isLib || isForeign) {
           needsLibraryIndex = true;
-        } else if (v.$collectionName && !importCollectionNames.has(v.$collectionName)) {
-          needsLibraryIndex = true;
+          // Harvest the target variable name so the library index can be
+          // filtered to just the referenced variables.
+          if (typeof v.$value === 'string' && v.$value.length > 1 && v.$value.charAt(0) === '{') {
+            libraryRefNames.add(v.$value.slice(1, -1).replace(/\./g, '/'));
+          }
         }
       }
     };
@@ -4398,10 +4485,36 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
 
       scanForLibraryNeeds(flatPaths);
       // A library ref can appear only in a non-first mode — scan those too
-      // (cheap CPU-only flatten; skipped once the flag is already set).
-      for (let mk = 1; mk < modeKeys.length && !needsLibraryIndex; mk++) {
+      // (cheap CPU-only flatten). No short-circuit: every mode contributes
+      // ref names to the filtered library index.
+      for (let mk = 1; mk < modeKeys.length; mk++) {
         scanForLibraryNeeds(flattenVariables(content.modes[modeKeys[mk]], ''));
       }
+    }
+
+    // Styles can bind library variables too — harvest those names so the
+    // filtered index covers them (a binding whose collection is not in the
+    // payload may live in a connected library).
+    if (stylesData) {
+      const harvestStyleBindings = function (bv?: Readonly<Record<string, VariableBinding>>): void {
+        if (!bv) return;
+        const bvKeys = Object.keys(bv);
+        for (let bk = 0; bk < bvKeys.length; bk++) {
+          const b = bv[bvKeys[bk]];
+          if (b && b.name && b.collection && !importCollectionNames.has(b.collection)) {
+            needsLibraryIndex = true;
+            libraryRefNames.add(b.name);
+          }
+        }
+      };
+      (stylesData.colorStyles || []).forEach(function (st): void { harvestStyleBindings(st.boundVariables); });
+      (stylesData.textStyles || []).forEach(function (st): void { harvestStyleBindings(st.boundVariables); });
+      (stylesData.effectStyles || []).forEach(function (st): void {
+        (st.effects || []).forEach(function (fx): void { harvestStyleBindings(fx.boundVariables); });
+      });
+      (stylesData.gridStyles || []).forEach(function (st): void {
+        (st.layoutGrids || []).forEach(function (gr): void { harvestStyleBindings(gr.boundVariables); });
+      });
     }
 
     // FIRST MUTATION BOUNDARY: everything above is read-only. Commit an undo
@@ -4449,7 +4562,9 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
     progress.report('cache_scan', 'Scanning existing variables', 0, 0, true);
     await variableCache.rebuildLocal();
     if (needsLibraryIndex || options.useLibraryRefs) {
-      await variableCache.ensureLibraryIndex();
+      // Explicit opt-in indexes everything; otherwise only the referenced
+      // variable names get imported from connected libraries.
+      await variableCache.ensureLibraryIndex(options.useLibraryRefs ? undefined : libraryRefNames);
     }
 
     // Collect all pending aliases across all collections for pass 2
@@ -4743,7 +4858,10 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
     figma.commitUndo();
 
     Logger.log(`✅ Import complete!`);
-    Logger.send('import_complete', { stats, snapshot: preImportSnapshot });
+    // Hand the UI a token, not the snapshot itself — posting the full
+    // stringified file state was a multi-MB structured clone per import.
+    storedUndoSnapshot = preImportSnapshot ? { id: Date.now(), snap: preImportSnapshot } : null;
+    Logger.send('import_complete', { stats, snapshot: storedUndoSnapshot ? { snapshotId: storedUndoSnapshot.id } : null });
 
   } catch (e) {
     const cancelled = isCancelError(e);
@@ -5770,8 +5888,12 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
         const requiredCollections = msg.collections as string[];
         const requiredRefs = (msg.refs || []) as Array<{ collection: string; path: string; selfSatisfied?: boolean }>;
 
-        // Initialize cache to index both local and library collections
-        await variableCache.rebuild();
+        // Availability is judged by names and paths — the library LISTING
+        // provides those without importing a single variable. (rebuild()
+        // used to wholesale-import every enabled library here, on every
+        // paste that contained library refs.)
+        await variableCache.rebuildLocal();
+        await variableCache.scanLibraryNamesOnly();
 
         const availableCollections: string[] = [];
         const missingCollections: string[] = [];
@@ -5799,7 +5921,7 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
             if (r.selfSatisfied) {
               satisfiable++;
               fromImport++;
-            } else if (variableCache.resolveTarget(r.collection, r.path)) {
+            } else if (variableCache.isTargetSatisfiable(r.collection, r.path)) {
               satisfiable++;
             }
           }
@@ -5888,12 +6010,18 @@ figma.ui.onmessage = async (msg: { type: string; [key: string]: unknown }) => {
       break;
     
     case 'undo_import':
-      // Restore file to pre-import state using snapshot
+      // Restore file to pre-import state using the sandbox-side snapshot; the
+      // UI supplies only the token it was handed at import completion.
       await withOperation('undo', async function (): Promise<void> {
         try {
           Logger.log('↩️ Undoing import using snapshot...');
-          const snapshotData = msg.snapshot as UndoSnapshot;
-          await restoreFromSnapshot(snapshotData);
+          const requestedId = msg.snapshotId as number | undefined;
+          if (!storedUndoSnapshot || storedUndoSnapshot.id !== requestedId) {
+            Logger.send('undo_error', { error: 'No matching import to undo in this session.' });
+            return;
+          }
+          await restoreFromSnapshot(storedUndoSnapshot.snap);
+          storedUndoSnapshot = null;
           Logger.send('undo_complete', {});
           Logger.log('✅ Import undone successfully');
         } catch (e) {
