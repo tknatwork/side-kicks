@@ -44,8 +44,17 @@ abort an import or its rollback.
   support it accept it, older builds skip that variable with a warning
   instead of silently importing a STRING. Timing tokens (FLOAT ms) already
   round-trip unchanged.
+- **Motion tokens in preview stats**: the Variables preview (export and import,
+  plus the collection type badges) now counts **Timing** and **Easing**
+  alongside Colors/Numbers/Strings/Booleans. Native `timing`/`easing` types
+  (future Figma builds, surfaced by the forward-compat path) are counted
+  outright; today's motion tokens are detected by convention — FLOAT variables
+  in `duration`/`timing`/`delay`/`speed` name groups count as Timing, STRING
+  variables count as Easing when named `easing/*` or holding `cubic-bezier()`,
+  `spring()`, `steps()` or a CSS easing keyword. Buckets stay exclusive, so
+  counts still sum to the total.
 - New regression suite `tests/type-mapper.test.mjs` (forward-compat mapping,
-  scope filtering, effect defaults) wired into `pnpm test`.
+  scope filtering, effect defaults, motion classification) wired into `pnpm test`.
 
 ### Fixed
 - **CRITICAL — silent Clean Import data loss (present since 2.0.0)**: in Simple

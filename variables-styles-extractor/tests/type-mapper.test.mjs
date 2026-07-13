@@ -89,6 +89,23 @@ function toFigmaType(type) {
   return map[type] ?? (String(type).toUpperCase());
 }
 
+const MOTION_TIMING_NAME = /(^|\/)(durations?|timings?|delays?|speeds?)($|\/)/i;
+const MOTION_EASING_NAME = /(^|\/)easings?($|\/)/i;
+const MOTION_EASING_VALUE = /^(cubic-bezier|spring|steps)\s*\(|^(linear|ease|ease-in|ease-out|ease-in-out)$/i;
+function classifyMotionType(typeStr, name, stringValues) {
+  if (typeStr === 'timing' || typeStr === 'duration') return 'timing';
+  if (typeStr === 'easing') return 'easing';
+  if (typeStr === 'float' && MOTION_TIMING_NAME.test(name)) return 'timing';
+  if (typeStr === 'string') {
+    if (MOTION_EASING_NAME.test(name)) return 'easing';
+    for (let i = 0; i < stringValues.length; i++) {
+      const v = stringValues[i];
+      if (typeof v === 'string' && MOTION_EASING_VALUE.test(v.trim())) return 'easing';
+    }
+  }
+  return typeStr;
+}
+
 // ----- tiny assert harness ---------------------------------------------------
 let passed = 0;
 let failed = 0;
@@ -168,6 +185,26 @@ const shadow = { type: 'DROP_SHADOW', radius: 4 };
 applyEffectDefaults(shadow);
 eq(shadow, { type: 'DROP_SHADOW', radius: 4 }, 'shadow effects pass through unmodified');
 
+console.log('motion-classification (preview stats):');
+
+// 11) Convention detection: FLOAT durations by name segment.
+eq(classifyMotionType('float', 'duration/fast', []), 'timing', 'FLOAT duration/* counts as Timing');
+eq(classifyMotionType('float', 'motion/delays/short', []), 'timing', 'nested delays segment counts as Timing');
+eq(classifyMotionType('float', 'spacing/4', []), 'float', 'plain FLOAT stays a Number');
+eq(classifyMotionType('float', 'durability/rating', []), 'float', 'segment match is exact - durability is not duration');
+
+// 12) Convention detection: STRING easings by name or value shape.
+eq(classifyMotionType('string', 'easing/standard', ['whatever']), 'easing', 'easing/* name counts as Easing');
+eq(classifyMotionType('string', 'label/x', ['cubic-bezier(0.4, 0, 0.2, 1)']), 'easing', 'cubic-bezier() value counts as Easing');
+eq(classifyMotionType('string', 'label/x', ['spring(1, 100, 15, 0)']), 'easing', 'spring() value counts as Easing');
+eq(classifyMotionType('string', 'label/x', ['ease-in-out']), 'easing', 'CSS easing keyword counts as Easing');
+eq(classifyMotionType('string', 'content/cta-label', ['Get started']), 'string', 'plain STRING stays a String');
+
+// 13) Native future types win outright (forward-compat surfacing).
+eq(classifyMotionType('timing', 'anything', []), 'timing', 'native timing type wins');
+eq(classifyMotionType('easing', 'anything', []), 'easing', 'native easing type wins');
+eq(classifyMotionType('color', 'duration/fast', []), 'color', 'non-float/string types are never reclassified');
+
 // ----- mirror drift check ----------------------------------------------------
 // Fail loudly if src/code.ts diverges from these ports (logic lines only).
 import { readFileSync } from 'node:fs';
@@ -180,7 +217,8 @@ for (const marker of [
   "if (e.lightIntensity === undefined) e.lightIntensity = 0.5;",
   "return map[type] ?? (String(type).toLowerCase() as VariableValueType);",
   "return map[type] ?? (String(type).toUpperCase() as VariableResolvedDataType);",
-  "'PARAGRAPH_INDENT': true"
+  "'PARAGRAPH_INDENT': true",
+  "function classifyMotionType(typeStr: string, name: string, stringValues: readonly string[]): string {"
 ]) {
   eq(codeTs.includes(marker), true, `src/code.ts still contains mirrored line: ${marker.slice(0, 48)}…`);
 }

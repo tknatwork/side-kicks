@@ -5042,14 +5042,15 @@
         
         // Count variables and types
         let varCount = 0;
-        const types = { color: 0, float: 0, boolean: 0, string: 0 };
-        
+        const types = { color: 0, float: 0, boolean: 0, string: 0, timing: 0, easing: 0 };
+
         modes.forEach(mode => {
           const modeVars = col.modes[mode];
-          const flatVars = flattenObject(modeVars);
+          const flatVars = flattenObjectWithPaths(modeVars);
           varCount = Math.max(varCount, flatVars.length);
-          flatVars.forEach(v => {
-            if (v.$type === 'color') types.color++; else if (v.$type === 'float') types.float++; else if (v.$type === 'boolean') types.boolean++; else if (v.$type === 'string') types.string++;
+          flatVars.forEach(fv => {
+            const bucket = classifyVariableLeaf(fv.leaf, fv.path);
+            if (types[bucket] !== undefined) types[bucket]++;
           });
         });
         
@@ -5092,6 +5093,8 @@
                 ${types.float > 0 ? `<span class="type-badge type-float">${escapeHtml(types.float)} numbers</span>` : ''}
                 ${types.boolean > 0 ? `<span class="type-badge type-boolean">${escapeHtml(types.boolean)} booleans</span>` : ''}
                 ${types.string > 0 ? `<span class="type-badge type-string">${escapeHtml(types.string)} strings</span>` : ''}
+                ${types.timing > 0 ? `<span class="type-badge type-float">${escapeHtml(types.timing)} timing</span>` : ''}
+                ${types.easing > 0 ? `<span class="type-badge type-string">${escapeHtml(types.easing)} easing</span>` : ''}
               </div>
             </div>
             ${advancedControls}
@@ -5349,6 +5352,8 @@
       let totalNumbers = 0;
       let totalStrings = 0;
       let totalBooleans = 0;
+      let totalTiming = 0;
+      let totalEasing = 0;
       let totalCollections = 0;
       
       parsedImportCollections.forEach(colObj => {
@@ -5362,14 +5367,15 @@
         
         // Count variables and types (same logic as parseImportPreview)
         let varCount = 0;
-        const types = { color: 0, float: 0, boolean: 0, string: 0 };
-        
+        const types = { color: 0, float: 0, boolean: 0, string: 0, timing: 0, easing: 0 };
+
         modes.forEach(mode => {
           const modeVars = col.modes[mode];
-          const flatVars = flattenObject(modeVars);
+          const flatVars = flattenObjectWithPaths(modeVars);
           varCount = Math.max(varCount, flatVars.length);
-          flatVars.forEach(v => {
-            if (v.$type === 'color') types.color++; else if (v.$type === 'float') types.float++; else if (v.$type === 'boolean') types.boolean++; else if (v.$type === 'string') types.string++;
+          flatVars.forEach(fv => {
+            const bucket = classifyVariableLeaf(fv.leaf, fv.path);
+            if (types[bucket] !== undefined) types[bucket]++;
           });
         });
         
@@ -5383,6 +5389,8 @@
         totalNumbers += types.float;
         totalStrings += types.string;
         totalBooleans += types.boolean;
+        totalTiming += types.timing;
+        totalEasing += types.easing;
       });
       
       // Calculate style stats based on selected style checkboxes
@@ -5434,6 +5442,16 @@
               <div class="stat-card">
                 <span class="stat-value">${escapeHtml(totalBooleans)}</span>
                 <span class="stat-label">Booleans</span>
+              </div>
+            </div>
+            <div class="stats-row">
+              <div class="stat-card">
+                <span class="stat-value">${escapeHtml(totalTiming)}</span>
+                <span class="stat-label">Timing</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">${escapeHtml(totalEasing)}</span>
+                <span class="stat-label">Easing</span>
               </div>
             </div>
             <div class="stats-row">
@@ -7559,6 +7577,8 @@
       if (types.float) badges.push(`<span class="type-badge type-float">${escapeHtml(types.float)} numbers</span>`);
       if (types.boolean) badges.push(`<span class="type-badge type-boolean">${escapeHtml(types.boolean)} booleans</span>`);
       if (types.string) badges.push(`<span class="type-badge type-string">${escapeHtml(types.string)} strings</span>`);
+      if (types.timing) badges.push(`<span class="type-badge type-float">${escapeHtml(types.timing)} timing</span>`);
+      if (types.easing) badges.push(`<span class="type-badge type-string">${escapeHtml(types.easing)} easing</span>`);
       return badges.join('');
     }
 
@@ -7673,7 +7693,9 @@
       let totalNumbers = 0;
       let totalStrings = 0;
       let totalBooleans = 0;
-      
+      let totalTiming = 0;
+      let totalEasing = 0;
+
       const selectedCols = collections.filter(c => selectedExportCollections.has(c.name));
       selectedCols.forEach(c => {
         totalVars += c.variableCount;
@@ -7682,6 +7704,8 @@
           totalNumbers += c.types.float || 0;
           totalStrings += c.types.string || 0;
           totalBooleans += c.types.boolean || 0;
+          totalTiming += c.types.timing || 0;
+          totalEasing += c.types.easing || 0;
         }
       });
 
@@ -7731,6 +7755,16 @@
               <div class="stat-card">
                 <span class="stat-value">${escapeHtml(totalBooleans)}</span>
                 <span class="stat-label">Booleans</span>
+              </div>
+            </div>
+            <div class="stats-row">
+              <div class="stat-card">
+                <span class="stat-value">${escapeHtml(totalTiming)}</span>
+                <span class="stat-label">Timing</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">${escapeHtml(totalEasing)}</span>
+                <span class="stat-label">Easing</span>
               </div>
             </div>
             <div class="stats-row">
@@ -8082,6 +8116,8 @@
         let totalNumbers = 0;
         let totalStrings = 0;
         let totalBooleans = 0;
+        let totalTiming = 0;
+        let totalEasing = 0;
         
         variableCollections.forEach((colObj, idx) => {
           const colName = Object.keys(colObj)[0];
@@ -8090,14 +8126,15 @@
           
           // Count variables and types
           let varCount = 0;
-          const types = { color: 0, float: 0, boolean: 0, string: 0 };
-          
+          const types = { color: 0, float: 0, boolean: 0, string: 0, timing: 0, easing: 0 };
+
           modes.forEach(mode => {
             const modeVars = col.modes[mode];
-            const flatVars = flattenObject(modeVars);
+            const flatVars = flattenObjectWithPaths(modeVars);
             varCount = Math.max(varCount, flatVars.length);
-            flatVars.forEach(v => {
-              if (v.$type === 'color') types.color++; else if (v.$type === 'float') types.float++; else if (v.$type === 'boolean') types.boolean++; else if (v.$type === 'string') types.string++;
+            flatVars.forEach(fv => {
+              const bucket = classifyVariableLeaf(fv.leaf, fv.path);
+              if (types[bucket] !== undefined) types[bucket]++;
             });
           });
           
@@ -8112,6 +8149,8 @@
           totalNumbers += types.float;
           totalStrings += types.string;
           totalBooleans += types.boolean;
+          totalTiming += types.timing;
+          totalEasing += types.easing;
         });
         
         // Calculate style totals
@@ -8148,6 +8187,16 @@
                 <div class="stat-card">
                   <span class="stat-value">${escapeHtml(totalBooleans)}</span>
                   <span class="stat-label">Booleans</span>
+                </div>
+              </div>
+              <div class="stats-row">
+                <div class="stat-card">
+                  <span class="stat-value">${escapeHtml(totalTiming)}</span>
+                  <span class="stat-label">Timing</span>
+                </div>
+                <div class="stat-card">
+                  <span class="stat-value">${escapeHtml(totalEasing)}</span>
+                  <span class="stat-label">Easing</span>
                 </div>
               </div>
               <div class="stats-row">
@@ -8443,6 +8492,48 @@
         }
       }
       return results;
+    }
+
+    // flattenObject variant that keeps each leaf's group path (needed by the
+    // stats classifier). Separate function so flattenObject's return shape
+    // stays untouched for its other callers.
+    function flattenObjectWithPaths(obj, prefix = '') {
+      const results = [];
+      for (const key in obj) {
+        const val = obj[key];
+        if (val && typeof val === 'object' && ('$type' in val || '$value' in val || '$alias' in val)) {
+          results.push({ path: prefix + key, leaf: val });
+        } else if (val && typeof val === 'object') {
+          results.push(...flattenObjectWithPaths(val, prefix + key + '/'));
+        }
+      }
+      return results;
+    }
+
+    // Motion-token classification for preview stats. Mirrors classifyMotionType
+    // in src/code.ts. Native $type 'timing'/'easing' (future Figma variable
+    // types, exported verbatim by the forward-compat path) win; today's motion
+    // tokens are detected by convention: FLOAT durations by name segment,
+    // STRING easings by value shape or name segment.
+    const MOTION_TIMING_NAME = /(^|\/)(durations?|timings?|delays?|speeds?)($|\/)/i;
+    const MOTION_EASING_NAME = /(^|\/)easings?($|\/)/i;
+    const MOTION_EASING_VALUE = /^(cubic-bezier|spring|steps)\s*\(|^(linear|ease|ease-in|ease-out|ease-in-out)$/i;
+    function classifyMotionType(typeStr, name, stringValues) {
+      if (typeStr === 'timing' || typeStr === 'duration') return 'timing';
+      if (typeStr === 'easing') return 'easing';
+      if (typeStr === 'float' && MOTION_TIMING_NAME.test(name)) return 'timing';
+      if (typeStr === 'string') {
+        if (MOTION_EASING_NAME.test(name)) return 'easing';
+        for (let i = 0; i < stringValues.length; i++) {
+          const v = stringValues[i];
+          if (typeof v === 'string' && MOTION_EASING_VALUE.test(v.trim())) return 'easing';
+        }
+      }
+      return typeStr;
+    }
+    function classifyVariableLeaf(leaf, path) {
+      const vals = typeof leaf.$value === 'string' ? [leaf.$value] : [];
+      return classifyMotionType(leaf.$type, path || '', vals);
     }
 
     // Initialize scroll fade for import preview stats

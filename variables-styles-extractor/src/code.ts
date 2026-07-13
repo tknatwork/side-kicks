@@ -2478,6 +2478,29 @@ function filterKnownScopes(arr: readonly string[]): string[] {
   return result;
 }
 
+// Motion-token classification for the collection stats sent to the UI.
+// Native TIMING/EASING resolved types (future Figma builds, surfaced verbatim
+// through TypeMapper.toExportType) win; today's motion tokens are detected by
+// convention: FLOAT durations by name segment, STRING easings by value shape
+// or name segment. Pure - mirrored (annotations stripped) in
+// tests/type-mapper.test.mjs.
+const MOTION_TIMING_NAME = /(^|\/)(durations?|timings?|delays?|speeds?)($|\/)/i;
+const MOTION_EASING_NAME = /(^|\/)easings?($|\/)/i;
+const MOTION_EASING_VALUE = /^(cubic-bezier|spring|steps)\s*\(|^(linear|ease|ease-in|ease-out|ease-in-out)$/i;
+function classifyMotionType(typeStr: string, name: string, stringValues: readonly string[]): string {
+  if (typeStr === 'timing' || typeStr === 'duration') return 'timing';
+  if (typeStr === 'easing') return 'easing';
+  if (typeStr === 'float' && MOTION_TIMING_NAME.test(name)) return 'timing';
+  if (typeStr === 'string') {
+    if (MOTION_EASING_NAME.test(name)) return 'easing';
+    for (let i = 0; i < stringValues.length; i++) {
+      const v = stringValues[i];
+      if (typeof v === 'string' && MOTION_EASING_VALUE.test(v.trim())) return 'easing';
+    }
+  }
+  return typeStr;
+}
+
 const TypeMapper = {
   toExportType(type: VariableResolvedDataType): VariableValueType {
     const map: Record<string, VariableValueType> = {
@@ -4716,7 +4739,7 @@ async function getCollections(): Promise<void> {
   const data = [];
   for (let index = 0; index < collections.length; index++) {
     const c = collections[index];
-    const types = { color: 0, float: 0, boolean: 0, string: 0 };
+    const types = { color: 0, float: 0, boolean: 0, string: 0, timing: 0, easing: 0 };
     const variableNames: string[] = [];
 
     // Batch-resolve all variables in this collection.
@@ -4736,7 +4759,17 @@ async function getCollections(): Promise<void> {
       if (!variable) continue;
       variableNames.push(variable.name);
       const typeStr = TypeMapper.toExportType(variable.resolvedType);
-      types[typeStr as keyof typeof types]++;
+      const stringValues: string[] = [];
+      if (typeStr === 'string') {
+        for (const mk of Object.keys(variable.valuesByMode)) {
+          const mv = variable.valuesByMode[mk];
+          if (typeof mv === 'string') stringValues.push(mv);
+        }
+      }
+      const bucket = classifyMotionType(typeStr, variable.name, stringValues);
+      if (bucket in types) {
+        types[bucket as keyof typeof types]++;
+      }
 
       const modeKeys = Object.keys(variable.valuesByMode);
       for (let mk = 0; mk < modeKeys.length; mk++) {
