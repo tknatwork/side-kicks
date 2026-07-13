@@ -48,6 +48,50 @@ variable scopes, and Timing/Easing motion-token counts in the preview.
 
 ---
 
+## Listing description — v2.2.0 section (PASTE ABOVE the v2.1.2 section)
+
+Matches the listing's existing version-section style (header + "•" bullets).
+
+v2.2.0 — New style types, motion tokens & safer imports
+
+• Imports are additive by default — Simple mode always Smart Merges: it adds
+and updates, never removes. Clean Import (replace everything) is now an
+explicit Advanced-mode choice with a confirmation that lists exactly what
+will be deleted
+
+• New effect styles round-trip in full: Noise (monotone, duotone, multitone),
+Texture, and Glass
+
+• Pattern fills export & import (within the same file); video and shader
+paints no longer drop silently from exports; per-paint visibility and blend
+modes are preserved
+
+• Complete text styles: leading trim, paragraph spacing & indent, list
+spacing, hanging punctuation and hanging lists
+
+• All 22 variable scopes supported — text content, opacity, stroke width,
+effect values, font family/style/weight and more; one unrecognized scope no
+longer drops the rest
+
+• Motion tokens are first-class: durations and easings (cubic-bezier, spring,
+steps) are counted as Timing & Easing in the preview — and native
+timing/easing variable types are supported ahead of Figma shipping them
+
+• Sturdier imports: an unsupported effect, paint, or style is skipped with a
+note instead of stopping the whole import
+
+### Required touch-up to the existing v2.1.2 section
+
+The v2.1.2 bullet "Improved Import Behaviour picks the right default — Smart
+Merge when your file already contains the dependencies (so they're preserved),
+Clean Import when it doesn't" now claims a behavior 2.2.0 removed. Replace it
+with:
+
+• Improved Import Behaviour defaults (superseded in v2.2.0 — imports are now
+always merge-first)
+
+---
+
 ## Listing description refresh (optional, "What it does" section)
 
 Move your design system anywhere. Variables & Styles Extractor exports and
