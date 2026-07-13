@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["ES2017", "DOM"],
+    "lib": [
+      "ES2017",
+      "DOM"
+    ],
     "strict": true,
     "noImplicitAny": true,
     "strictNullChecks": true,
@@ -18,8 +21,14 @@
     "forceConsistentCasingInFileNames": true,
     "rootDir": "./src",
     "outDir": ".",
-    "typeRoots": ["./node_modules/@figma"]
+    "types": [
+      "@figma/plugin-typings"
+    ]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "src/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
