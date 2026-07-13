@@ -739,7 +739,7 @@ export function registerTools(
 
   server.tool(
     "acquire_lock",
-    "Acquire (or renew) a named TTL lock so parallel agents don't clobber each other's targets. Non-blocking: returns acquired:false with the current holder if taken. Convention: lock the resource you mutate ('styles:text', 'page:412:326'). Locks auto-expire (default 120s) so a dead agent never wedges the workspace.",
+    "Acquire (or renew) a named TTL lock so parallel agents don't clobber each other's targets. Non-blocking: returns acquired:false with the current holder if taken. Convention: lock the resource you mutate ('styles:text', 'page:<pageId>'). Locks auto-expire (default 120s) so a dead agent never wedges the workspace.",
     acquireLockInput.shape,
     async ({ name, agent, ttlSeconds }): Promise<ToolResult> => {
       const params: Record<string, unknown> = { name };

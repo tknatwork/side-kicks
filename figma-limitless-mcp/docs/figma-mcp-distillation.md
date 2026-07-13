@@ -1,9 +1,9 @@
 # How the official Figma MCP understands & helps AI build — distilled
 
-> Source basis: the four official skill packs on this machine
-> (`~/.claude/skills/figma-use`, `figma-generate-library`, `figma-generate-design`,
-> `figma-code-connect`), read 2026-07-13. This is the mental model our native
-> bridge (`figma-limitless-mcp`) borrows from and deliberately diverges from.
+> Source basis: Figma's official MCP skill packs (figma-use,
+> figma-generate-library, figma-generate-design, figma-code-connect), analyzed
+> 2026-07-13. This is the mental model figma-limitless-mcp borrows from and
+> deliberately diverges from.
 
 ## 1. The read path: three representations, three costs
 
@@ -53,7 +53,7 @@ Official rules, verbatim in spirit:
 5. Font-family design tokens are STRING variables scoped `FONT_FAMILY` / `FONT_STYLE`, values are exact Figma `fontName` strings, bindable to text styles via `setBoundVariable`.
 
 **The gap we close:** remotely, `listAvailableFontsAsync` sees only Google/shared
-families (1723 on this account) — zero local licensed faces. Inside Figma Desktop
+families — zero locally-installed faces. Inside Figma Desktop
 the same API sees everything installed on the Mac. Hence `list_fonts` (enumerate
 exact strings, the rule-2 source of truth) and `load_fonts` (rule-1 compliance +
 availability report) as first-class tools.
@@ -76,11 +76,11 @@ ledgered to disk (`/tmp/dsb-state-{RUN_ID}.json`) with `setSharedPluginData`
 tags on every created node; resume = read-only rescan. Never hallucinate node
 IDs — read them back.
 
-Relevance to the rebuilt file (`yIzO6LwpGMO8z11XYx5PIW`): its 8 collections
-(Seed-colour, Seed, Alias, Alias-colour, Map, Responsive, Type, Semantic),
-24 text styles and 6 elevation styles are already built; our job is the **font
-layer only**. The obscured-name divergence is intentional: Figma keeps real
-faces, the token graph ships role names ('Sans Face' etc.) — never sync them.
+Relevance when a design system already exists: if the file's collections,
+text styles, and effect styles are already built, an AI session's job is
+usually a targeted layer (fonts, a new component, a token sweep) — discover
+what exists first (`get_file_digest`, `get_variables_deep`) and never rebuild
+what's already there.
 
 ## 6. Variables and discovery scope
 

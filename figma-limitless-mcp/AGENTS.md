@@ -9,8 +9,10 @@ MIT-licensed upstream — notice retained in LICENSE.md) that bypasses Figma RES
 rate limits, exposes **locally-installed fonts**, authors **variables/grid/
 annotations/motion/shaders** the official MCP cannot, and gives AI sessions a
 persistent **journal + checkpoint + lock** layer for crash-safe, multi-agent
-work. v0.1.0 created 2026-07-13 for the portfolio DS font pass (file
-`yIzO6LwpGMO8z11XYx5PIW`); v0.2.0 added the limitless layer; v0.3.0 added prototyping/components/screens/styles/library/dev-resources/code-mapping (72 tools; manifest now carries the teamlibrary permission). See
+work. v0.1.0 (2026-07-13) shipped the local-font + text-style core; v0.2.0
+added the limitless orchestration layer; v0.3.0 added
+prototyping/components/screens/styles/library/dev-resources/code-mapping
+(72 tools; manifest carries the teamlibrary permission). See
 `docs/figma-mcp-distillation.md` for the official-MCP mental model.
 
 ## Architecture (2 packages)
@@ -48,6 +50,17 @@ Motion styles enumerate; shaders API present (0 shaders in file).
 - Write tools must stay Dev-Mode-guarded (`EDIT_REQUEST_TYPES`); `delete_nodes` keeps its `confirm: true` gate; `execute_code` returns JSON-only, size-capped.
 - Rebuild `plugin/dist` after ANY `plugin/src` edit and re-run the plugin in Figma — Figma loads the built bundle, not the source.
 
+## Testing
+
+`scripts/e2e-live-test.mjs` is a live end-to-end suite that exercises ~50 tool
+paths against a real Figma file. Prereq: Figma Desktop open with the plugin
+running in a scratch file. Run `node scripts/e2e-live-test.mjs` from the repo
+root (or `FILE_KEY=<key> node …` to target one of several connected files). It
+creates everything inside a dedicated test page and removes all artifacts
+(page, styles, variables, collections, temp state) on exit — the file is left
+as found. Only one MCP server may hold `:1994`; kill stragglers first
+(`lsof -i :1994`) so the test runs as leader, not follower.
+
 ## Registration
 
 User-scope MCP entry in `~/.claude.json` → `mcpServers.figma-limitless-mcp`
@@ -56,5 +69,5 @@ via Plugins > Development > Import plugin from manifest… → `plugin/manifest.
 
 ## Boundaries
 
-- This project serves the portfolio DS but must not modify the portfolio repo.
 - The retained MIT notice in `LICENSE.md` is a legal requirement — protected, never remove.
+- Never bake user-specific font names, file keys, or account details into code, schemas, or docs — this is a public repo; examples stay generic.

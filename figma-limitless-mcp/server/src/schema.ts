@@ -267,7 +267,7 @@ const fontPair = z.object({
   family: z
     .string()
     .min(1)
-    .describe("Exact font family as Figma reports it (e.g. 'Graphik')"),
+    .describe("Exact font family as Figma reports it (e.g. 'Inter', or a locally installed brand font)"),
   style: z
     .string()
     .min(1)
@@ -430,14 +430,14 @@ export const listFontsInput = z.object({
     .string()
     .optional()
     .describe(
-      "Case-insensitive substring filter on family name (e.g. 'graphik')"
+      "Case-insensitive substring filter on family name (e.g. 'inter', or part of a local brand font's name)"
     ),
   families: z
     .array(z.string().min(1))
     .min(1)
     .optional()
     .describe(
-      "Exact family names to include (case-insensitive), e.g. ['Graphik Web','Averta','Meslo LG M','Lora']. Omit (don't pass []) to list everything."
+      "Exact family names to include (case-insensitive), e.g. your locally installed brand fonts: ['My Brand Sans','My Brand Serif']. Omit (don't pass []) to list everything."
     ),
   fileKey: fileKeyField,
 });
@@ -909,7 +909,7 @@ export const createPaintStyleInput = createPaintStyleShape.refine(
 );
 
 export const createEffectStyleInput = z.object({
-  name: z.string().min(1).describe("Style name (e.g. 'Elevation/Raised')"),
+  name: z.string().min(1).describe("Style name, slash-grouped (e.g. 'Elevation/Raised')"),
   effects: z
     .array(effectInput)
     .min(1)
@@ -1712,6 +1712,17 @@ export function validateRpc(
   params?: Record<string, unknown>
 ): string | null {
   if (!(tool in toolInputSchemas)) return null;
+
+  // create_image's MCP handler resolves the `source` (URL/path/data-URI) into
+  // an `imageBase64` wire param BEFORE forwarding. On the follower→leader path
+  // that resolution already happened on the follower, so re-validating against
+  // the source-based input schema here would always fail. Trust the follower's
+  // transform; just sanity-check the payload it sent.
+  if (tool === "create_image") {
+    return typeof params?.imageBase64 === "string"
+      ? null
+      : "create_image RPC missing resolved imageBase64";
+  }
 
   const name = tool as ToolName;
   const result = toolInputSchemas[name].safeParse(
