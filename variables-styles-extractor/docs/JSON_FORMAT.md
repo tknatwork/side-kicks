@@ -177,15 +177,33 @@ Available scopes (use one or more):
 - `"SHAPE_FILL"` - Shape fills
 - `"TEXT_FILL"` - Text colors
 - `"STROKE_COLOR"` - Stroke/border colors
+- `"STROKE_FLOAT"` - Stroke width
 - `"EFFECT_COLOR"` - Effect colors (shadows)
+- `"EFFECT_FLOAT"` - Effect numbers (blur radius, spread)
+- `"OPACITY"` - Layer opacity
 - `"GAP"` - Auto-layout gaps
 - `"CORNER_RADIUS"` - Border radius
 - `"WIDTH_HEIGHT"` - Dimensions
+- `"TEXT_CONTENT"` - Text content (string variables)
+- `"FONT_FAMILY"` - Font family (string variables)
+- `"FONT_STYLE"` - Font style (string variables)
+- `"FONT_WEIGHT"` - Font weight (number variables)
 - `"FONT_SIZE"` - Text size
 - `"LINE_HEIGHT"` - Line height
 - `"LETTER_SPACING"` - Letter spacing
 - `"PARAGRAPH_SPACING"` - Paragraph spacing
 - `"PARAGRAPH_INDENT"` - Paragraph indent
+
+If a scope isn't recognized by your Figma build, import keeps the recognized
+scopes and logs what was dropped (it never silently drops them all).
+
+#### Forward compatibility
+
+`$type` values outside `color` / `float` / `string` / `boolean` (from future
+Figma variable types, e.g. easing) are exported verbatim in lowercase and
+tried verbatim on import — Figma builds that support the type accept it;
+older builds skip that variable with a warning. Timing tokens are regular
+`float` variables (milliseconds) and round-trip today.
 
 ### Variable Aliases (References)
 
@@ -317,6 +335,33 @@ The format is `{CollectionName/path/to/variable}`.
 
 Other gradient types: `GRADIENT_ANGULAR`, `GRADIENT_DIAMOND`
 
+#### Pattern Paint (new in v2.2)
+
+Pattern fills reference a source node by id, so they round-trip within the
+same file. Importing into a file where the node doesn't exist skips the
+pattern paint (the rest of the style still imports).
+
+```json
+{
+  "type": "PATTERN",
+  "sourceNodeId": "12:345",
+  "tileType": "RECTANGULAR",
+  "scalingFactor": 1,
+  "spacing": { "x": 0, "y": 0 },
+  "horizontalAlignment": "START"
+}
+```
+
+#### Video & Shader Paints (export-only)
+
+Video and shader paints reference file-local media or shader resources.
+They export as markers (`{ "type": "VIDEO" }` / `{ "type": "SHADER" }`, plus
+`visible` / `opacity` / `blendMode` when non-default) so the style isn't
+silently lossy, and are skipped with a warning on import.
+
+All paints also accept optional `visible` (boolean) and `blendMode` (Figma
+blend mode name) — exported only when non-default.
+
 ### 2. Text Styles
 
 ```json
@@ -328,9 +373,14 @@ Other gradient types: `GRADIENT_ANGULAR`, `GRADIENT_DIAMOND`
       "fontFamily": "Inter",
       "fontStyle": "Bold",
       "fontSize": 48,
-      "fontWeight": 700,
       "lineHeight": { "unit": "PERCENT", "value": 120 },
       "letterSpacing": { "unit": "PERCENT", "value": -2 },
+      "paragraphSpacing": 0,
+      "paragraphIndent": 0,
+      "leadingTrim": "NONE",
+      "listSpacing": 0,
+      "hangingPunctuation": false,
+      "hangingList": false,
       "textCase": "ORIGINAL",
       "textDecoration": "NONE"
     },
@@ -340,13 +390,19 @@ Other gradient types: `GRADIENT_ANGULAR`, `GRADIENT_DIAMOND`
       "fontFamily": "Inter",
       "fontStyle": "Regular",
       "fontSize": 16,
-      "fontWeight": 400,
       "lineHeight": { "unit": "PERCENT", "value": 150 },
       "letterSpacing": { "unit": "PERCENT", "value": 0 }
     }
   ]
 }
 ```
+
+Font weight is carried by `fontStyle` (e.g. `"Bold"`), not by a numeric
+field — a `fontWeight` number in the JSON is ignored on import.
+
+New in v2.2 (all optional on import): `paragraphSpacing` / `paragraphIndent`
+(pixels), `leadingTrim` (`"NONE"` or `"CAP_HEIGHT"`), `listSpacing` (pixels),
+`hangingPunctuation` / `hangingList` (booleans).
 
 #### Line Height Options
 
@@ -440,6 +496,58 @@ Other gradient types: `GRADIENT_ANGULAR`, `GRADIENT_DIAMOND`
   "visible": true
 }
 ```
+
+#### Noise (new in v2.2)
+
+`noiseType` is `"MONOTONE"`, `"DUOTONE"` (add `secondaryColor`), or
+`"MULTITONE"` (add `opacity`).
+
+```json
+{
+  "type": "NOISE",
+  "noiseType": "DUOTONE",
+  "color": { "hex": "#000000" },
+  "secondaryColor": { "hex": "#FFFFFF" },
+  "noiseSize": 1,
+  "density": 0.5,
+  "blendMode": "NORMAL",
+  "visible": true
+}
+```
+
+#### Texture (new in v2.2)
+
+```json
+{
+  "type": "TEXTURE",
+  "noiseSize": 1,
+  "radius": 4,
+  "clipToShape": true,
+  "visible": true
+}
+```
+
+#### Glass (new in v2.2)
+
+```json
+{
+  "type": "GLASS",
+  "lightIntensity": 0.5,
+  "lightAngle": 45,
+  "refraction": 0.5,
+  "depth": 0.5,
+  "dispersion": 0,
+  "radius": 8,
+  "visible": true
+}
+```
+
+#### Shader (export-only)
+
+Shader effects reference a shader by file-local id, which cannot be
+reconstructed from JSON. They export as `{ "type": "SHADER", "visible": true }`
+markers and are skipped with a warning on import. Unknown future effect types
+are skipped the same way — the rest of the style still imports.
 
 ### 4. Grid Styles
 

@@ -3,13 +3,22 @@
 [![Figma Plugin](https://img.shields.io/badge/Figma-Plugin-ff69b4)](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)
 [![Source: MIT](https://img.shields.io/badge/Source-MIT-yellow.svg)](./LICENSE)
 [![Distribution: CFRL](https://img.shields.io/badge/Figma%20Distribution-CFRL-blueviolet.svg)](https://www.figma.com/community-free-resource-license/)
-[![Version](https://img.shields.io/badge/version-2.1.2-blue.svg)](./package.json)
+[![Version](https://img.shields.io/badge/version-2.2.0-blue.svg)](./package.json)
 
 **Move your design system anywhere. Export and import Figma variables and styles — selectively, safely, and in Tokens Studio–compatible JSON.**
 
-> 🔍 **Status:** v2.1.2 published to Figma Community · v2.0.0 first published 17 January 2026
+> 🔍 **Status:** v2.2.0 in this repo (Community publish pending) · v2.1.2 published to Figma Community · v2.0.0 first published 17 January 2026
 
 Variables & Styles Extractor moves complete design systems between Figma files — every variable collection, mode, alias, and style — as clean, re-importable JSON. It runs **100% locally** (zero network access) and stays responsive on large design systems thanks to a batched processing engine with live progress and a real Cancel button.
+
+## What's new in v2.2
+
+- 🌫️ **New effect types** — Noise (monotone / duotone / multitone), Texture, and Glass effect styles export and import with full fidelity; Shader effects export as markers.
+- 🧱 **Pattern paints** — pattern fills round-trip (same-file); video and shader paints export as markers instead of silently disappearing.
+- 🔤 **Complete text styles** — leadingTrim, paragraphSpacing, paragraphIndent, listSpacing, hangingPunctuation, and hangingList now round-trip.
+- 🎛️ **All 22 variable scopes** — including TEXT_CONTENT, OPACITY, STROKE_FLOAT, EFFECT_FLOAT and the font scopes; one unrecognized scope no longer drops the rest.
+- 🔮 **Forward-compatible variables** — future Figma variable types (e.g. easing) export under their real type name and import verbatim where supported, instead of being coerced to strings. Timing tokens (FLOAT ms) already round-trip.
+- 🛡️ **Import hardening** — a single unsupported effect, paint, or style can no longer abort an import (or corrupt its automatic rollback); it is skipped with a logged warning.
 
 ## Highlights (v2.1)
 

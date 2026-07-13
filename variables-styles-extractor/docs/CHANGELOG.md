@@ -10,6 +10,60 @@ All notable changes to this Figma plugin are documented here.
 
 ---
 
+## [2.2.0] - 2026-07-13
+
+### 🌫️ New Style Types, Full Scopes & Forward-Compatible Variables
+
+Feature release. Brings the export/import surface up to the 2026 Figma API
+(plugin-typings 1.130): new effect and paint types, the complete text-style
+property set, all 22 variable scopes, and forward-compatibility for future
+variable types — plus import hardening so one unsupported entry can never
+abort an import or its rollback.
+
+### Added
+- **Effect styles**: NOISE (MONOTONE / DUOTONE / MULTITONE — color,
+  secondaryColor, opacity, noiseSize, noiseSizeVector, density), TEXTURE
+  (noiseSize, radius, clipToShape) and GLASS (lightIntensity, lightAngle,
+  refraction, depth, dispersion, radius) export and import with full fidelity.
+  SHADER effects export as `{ "type": "SHADER" }` markers (shader ids are
+  file-local) and are skipped with a warning on import.
+- **Paint styles**: PATTERN paints round-trip (sourceNodeId, tileType,
+  scalingFactor, spacing, horizontalAlignment) — the source node must exist in
+  the target file. VIDEO and SHADER paints export as markers instead of being
+  silently dropped; styles containing only such paints now export too.
+  `visible` and `blendMode` are exported for every paint when non-default.
+- **Text styles**: `paragraphSpacing`, `paragraphIndent`, `leadingTrim`,
+  `listSpacing`, `hangingPunctuation`, `hangingList` now export and import.
+- **Variable scopes**: all 22 scopes recognized (adds TEXT_CONTENT,
+  STROKE_FLOAT, EFFECT_FLOAT, OPACITY, FONT_FAMILY, FONT_STYLE, FONT_WEIGHT).
+  Tokens Studio export maps PARAGRAPH_INDENT → dimension, FONT_WEIGHT →
+  fontWeights, TEXT_CONTENT → text.
+- **Forward-compat variables**: an unknown resolved type (e.g. a future
+  easing type) exports under its real name in lowercase instead of being
+  mislabeled `string`; on import it is tried verbatim — Figma builds that
+  support it accept it, older builds skip that variable with a warning
+  instead of silently importing a STRING. Timing tokens (FLOAT ms) already
+  round-trip unchanged.
+- New regression suite `tests/type-mapper.test.mjs` (forward-compat mapping,
+  scope filtering, effect defaults) wired into `pnpm test`.
+
+### Fixed
+- **Import-abort hazard**: a single unknown effect type used to throw during
+  `style.effects` assignment, aborting the entire import mid-write and then
+  crashing the automatic rollback (which re-imported through the same code) —
+  a real data-loss path. Effects, paints, and layout-grid assignments are now
+  guarded per style: unsupported entries are skipped with a logged warning and
+  everything else lands.
+- **All-or-nothing scope drop**: one unrecognized scope used to silently drop
+  every scope on that variable. Import now retries with the known-scope subset
+  and logs what was dropped. The snapshot-restore path got the same guard.
+- `fontWeight` removed from the documented text-style import surface — it was
+  never applied (weight comes from `fontStyle`); docs now say so.
+- Stray raw NUL byte in `src/code.ts` escaped (`'\u0000'`) so text tooling
+  (grep and friends) no longer treats the source as binary.
+
+---
+
 ## [2.1.2] - 2026-06-11
 
 ### 🔗 External Library Dependency Resolution & Import Reliability

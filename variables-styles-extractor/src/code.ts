@@ -4,7 +4,7 @@
  * 
  * @copyright 2025 Tushar Kant Naik / The Keep Collective
  * @license MIT - See LICENSE file
- * @version 2.0.0
+ * @version 2.2.0
  * @author Tushar Kant Naik <hi@tusharkantnaik.com>
  * @website https://tusharkantnaik.com
  */
@@ -21,7 +21,7 @@ figma.showUI(__html__, {
   width: UI_SIZE.simple.width,
   height: UI_SIZE.simple.height,
   themeColors: true,
-  title: 'Variables & Styles Extractor v2.1.2'
+  title: 'Variables & Styles Extractor v2.2.0'
 });
 
 // ============================================================================
@@ -59,7 +59,9 @@ interface ExportColorValue {
 }
 
 // Variable value types
-type VariableValueType = 'color' | 'float' | 'string' | 'boolean';
+// Known value types plus forward-compat: a future Figma type (e.g. easing)
+// exports/imports verbatim instead of being coerced to string.
+type VariableValueType = 'color' | 'float' | 'string' | 'boolean' | (string & {});
 
 interface ExportVariableValue {
   readonly $scopes: readonly string[];
@@ -108,6 +110,8 @@ interface ExportGradientPaint {
   readonly gradientStops: readonly ExportGradientStop[];
   readonly gradientTransform?: readonly [readonly [number, number, number], readonly [number, number, number]];
   readonly opacity?: number;
+  readonly visible?: boolean;
+  readonly blendMode?: string;
 }
 
 // Image paint data
@@ -117,6 +121,8 @@ interface ExportImagePaint {
   readonly imageHash?: string;
   readonly imageBase64?: string; // Base64 encoded image data
   readonly opacity?: number;
+  readonly visible?: boolean;
+  readonly blendMode?: string;
   readonly rotation?: number;
   readonly filters?: Readonly<{
     exposure?: number;
@@ -134,10 +140,35 @@ interface ExportSolidPaint {
   readonly type: 'SOLID';
   readonly color: ExportColorValue;
   readonly opacity?: number;
+  readonly visible?: boolean;
+  readonly blendMode?: string;
+}
+
+// Pattern paint data (references a source node - resolves within the same file)
+interface ExportPatternPaint {
+  readonly type: 'PATTERN';
+  readonly sourceNodeId: string;
+  readonly tileType?: 'RECTANGULAR' | 'HORIZONTAL_HEXAGONAL' | 'VERTICAL_HEXAGONAL';
+  readonly scalingFactor?: number;
+  readonly spacing?: Readonly<{ x: number; y: number }>;
+  readonly horizontalAlignment?: 'START' | 'CENTER' | 'END';
+  readonly visible?: boolean;
+  readonly opacity?: number;
+  readonly blendMode?: string;
+}
+
+// VIDEO / SHADER paints reference file-local media or shader resources that
+// cannot be reconstructed from JSON. They export as a marker (so the style
+// isn't silently lossy) and are skipped with a warning on import.
+interface ExportUnsupportedPaint {
+  readonly type: 'VIDEO' | 'SHADER';
+  readonly visible?: boolean;
+  readonly opacity?: number;
+  readonly blendMode?: string;
 }
 
 // Union type for all paint types
-type ExportPaintData = ExportSolidPaint | ExportGradientPaint | ExportImagePaint;
+type ExportPaintData = ExportSolidPaint | ExportGradientPaint | ExportImagePaint | ExportPatternPaint | ExportUnsupportedPaint;
 
 interface ExportColorStyle {
   readonly name: string;
@@ -158,6 +189,12 @@ interface ExportTextStyle {
   readonly fontWeight?: number;
   readonly lineHeight: LineHeight;
   readonly letterSpacing: LetterSpacing;
+  readonly paragraphSpacing?: number;
+  readonly paragraphIndent?: number;
+  readonly leadingTrim?: string;
+  readonly listSpacing?: number;
+  readonly hangingPunctuation?: boolean;
+  readonly hangingList?: boolean;
   readonly textCase?: string;
   readonly textDecoration?: string;
   readonly boundVariables?: Readonly<Record<string, VariableBinding>>;
@@ -172,6 +209,21 @@ interface ExportEffectData {
   readonly visible?: boolean;
   readonly blendMode?: string;
   readonly showShadowBehindNode?: boolean;
+  // NOISE (MONOTONE / DUOTONE / MULTITONE)
+  readonly noiseType?: string;
+  readonly secondaryColor?: ExportColorValue;
+  readonly opacity?: number;
+  readonly noiseSize?: number;
+  readonly noiseSizeVector?: Readonly<{ x: number; y: number }>;
+  readonly density?: number;
+  // TEXTURE
+  readonly clipToShape?: boolean;
+  // GLASS
+  readonly lightIntensity?: number;
+  readonly lightAngle?: number;
+  readonly refraction?: number;
+  readonly depth?: number;
+  readonly dispersion?: number;
   readonly boundVariables?: Readonly<Record<string, VariableBinding>>;
 }
 
@@ -776,7 +828,7 @@ async function validateImportAgainstPlan(
           // availability check can match by content, not just collection name.
           if (typeof value.$value === 'string' && value.$value.startsWith('{')) {
             const refPath = value.$value.slice(1, -1).replace(/\./g, '/');
-            const refKey = value.$collectionName + ' ' + refPath;
+            const refKey = value.$collectionName + '\u0000' + refPath;
             if (!libraryRefKeys.has(refKey)) {
               libraryRefKeys.add(refKey);
               const providedByImport = selfPaths.get(value.$collectionName);
@@ -1418,13 +1470,16 @@ const TS_FLOAT_SCOPE_MAP: Record<string, string> = {
   'FONT_SIZE': 'fontSizes',
   'LINE_HEIGHT': 'lineHeights',
   'LETTER_SPACING': 'letterSpacing',
-  'PARAGRAPH_SPACING': 'paragraphSpacing'
+  'PARAGRAPH_SPACING': 'paragraphSpacing',
+  'PARAGRAPH_INDENT': 'dimension',
+  'FONT_WEIGHT': 'fontWeights'
 };
 
 // STRING scope -> Tokens Studio type refinement
 const TS_STRING_SCOPE_MAP: Record<string, string> = {
   'FONT_FAMILY': 'fontFamilies',
-  'FONT_STYLE': 'fontWeights'
+  'FONT_STYLE': 'fontWeights',
+  'TEXT_CONTENT': 'text'
 };
 
 // Figma textCase -> Tokens Studio typography textCase (SMALL_CAPS* omitted —
@@ -2383,15 +2438,57 @@ function isVariableAlias(value: unknown): value is { type: 'VARIABLE_ALIAS'; id:
          (value as Record<string, unknown>).type === 'VARIABLE_ALIAS';
 }
 
+// Every VariableScope this build's typings know (plugin-typings 1.130). Used
+// as a fallback filter when Figma rejects a scopes array wholesale - scopes
+// from newer Figma builds are still tried verbatim first.
+const KNOWN_VARIABLE_SCOPES: Record<string, true> = {
+  'ALL_SCOPES': true,
+  'TEXT_CONTENT': true,
+  'CORNER_RADIUS': true,
+  'WIDTH_HEIGHT': true,
+  'GAP': true,
+  'ALL_FILLS': true,
+  'FRAME_FILL': true,
+  'SHAPE_FILL': true,
+  'TEXT_FILL': true,
+  'STROKE_COLOR': true,
+  'STROKE_FLOAT': true,
+  'EFFECT_FLOAT': true,
+  'EFFECT_COLOR': true,
+  'OPACITY': true,
+  'FONT_FAMILY': true,
+  'FONT_STYLE': true,
+  'FONT_WEIGHT': true,
+  'FONT_SIZE': true,
+  'LINE_HEIGHT': true,
+  'LETTER_SPACING': true,
+  'PARAGRAPH_SPACING': true,
+  'PARAGRAPH_INDENT': true
+};
+
+// Keep only scopes this build knows. Pure - mirrored (annotations stripped) in
+// tests/type-mapper.test.mjs.
+function filterKnownScopes(arr: readonly string[]): string[] {
+  const result: string[] = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (KNOWN_VARIABLE_SCOPES[arr[i]] === true) {
+      result.push(arr[i]);
+    }
+  }
+  return result;
+}
+
 const TypeMapper = {
   toExportType(type: VariableResolvedDataType): VariableValueType {
-    const map: Record<VariableResolvedDataType, VariableValueType> = {
+    const map: Record<string, VariableValueType> = {
       'COLOR': 'color',
       'FLOAT': 'float',
       'STRING': 'string',
       'BOOLEAN': 'boolean'
     };
-    return map[type] ?? 'string';
+    // Forward-compat: a resolved type this build doesn't know (e.g. a future
+    // easing type) exports verbatim in lowercase instead of mislabeled 'string'.
+    return map[type] ?? (String(type).toLowerCase() as VariableValueType);
   },
 
   toFigmaType(type: string): VariableResolvedDataType {
@@ -2401,7 +2498,10 @@ const TypeMapper = {
       'string': 'STRING',
       'boolean': 'BOOLEAN'
     };
-    return map[type] ?? 'STRING';
+    // Forward-compat: an unknown $type is tried verbatim in uppercase -
+    // createVariable() throws on builds without it and the caller skips that
+    // variable with a warning, instead of silently importing it as a STRING.
+    return map[type] ?? (String(type).toUpperCase() as VariableResolvedDataType);
   },
 
   scopesToArray(scopes: VariableScope[]): string[] {
@@ -2542,7 +2642,9 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
           const solidPaint: ExportSolidPaint = {
             type: 'SOLID',
             color: ColorConverter.toAllFormats(colorWithAlpha),
-            opacity: MathUtils.round2(effectiveOpacity)
+            opacity: MathUtils.round2(effectiveOpacity),
+            ...(paint.visible === false && { visible: false }),
+            ...(paint.blendMode !== undefined && paint.blendMode !== 'NORMAL' && { blendMode: paint.blendMode })
           };
           
           exportPaints.push(solidPaint);
@@ -2572,9 +2674,11 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
             ...(paint.gradientTransform && { 
               gradientTransform: paint.gradientTransform as [[number, number, number], [number, number, number]]
             }),
-            opacity: MathUtils.round2(paint.opacity ?? 1)
+            opacity: MathUtils.round2(paint.opacity ?? 1),
+            ...(paint.visible === false && { visible: false }),
+            ...(paint.blendMode !== undefined && paint.blendMode !== 'NORMAL' && { blendMode: paint.blendMode })
           };
-          
+
           exportPaints.push(gradientPaint);
           
         } else if (paint.type === 'IMAGE') {
@@ -2583,6 +2687,8 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
             scaleMode: paint.scaleMode,
             ...(paint.imageHash && { imageHash: paint.imageHash }),
             opacity: MathUtils.round2(paint.opacity ?? 1),
+            ...(paint.visible === false && { visible: false }),
+            ...(paint.blendMode !== undefined && paint.blendMode !== 'NORMAL' && { blendMode: paint.blendMode }),
             ...(paint.rotation !== undefined && { rotation: paint.rotation }),
             ...(paint.filters && {
               filters: {
@@ -2615,9 +2721,32 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
           }
           
           exportPaints.push(imagePaint);
+        } else if (paint.type === 'PATTERN') {
+          const patternPaint: ExportPatternPaint = {
+            type: 'PATTERN',
+            sourceNodeId: paint.sourceNodeId,
+            tileType: paint.tileType,
+            scalingFactor: paint.scalingFactor,
+            spacing: { x: paint.spacing.x, y: paint.spacing.y },
+            horizontalAlignment: paint.horizontalAlignment,
+            ...(paint.visible === false && { visible: false }),
+            ...(paint.opacity !== undefined && { opacity: MathUtils.round2(paint.opacity) }),
+            ...(paint.blendMode !== undefined && paint.blendMode !== 'NORMAL' && { blendMode: paint.blendMode })
+          };
+          exportPaints.push(patternPaint);
+        } else {
+          // VIDEO / SHADER: keep a marker so the style exports without
+          // silently losing paints (media/shader data is file-local).
+          const markerPaint: ExportUnsupportedPaint = {
+            type: paint.type,
+            ...(paint.visible === false && { visible: false }),
+            ...(paint.opacity !== undefined && { opacity: MathUtils.round2(paint.opacity) }),
+            ...(paint.blendMode !== undefined && paint.blendMode !== 'NORMAL' && { blendMode: paint.blendMode })
+          };
+          exportPaints.push(markerPaint);
         }
       }
-      
+
       if (exportPaints.length === 0) return;
 
       const colorStyle: ExportColorStyle = {
@@ -2677,9 +2806,11 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
             let paint: SolidPaint = {
               type: 'SOLID',
               color: { r: colorRgba.r, g: colorRgba.g, b: colorRgba.b },
-              opacity: MathUtils.round2(finalOpacity)
+              opacity: MathUtils.round2(finalOpacity),
+              ...(exportPaint.visible !== undefined && { visible: exportPaint.visible }),
+              ...(exportPaint.blendMode !== undefined && { blendMode: exportPaint.blendMode as BlendMode })
             };
-            
+
             // Apply variable bindings for first solid paint
             if (colorStyle.boundVariables && paints.length === 0) {
               for (const [key, binding] of Object.entries(colorStyle.boundVariables)) {
@@ -2718,7 +2849,9 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
               type: exportPaint.type,
               gradientStops,
               gradientTransform: transform,
-              opacity: exportPaint.opacity ?? 1
+              opacity: exportPaint.opacity ?? 1,
+              ...(exportPaint.visible !== undefined && { visible: exportPaint.visible }),
+              ...(exportPaint.blendMode !== undefined && { blendMode: exportPaint.blendMode as BlendMode })
             };
             
             paints.push(gradientPaint);
@@ -2759,12 +2892,34 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
                 scaleMode: exportPaint.scaleMode,
                 imageHash: imageHash,
                 opacity: exportPaint.opacity ?? 1,
+                ...(exportPaint.visible !== undefined && { visible: exportPaint.visible }),
+                ...(exportPaint.blendMode !== undefined && { blendMode: exportPaint.blendMode as BlendMode }),
                 ...(exportPaint.rotation !== undefined && { rotation: exportPaint.rotation }),
                 ...(exportPaint.filters && { filters: exportPaint.filters as ImageFilters })
               };
               
               paints.push(imagePaint);
             }
+          } else if (exportPaint.type === 'PATTERN') {
+            // PATTERN references a source node by id - it only resolves when
+            // that node exists in this file (same-file round-trip).
+            const patternPaint: PatternPaint = {
+              type: 'PATTERN',
+              sourceNodeId: exportPaint.sourceNodeId,
+              tileType: exportPaint.tileType ?? 'RECTANGULAR',
+              scalingFactor: exportPaint.scalingFactor ?? 1,
+              spacing: exportPaint.spacing ? { x: exportPaint.spacing.x, y: exportPaint.spacing.y } : { x: 0, y: 0 },
+              horizontalAlignment: exportPaint.horizontalAlignment ?? 'START',
+              ...(exportPaint.visible !== undefined && { visible: exportPaint.visible }),
+              ...(exportPaint.opacity !== undefined && { opacity: exportPaint.opacity }),
+              ...(exportPaint.blendMode !== undefined && { blendMode: exportPaint.blendMode as BlendMode })
+            };
+            paints.push(patternPaint);
+          } else {
+            // VIDEO / SHADER (and future paint types): file-local resources
+            // that cannot be reconstructed from JSON. Skip the paint, keep the
+            // style.
+            Logger.log(`⚠️ Skipping unsupported ${(exportPaint as ExportUnsupportedPaint).type} paint in style "${colorStyle.name}"`);
           }
         }
       } else if (colorStyle.color) {
@@ -2801,7 +2956,18 @@ const ColorStyleProcessor: StyleProcessor<ExportColorStyle, PaintStyle> = {
       }
       
       if (paints.length > 0) {
-        style.paints = paints;
+        try {
+          style.paints = paints;
+        } catch (e) {
+          // Most likely a PATTERN whose source node is missing in this file.
+          // Retry without pattern paints so the rest of the style survives -
+          // and never abort the whole import (or its rollback) over one style.
+          const safePaints = paints.filter(function (p: Paint): boolean { return p.type !== 'PATTERN'; });
+          try {
+            if (safePaints.length > 0) style.paints = safePaints;
+          } catch { /* Skip */ }
+          Logger.log(`⚠️ Some paints could not be applied for style "${colorStyle.name}": ${e}`);
+        }
       }
     });
 
@@ -2823,6 +2989,12 @@ const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
         fontSize: style.fontSize,
         lineHeight: style.lineHeight,
         letterSpacing: style.letterSpacing,
+        paragraphSpacing: style.paragraphSpacing,
+        paragraphIndent: style.paragraphIndent,
+        leadingTrim: style.leadingTrim,
+        listSpacing: style.listSpacing,
+        hangingPunctuation: style.hangingPunctuation,
+        hangingList: style.hangingList,
         textCase: style.textCase,
         textDecoration: style.textDecoration,
         ...(style.description && { description: style.description }),
@@ -2866,6 +3038,12 @@ const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
         style.fontSize = textStyle.fontSize;
         style.lineHeight = textStyle.lineHeight;
         style.letterSpacing = textStyle.letterSpacing;
+        if (textStyle.paragraphSpacing !== undefined) style.paragraphSpacing = textStyle.paragraphSpacing;
+        if (textStyle.paragraphIndent !== undefined) style.paragraphIndent = textStyle.paragraphIndent;
+        if (textStyle.leadingTrim) style.leadingTrim = textStyle.leadingTrim as LeadingTrim;
+        if (textStyle.listSpacing !== undefined) style.listSpacing = textStyle.listSpacing;
+        if (textStyle.hangingPunctuation !== undefined) style.hangingPunctuation = textStyle.hangingPunctuation;
+        if (textStyle.hangingList !== undefined) style.hangingList = textStyle.hangingList;
         if (textStyle.textCase) style.textCase = textStyle.textCase as TextCase;
         if (textStyle.textDecoration) style.textDecoration = textStyle.textDecoration as TextDecoration;
         
@@ -2891,6 +3069,43 @@ const TextStyleProcessor: StyleProcessor<ExportTextStyle, TextStyle> = {
 };
 
 // Effect Style Processor
+// Effect types this build can reconstruct from JSON. SHADER is export-only
+// (its shader id is file-local); unknown future types are skipped on import.
+const IMPORTABLE_EFFECT_TYPES: Record<string, true> = {
+  'DROP_SHADOW': true,
+  'INNER_SHADOW': true,
+  'LAYER_BLUR': true,
+  'BACKGROUND_BLUR': true,
+  'NOISE': true,
+  'TEXTURE': true,
+  'GLASS': true
+};
+
+// Fill required fields Figma validates on write, when absent from the import
+// data (hand-written JSON). Pure - mirrored (annotations stripped) in
+// tests/type-mapper.test.mjs.
+function applyEffectDefaults(e: Record<string, unknown>): void {
+  if (e.type === 'NOISE') {
+    if (e.noiseType === undefined) e.noiseType = 'MONOTONE';
+    if (e.noiseSize === undefined) e.noiseSize = 1;
+    if (e.density === undefined) e.density = 0.5;
+    if (e.color === undefined) e.color = { r: 0, g: 0, b: 0, a: 1 };
+    // NOTE: no blendMode default - current Figma builds reject the key on
+    // NOISE writes (verified live) even though the typings declare it.
+  } else if (e.type === 'TEXTURE') {
+    if (e.noiseSize === undefined) e.noiseSize = 1;
+    if (e.radius === undefined) e.radius = 0;
+    if (e.clipToShape === undefined) e.clipToShape = true;
+  } else if (e.type === 'GLASS') {
+    if (e.lightIntensity === undefined) e.lightIntensity = 0.5;
+    if (e.lightAngle === undefined) e.lightAngle = 45;
+    if (e.refraction === undefined) e.refraction = 0.5;
+    if (e.depth === undefined) e.depth = 0.5;
+    if (e.dispersion === undefined) e.dispersion = 0;
+    if (e.radius === undefined) e.radius = 0;
+  }
+}
+
 const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
   async export(_options?: { includeImages?: boolean }): Promise<ExportEffectStyle[]> {
     const styles: ExportEffectStyle[] = [];
@@ -2908,6 +3123,19 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
           ...('color' in effect && { color: ColorConverter.toAllFormats(effect.color as RGBA) }),
           ...('blendMode' in effect && { blendMode: effect.blendMode }),
           ...('showShadowBehindNode' in effect && { showShadowBehindNode: effect.showShadowBehindNode }),
+          // NOISE / TEXTURE / GLASS type-specific fields
+          ...('noiseType' in effect && { noiseType: effect.noiseType }),
+          ...('secondaryColor' in effect && { secondaryColor: ColorConverter.toAllFormats(effect.secondaryColor as RGBA) }),
+          ...('opacity' in effect && { opacity: effect.opacity }),
+          ...('noiseSize' in effect && { noiseSize: effect.noiseSize }),
+          ...('noiseSizeVector' in effect && effect.noiseSizeVector !== undefined && { noiseSizeVector: { x: effect.noiseSizeVector.x, y: effect.noiseSizeVector.y } }),
+          ...('density' in effect && { density: effect.density }),
+          ...('clipToShape' in effect && { clipToShape: effect.clipToShape }),
+          ...('lightIntensity' in effect && { lightIntensity: effect.lightIntensity }),
+          ...('lightAngle' in effect && { lightAngle: effect.lightAngle }),
+          ...('refraction' in effect && { refraction: effect.refraction }),
+          ...('depth' in effect && { depth: effect.depth }),
+          ...('dispersion' in effect && { dispersion: effect.dispersion }),
           boundVariables: await extractBindings((effect as unknown as Record<string, unknown>).boundVariables as Record<string, VariableAlias | undefined>, ['color', 'radius', 'spread', 'offsetX', 'offsetY'])
         };
         effects.push(effectData);
@@ -2950,14 +3178,25 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
         style.description = effectStyle.description;
       }
       
-      const newEffects = effectStyle.effects.map(effect => {
-        const e: Effect = {
+      const newEffects: Effect[] = [];
+      const effectIndexMap: number[] = [];
+      let skippedEffects = 0;
+      for (const effect of effectStyle.effects) {
+        if (IMPORTABLE_EFFECT_TYPES[effect.type] !== true) {
+          // SHADER (and unknown future types) reference file-local resources
+          // that cannot be reconstructed from JSON - skip the effect, keep the
+          // style and the rest of the import.
+          skippedEffects++;
+          effectIndexMap.push(-1);
+          continue;
+        }
+        const e = {
           type: effect.type as Effect['type'],
           visible: effect.visible ?? true,
           ...((effect.radius !== undefined) && { radius: effect.radius }),
           ...((effect.spread !== undefined) && { spread: effect.spread }),
           ...((effect.offset !== undefined) && { offset: effect.offset }),
-          ...((effect.color !== undefined) && { 
+          ...((effect.color !== undefined) && {
             color: (() => {
               const c = ColorParser.parse(effect.color);
               return { r: c.r, g: c.g, b: c.b, a: MathUtils.round2(c.a) };
@@ -2966,15 +3205,62 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
           ...((effect.blendMode !== undefined) && { blendMode: effect.blendMode as BlendMode }),
           // showShadowBehindNode: false = unchecked (normal shadow), true = checked (show behind)
           // Default to false (unchecked) unless explicitly set in import data
-          ...((effect.showShadowBehindNode !== undefined) && { showShadowBehindNode: effect.showShadowBehindNode })
-        } as Effect;
-        return e;
-      });
+          ...((effect.showShadowBehindNode !== undefined) && { showShadowBehindNode: effect.showShadowBehindNode }),
+          // NOISE / TEXTURE / GLASS type-specific fields
+          ...((effect.noiseType !== undefined) && { noiseType: effect.noiseType }),
+          ...((effect.secondaryColor !== undefined) && {
+            secondaryColor: (() => {
+              const c = ColorParser.parse(effect.secondaryColor);
+              return { r: c.r, g: c.g, b: c.b, a: MathUtils.round2(c.a) };
+            })()
+          }),
+          ...((effect.opacity !== undefined) && { opacity: effect.opacity }),
+          ...((effect.noiseSize !== undefined) && { noiseSize: effect.noiseSize }),
+          ...((effect.noiseSizeVector !== undefined) && { noiseSizeVector: { x: effect.noiseSizeVector.x, y: effect.noiseSizeVector.y } }),
+          ...((effect.density !== undefined) && { density: effect.density }),
+          ...((effect.clipToShape !== undefined) && { clipToShape: effect.clipToShape }),
+          ...((effect.lightIntensity !== undefined) && { lightIntensity: effect.lightIntensity }),
+          ...((effect.lightAngle !== undefined) && { lightAngle: effect.lightAngle }),
+          ...((effect.refraction !== undefined) && { refraction: effect.refraction }),
+          ...((effect.depth !== undefined) && { depth: effect.depth }),
+          ...((effect.dispersion !== undefined) && { dispersion: effect.dispersion })
+        } as Record<string, unknown>;
+        applyEffectDefaults(e);
+        newEffects.push(e as unknown as Effect);
+        effectIndexMap.push(newEffects.length - 1);
+      }
+
+      if (skippedEffects > 0) {
+        Logger.log(`⚠️ Skipped ${skippedEffects} unsupported effect(s) in style "${effectStyle.name}"`);
+      }
+
+      let effectsApplied = true;
+      try {
+        style.effects = newEffects;
+      } catch {
+        // Cross-version field drift (e.g. blendMode on NOISE, or a derived
+        // noiseSizeVector) can reject the whole array. Retry once with the
+        // drift-prone keys stripped before giving up on the style.
+        const sanitized = newEffects.map(function (fx: Effect): Effect {
+          const copy = { ...(fx as unknown as Record<string, unknown>) };
+          delete copy.noiseSizeVector;
+          if (copy.type === 'NOISE') delete copy.blendMode;
+          return copy as unknown as Effect;
+        });
+        try {
+          style.effects = sanitized;
+        } catch (e2) {
+          // Never abort the whole import (and its rollback) over one bad style.
+          effectsApplied = false;
+          Logger.log(`⚠️ Could not apply effects for style "${effectStyle.name}": ${e2}`);
+        }
+      }
       
-      style.effects = newEffects;
-      
-      // Bind variables
+      // Bind variables (indices remapped around any skipped effects)
+      if (!effectsApplied) return;
       for (let i = 0; i < effectStyle.effects.length; i++) {
+        const targetIndex = effectIndexMap[i];
+        if (targetIndex === -1) continue;
         const effectData = effectStyle.effects[i];
         if (effectData.boundVariables) {
           for (const [key, binding] of Object.entries(effectData.boundVariables)) {
@@ -2983,7 +3269,7 @@ const EffectStyleProcessor: StyleProcessor<ExportEffectStyle, EffectStyle> = {
               if (targetVar) {
                 try {
                   const effects = [...style.effects];
-                  effects[i] = figma.variables.setBoundVariableForEffect(effects[i], key as VariableBindableEffectField, targetVar);
+                  effects[targetIndex] = figma.variables.setBoundVariableForEffect(effects[targetIndex], key as VariableBindableEffectField, targetVar);
                   style.effects = effects;
                 } catch { /* Skip */ }
               }
@@ -3108,8 +3394,13 @@ const GridStyleProcessor: StyleProcessor<ExportGridStyle, GridStyle> = {
         }
       });
       
-      style.layoutGrids = newLayoutGrids;
-      
+      try {
+        style.layoutGrids = newLayoutGrids;
+      } catch (e) {
+        // Never abort the whole import (or its rollback) over one bad style.
+        Logger.log(`⚠️ Could not apply layout grids for style "${gridStyle.name}": ${e}`);
+      }
+
       // Bind variables
       for (let i = 0; i < gridStyle.layoutGrids.length; i++) {
         const gridData = gridStyle.layoutGrids[i];
@@ -4100,7 +4391,15 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
 
         try {
           variable.scopes = TypeMapper.arrayToScopes(value.$scopes as string[]);
-        } catch { /* Skip */ }
+        } catch {
+          // One scope this Figma build doesn't know rejects the whole array -
+          // retry with the known subset instead of silently losing every scope.
+          const knownScopes = filterKnownScopes(value.$scopes as string[]);
+          try {
+            variable.scopes = TypeMapper.arrayToScopes(knownScopes);
+            Logger.log(`  ⚠️ ${path}: dropped unknown scopes (kept ${knownScopes.length}/${(value.$scopes as string[]).length})`);
+          } catch { /* Skip */ }
+        }
 
         // Set values for each mode - raw values only in pass 1, queue aliases for pass 2
         for (const modeName of modeNames) {
@@ -4377,25 +4676,10 @@ function summarizeGroups(names: string[]): GroupSummary[] {
   return result;
 }
 
-// A paint style is exportable when it has at least one SOLID, GRADIENT, or IMAGE paint
+// A paint style is exportable when it has at least one paint. Every paint type
+// now exports - PATTERN in full, VIDEO / SHADER as markers (data is file-local).
 function isExportablePaintStyle(style: PaintStyle): boolean {
-  if (style.paints.length === 0) {
-    return false;
-  }
-  for (let i = 0; i < style.paints.length; i++) {
-    const p = style.paints[i];
-    if (
-      p.type === 'SOLID' ||
-      p.type === 'GRADIENT_LINEAR' ||
-      p.type === 'GRADIENT_RADIAL' ||
-      p.type === 'GRADIENT_ANGULAR' ||
-      p.type === 'GRADIENT_DIAMOND' ||
-      p.type === 'IMAGE'
-    ) {
-      return true;
-    }
-  }
-  return false;
+  return style.paints.length > 0;
 }
 
 async function getCollections(): Promise<void> {
@@ -5019,9 +5303,15 @@ async function restoreFromSnapshot(snapshot: UndoSnapshot): Promise<void> {
       const newVar = figma.variables.createVariable(varSnapshot.name, newCollection, varSnapshot.type);
       variableCache.setVariable(`${collSnapshot.name}/${varSnapshot.name}`, newVar);
 
-      // Set scopes if available
+      // Set scopes if available (fall back to known scopes, never throw)
       if (varSnapshot.scopes && varSnapshot.scopes.length > 0) {
-        newVar.scopes = varSnapshot.scopes as VariableScope[];
+        try {
+          newVar.scopes = varSnapshot.scopes as VariableScope[];
+        } catch {
+          try {
+            newVar.scopes = filterKnownScopes(varSnapshot.scopes) as VariableScope[];
+          } catch { /* Skip */ }
+        }
       }
 
       // Set values for each mode

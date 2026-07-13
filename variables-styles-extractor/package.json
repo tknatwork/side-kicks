@@ -1,13 +1,13 @@
 {
   "name": "variables-styles-extractor",
-  "version": "2.1.2",
+  "version": "2.2.0",
   "description": "Export and import Figma variables and styles (color, text, effect, grid) with full variable binding support. Supports all color formats: Hex, RGB, CSS, HSL, HSB. Perfect for migrating design systems between files.",
   "main": "code.js",
   "scripts": {
     "build": "tsc && terser code.js -o code.js --compress --mangle --keep-fnames",
     "build:dev": "tsc",
     "watch": "tsc --watch",
-    "test": "node tests/alias-resolution.test.mjs"
+    "test": "node tests/alias-resolution.test.mjs && node tests/type-mapper.test.mjs"
   },
   "devDependencies": {
     "@figma/plugin-typings": "^1.130.0",
