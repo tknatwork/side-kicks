@@ -4562,9 +4562,12 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
     progress.report('cache_scan', 'Scanning existing variables', 0, 0, true);
     await variableCache.rebuildLocal();
     if (needsLibraryIndex || options.useLibraryRefs) {
-      // Explicit opt-in indexes everything; otherwise only the referenced
-      // variable names get imported from connected libraries.
-      await variableCache.ensureLibraryIndex(options.useLibraryRefs ? undefined : libraryRefNames);
+      // Import ONLY the referenced library variables. libraryRefNames is the
+      // complete set the payload can reference (aliases across every mode +
+      // style variable bindings), so this is always sufficient — no need to
+      // import an entire connected library for a handful of refs, even when
+      // the user opted into preserving library references.
+      await variableCache.ensureLibraryIndex(libraryRefNames);
     }
 
     // Collect all pending aliases across all collections for pass 2

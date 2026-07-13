@@ -7970,10 +7970,11 @@
       }
       
       // Try execCommand first (works better in Figma plugin iframe)
-      function fallbackCopy() {
+      function fallbackCopy(payload) {
+        var data = (typeof payload === 'string') ? payload : exportData;
         try {
           var textarea = document.createElement('textarea');
-          textarea.value = exportData;
+          textarea.value = data;
           textarea.style.position = 'fixed';
           textarea.style.left = '-9999px';
           textarea.style.top = '0';
@@ -7992,9 +7993,23 @@
         }
       }
       
-      // In Figma plugin iframe, clipboard API is often unavailable or restricted
-      // Use fallback method directly which works better in sandboxed environments
-      fallbackCopy();
+      // Figma's plugin-iframe clipboard bridge is NOT Unicode-safe: navigator.
+      // clipboard is absent here, and document.execCommand('copy') downgrades
+      // astral-plane characters (emoji in collection/variable names, e.g.
+      // shadcn's "💨 Tailwind") to "?". Escaping every non-ASCII code unit to
+      // \uXXXX makes the copied JSON pure ASCII — it survives the bridge
+      // intact and JSON.parse restores the exact original characters on import.
+      // (Download uses a Blob and is already UTF-8-safe, so it stays raw.)
+      fallbackCopy(toAsciiSafeJson(exportData));
+    }
+
+    // Escape every code unit >= 0x7F as a JSON \uXXXX sequence (surrogate
+    // halves included). The result is valid JSON, pure ASCII, and round-trips
+    // back to the original Unicode via JSON.parse.
+    function toAsciiSafeJson(str) {
+      return str.replace(/[\u007F-\uFFFF]/g, function (ch) {
+        return '\\u' + ('0000' + ch.charCodeAt(0).toString(16)).slice(-4);
+      });
     }
 
     function downloadExport() {

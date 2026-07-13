@@ -91,6 +91,19 @@ abort an import or its rollback.
   large system no longer posts a multi-megabyte snapshot to the UI and back
   again on undo. (Undo restore itself now yields per variable batch, so it
   can't freeze Figma on one huge collection.)
+- **Copy JSON preserves emoji** in collection/variable names. Figma's
+  plugin-iframe clipboard bridge is not Unicode-safe (`navigator.clipboard`
+  is unavailable and `execCommand('copy')` downgrades astral-plane characters
+  like `💨`/`☀️` to `?`), so Copy JSON now emits pure-ASCII JSON with `\uXXXX`
+  escapes — valid JSON that survives the bridge and re-imports as the exact
+  original characters. Download was already UTF-8-safe and is unchanged.
+- **Library index always filters to referenced variables**. When an import
+  references a connected team library, only the variables the payload
+  actually references are imported (harvested from aliases across every mode
+  plus style variable bindings) — even when "use library references" is
+  enabled. Verified against a real connected library (shadcn, 590 published
+  variables): a 5-reference import indexes 5, not 590, and re-links every
+  alias and the style binding to the genuine remote library variables.
 - Verified on a 712-variable / 1059-alias / 114-style system: paste→preview
   ~1s, full import ~6s (5s of which is font loading for 102 text styles),
   full export ~1-2s, byte-identical round-trip.
