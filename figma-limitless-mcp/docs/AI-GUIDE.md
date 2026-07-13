@@ -97,6 +97,11 @@ The plugin runs with `documentAccess: "dynamic-page"`. Inside `execute_code`, us
 
 (The dedicated tools already do this — the rule is only for hand-written `execute_code`.)
 
+The sharedPluginData namespace `figmaLimitlessMcp` is RESERVED — it stores the
+document's persisted file identity (`fileKey`). Never write to or clear it in
+`execute_code`; wiping it re-buckets the file's journal and checkpoints on the
+next run.
+
 ## Multi-agent and resume
 
 - `acquire_lock` on what you mutate (`styles:text`, `page:<id>`). Locks expire on TTL — a dead agent never wedges the workspace.

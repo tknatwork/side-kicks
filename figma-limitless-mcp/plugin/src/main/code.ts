@@ -95,30 +95,67 @@ let cachedFallbackFileKey: string | null = null;
 
 const FILEKEY_NS = "figmaLimitlessMcp";
 
-// figma.fileKey is available for saved TEAM files (globally unique). For
-// personal drafts it is unavailable, so we need a fallback that is BOTH stable
-// across plugin restarts (server state — journal, checkpoints, code mappings —
-// is bucketed by fileKey) AND unique per file (two drafts named "Untitled"
-// must not collide). We persist a random key in the document itself: written
-// once on first run, read thereafter. Survives renames and restarts; distinct
-// per file. Deriving from the file name (the old approach) collided for
+// figma.fileKey is only exposed to private plugins with enablePrivatePluginApi
+// (absent from this manifest), so in practice EVERY file — drafts and team
+// files alike — uses the fallback. The fallback must be BOTH stable across
+// plugin restarts (server state — journal, checkpoints, code mappings — is
+// bucketed by fileKey) AND unique per file (two drafts named "Untitled" must
+// not collide). We persist a random key in the document itself: written once
+// on first run, read thereafter. Survives renames and restarts; distinct per
+// file. Deriving from the file name (the old approach) collided for
 // same-named drafts — surfaced by a real cross-file replication test.
 const getFileKey = (): string => {
+  let realFileKey: string | null = null;
   try {
     if (typeof figma.fileKey === "string" && figma.fileKey) {
-      return figma.fileKey;
+      realFileKey = figma.fileKey;
     }
   } catch {
     // fileKey may not be available in all contexts
   }
-  if (cachedFallbackFileKey) return cachedFallbackFileKey;
 
   let persisted = "";
+  let readFailed = false;
   try {
     persisted = figma.root.getSharedPluginData(FILEKEY_NS, "fileKey");
   } catch {
-    // shared plugin data may be unavailable in some contexts
+    // "could not read the key" must never be treated as "no key exists" —
+    // minting + writing here would clobber a document's existing key.
+    readFailed = true;
   }
+
+  if (realFileKey) {
+    if (persisted) {
+      // A real fileKey appearing on a document that already has a persisted
+      // local key re-buckets its server state. Make the flip visible so the
+      // old bucket can be found and migrated.
+      console.warn(
+        `[figma-limitless-mcp] "${figma.root.name}" now exposes figma.fileKey ` +
+          `"${realFileKey}"; earlier state may live under persisted key "${persisted}".`
+      );
+    }
+    return realFileKey;
+  }
+
+  if (cachedFallbackFileKey) {
+    // Self-heal: if the persisted key was cleared behind our back (a script
+    // via execute_code, or the one-time write undone by the user), re-persist
+    // the session key so the next run keeps the same bucket.
+    if (!readFailed && !persisted) {
+      try {
+        figma.root.setSharedPluginData(FILEKEY_NS, "fileKey", cachedFallbackFileKey);
+      } catch {
+        // Best effort — the session key still works.
+      }
+    } else if (persisted && persisted !== cachedFallbackFileKey) {
+      console.warn(
+        `[figma-limitless-mcp] Persisted file key changed mid-session ` +
+          `("${persisted}" vs "${cachedFallbackFileKey}"); keeping the session key.`
+      );
+    }
+    return cachedFallbackFileKey;
+  }
+
   if (persisted) {
     cachedFallbackFileKey = persisted;
     return persisted;
@@ -128,16 +165,24 @@ const getFileKey = (): string => {
     Math.floor(Math.random() * 0xffffffff).toString(36) +
     Date.now().toString(36);
   const key = `local-${rand}`;
-  try {
-    // One-time, invisible write (shared plugin data is not document content).
-    figma.root.setSharedPluginData(FILEKEY_NS, "fileKey", key);
-  } catch {
-    // If persistence fails, the key still works for this session.
+  let persistedOk = false;
+  if (!readFailed) {
+    try {
+      // One-time, invisible write (shared plugin data is not document content).
+      figma.root.setSharedPluginData(FILEKEY_NS, "fileKey", key);
+      // Read back: some contexts (e.g. Dev Mode) may silently reject writes.
+      persistedOk = figma.root.getSharedPluginData(FILEKEY_NS, "fileKey") === key;
+    } catch {
+      // If persistence fails, the key still works for this session.
+    }
   }
   cachedFallbackFileKey = key;
   console.warn(
     `[figma-limitless-mcp] figma.fileKey unavailable for "${figma.root.name}". ` +
-      `Using persisted per-file key "${key}".`
+      (persistedOk
+        ? `Using persisted per-file key "${key}".`
+        : `Using SESSION-ONLY key "${key}" (persistence unavailable — ` +
+          `journal/checkpoints will re-bucket on the next run).`)
   );
   return key;
 };

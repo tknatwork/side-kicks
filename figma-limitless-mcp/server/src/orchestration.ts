@@ -126,8 +126,12 @@ export const META_TOOLS = new Set([
   "get_code_mappings",
 ]);
 
-const sanitize = (value: string): string =>
-  value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "_";
+const sanitize = (value: string): string => {
+  const s = value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
+  // A dot-only result ('.', '..') would survive as a path segment and let
+  // path.join escape into the state root — remap to the safe bucket.
+  return /^\.+$/.test(s) ? "_" : s || "_";
+};
 
 /**
  * Collision-proof file stem: names like 'pass 1' and 'pass:1' sanitize
