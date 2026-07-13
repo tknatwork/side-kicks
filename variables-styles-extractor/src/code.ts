@@ -4218,7 +4218,16 @@ async function importVariables(jsonData: string, options: ImportOptions): Promis
     // Handle Clean Import: clear everything first (silent — internal step of the
     // import's own undo boundary; cancellation rethrows into the rollback path).
     if (options.clearFirst) {
-      Logger.log('🧹 Clean Import: Clearing existing variables and styles...');
+      // Make the blast radius visible before deleting anything.
+      const preCols = await figma.variables.getLocalVariableCollectionsAsync();
+      let preVars = 0;
+      for (const c of preCols) preVars += c.variableIds.length;
+      const preStyles =
+        (await figma.getLocalPaintStylesAsync()).length +
+        (await figma.getLocalTextStylesAsync()).length +
+        (await figma.getLocalEffectStylesAsync()).length +
+        (await figma.getLocalGridStylesAsync()).length;
+      Logger.log(`🧹 Clean Import: DELETING ${preCols.length} existing collections (${preVars} variables) and ${preStyles} styles before import...`);
       await clearAll(true);
       Logger.log('✅ Clean Import: Clearing complete...');
     }

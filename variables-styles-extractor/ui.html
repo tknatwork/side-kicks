@@ -6019,14 +6019,16 @@
         s.status === 'connected' ||
         ((s.status === 'mapped' || s.status === 'partial') && s.satisfiable > (s.fromImport || 0)));
       if (!importBehaviorTouched) {
-        const wanted = importDepsFileResolved ? 'smart-merge' : 'clean-import';
-        const radio = document.querySelector('input[name="import-behavior"][value="' + wanted + '"]');
-        if (radio && !radio.checked) {
-          radio.checked = true;
-          updateCustomMergeVisibility();
-          addLog(importDepsFileResolved
-            ? '🧠 Import behaviour → Smart Merge (external dependencies already present in this file)'
-            : '🧹 Import behaviour → Clean Import (external dependencies not present in this file)', 'info', 'import');
+        // Auto-select only in the PROTECTIVE direction (Smart Merge). Never
+        // auto-pick Clean Import — deleting existing content requires an
+        // explicit human choice.
+        if (importDepsFileResolved) {
+          const radio = document.querySelector('input[name="import-behavior"][value="smart-merge"]');
+          if (radio && !radio.checked) {
+            radio.checked = true;
+            updateCustomMergeVisibility();
+            addLog('🧠 Import behaviour → Smart Merge (external dependencies already present in this file)', 'info', 'import');
+          }
         }
         depsBehaviorApplied = true;
       }
@@ -6168,24 +6170,17 @@
       
       section.classList.remove('hidden');
       
-      // Auto-select import behavior based on diff:
-      // - If there's overlap (modified or unchanged items), use Smart Merge
-      // - If everything is new (no overlap with Figma), use Clean Import
-      // Skipped when the dependency-aware default already decided (external
-      // deps present in the file need Smart Merge even with zero name overlap
-      // — Clean Import would wipe them) or the user chose manually.
+      // Auto-select import behavior based on diff — PROTECTIVE direction only:
+      // overlap promotes Smart Merge; zero overlap no longer auto-selects
+      // Clean Import (wiping a populated file must be an explicit choice).
       if (!depsBehaviorApplied && !importBehaviorTouched) {
         const hasOverlap = (summary.variablesModified > 0 || summary.variablesUnchanged > 0 ||
                             summary.stylesModified > 0 || modifiedCollections.length > 0);
         const smartMergeRadio = document.querySelector('input[name="import-behavior"][value="smart-merge"]');
-        const cleanImportRadio = document.querySelector('input[name="import-behavior"][value="clean-import"]');
 
         if (hasOverlap) {
           // Existing items in Figma match JSON - Smart Merge makes sense
           if (smartMergeRadio) smartMergeRadio.checked = true;
-        } else {
-          // Everything is new, no overlap - Clean Import is recommended
-          if (cleanImportRadio) cleanImportRadio.checked = true;
         }
       }
       
@@ -6800,23 +6795,14 @@
     // In Advanced mode: respect the user's radio selection
     function getImportBehavior() {
       if (!isAdvancedMode()) {
-        // Dependency-aware rule first: external deps satisfied by this file's
-        // variables must survive the import (Smart Merge) even when the diff
-        // shows zero name overlap — Clean Import would wipe them. No deps
-        // satisfied here → Clean Import for a fresh, predictable state.
-        if (importDepsFileResolved !== null) {
-          return importDepsFileResolved ? 'smart-merge' : 'clean-import';
-        }
-        // In Simple mode, auto-determine based on diff data
-        // If there's no overlap (all new items), use Clean Import
-        // If there's overlap (modified/unchanged items), use Smart Merge
-        if (lastImportDiff) {
-          const { summary, modifiedCollections } = lastImportDiff;
-          const hasOverlap = (summary.variablesModified > 0 || summary.variablesUnchanged > 0 || 
-                              summary.stylesModified > 0 || modifiedCollections.length > 0);
-          return hasOverlap ? 'smart-merge' : 'clean-import';
-        }
-        return 'clean-import'; // Default to clean import if no diff data available
+        // Simple mode NEVER clean-imports. Clean Import deletes every existing
+        // variable and style not in the payload — that is an explicit Advanced
+        // choice, not an inferable default. (Previously auto-picked on zero
+        // name overlap, which silently wiped populated files: importing one
+        // new collection into a full design system deleted everything else.
+        // Smart Merge is additive and idempotent — an empty file imports
+        // identically under merge, so nothing is lost by defaulting to it.)
+        return 'smart-merge';
       }
       const selected = document.querySelector('input[name="import-behavior"]:checked');
       return selected ? selected.value : 'smart-merge';
@@ -8777,7 +8763,15 @@
       const libraryRefsInJson = detectLibraryRefsInImportData(finalData);
       
       // Determine merge/overwrite based on import behavior
-      const importBehavior = getImportBehavior();
+      let importBehavior = getImportBehavior();
+      // Destructive gate: Clean Import deletes every existing variable
+      // collection and local style before importing. Require explicit,
+      // informed consent every time (same policy as the confirm-gated
+      // Clear buttons). Cancel falls back to the additive Smart Merge.
+      if (importBehavior === 'clean-import') {
+        const proceed = confirm('⚠️ Clean Import will DELETE ALL existing variable collections, variables, and local styles in this file before importing.\n\nOK = delete everything, then import\nCancel = keep existing content and import with Smart Merge instead');
+        if (!proceed) importBehavior = 'smart-merge';
+      }
       const shouldMerge = importBehavior === 'smart-merge';
       const shouldOverwrite = true; // Always overwrite existing variables when they match
       

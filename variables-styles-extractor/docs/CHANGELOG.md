@@ -48,6 +48,18 @@ abort an import or its rollback.
   scope filtering, effect defaults) wired into `pnpm test`.
 
 ### Fixed
+- **CRITICAL — silent Clean Import data loss (present since 2.0.0)**: in Simple
+  mode, importing JSON with zero name overlap against the file (e.g. one brand
+  new collection into a populated design system) silently selected **Clean
+  Import**, which deletes EVERY existing variable collection and local style
+  before importing — reported as a normal "Import complete!". Reproduced live:
+  an 11-token import wiped 701 variables + 114 styles. Simple mode now ALWAYS
+  uses Smart Merge (additive; identical result on an empty file); the Advanced
+  radio no longer auto-selects Clean Import (auto-selection is protective-only);
+  choosing Clean Import now requires an explicit confirmation that states the
+  blast radius, and the backend logs exactly how many collections/variables/
+  styles are about to be deleted before clearing. Recovery for affected files:
+  the import is a single undo step (Cmd/Ctrl+Z) or use Figma version history.
 - **Import-abort hazard**: a single unknown effect type used to throw during
   `style.effects` assignment, aborting the entire import mid-write and then
   crashing the automatic rollback (which re-imported through the same code) —
