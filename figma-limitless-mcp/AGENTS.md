@@ -45,6 +45,7 @@ Motion styles enumerate; shaders API present (0 shaders in file).
 - Font rules are load-bearing: exact `{family, style}` strings only (discover via `list_fonts`, never guess); load fonts before any text/style mutation; `lineHeight`/`letterSpacing` are `{unit, value}` objects.
 - Write tools must stay Dev-Mode-guarded (`EDIT_REQUEST_TYPES`); `delete_nodes` keeps its `confirm: true` gate; `execute_code` returns JSON-only, size-capped.
 - Rebuild `plugin/dist` after ANY `plugin/src` edit and re-run the plugin in Figma — Figma loads the built bundle, not the source.
+- File keys: saved team files expose `figma.fileKey` (unique). Personal drafts don't, so the plugin persists a unique random key in the document's shared plugin data (`getFileKey`) — stable across restarts, distinct per file. Do NOT revert to name-derived keys (same-named drafts collide, breaking per-file journal/checkpoint buckets).
 
 ## Testing
 

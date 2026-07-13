@@ -93,24 +93,17 @@ type PluginResponse = {
 
 let cachedFallbackFileKey: string | null = null;
 
-// figma.fileKey is unavailable to this plugin, so the fallback key must be
-// DETERMINISTIC per file — server-side state (journal, checkpoints, code
-// mappings) is bucketed by fileKey and would orphan on every plugin re-run
-// with a random key. Derive it from the file name (djb2). Caveat: renaming
-// the file re-buckets its state; same-named files collide locally.
-const generateFallbackFileKey = (): string => {
-  const name = figma.root.name;
-  let hash = 5381;
-  for (let i = 0; i < name.length; i++) {
-    hash = ((hash << 5) + hash + name.charCodeAt(i)) | 0;
-  }
-  return `local-${(hash >>> 0).toString(36)}`;
-};
+const FILEKEY_NS = "figmaLimitlessMcp";
 
+// figma.fileKey is available for saved TEAM files (globally unique). For
+// personal drafts it is unavailable, so we need a fallback that is BOTH stable
+// across plugin restarts (server state — journal, checkpoints, code mappings —
+// is bucketed by fileKey) AND unique per file (two drafts named "Untitled"
+// must not collide). We persist a random key in the document itself: written
+// once on first run, read thereafter. Survives renames and restarts; distinct
+// per file. Deriving from the file name (the old approach) collided for
+// same-named drafts — surfaced by a real cross-file replication test.
 const getFileKey = (): string => {
-  // figma.fileKey is available for saved files; otherwise we generate a
-  // session-scoped fallback so unsaved files (and files with duplicate names)
-  // still get a stable, unique identifier for this plugin instance.
   try {
     if (typeof figma.fileKey === "string" && figma.fileKey) {
       return figma.fileKey;
@@ -118,14 +111,35 @@ const getFileKey = (): string => {
   } catch {
     // fileKey may not be available in all contexts
   }
-  if (!cachedFallbackFileKey) {
-    cachedFallbackFileKey = generateFallbackFileKey();
-    console.warn(
-      `[figma-limitless-mcp] figma.fileKey unavailable for "${figma.root.name}". ` +
-        `Using session fallback key "${cachedFallbackFileKey}".`
-    );
+  if (cachedFallbackFileKey) return cachedFallbackFileKey;
+
+  let persisted = "";
+  try {
+    persisted = figma.root.getSharedPluginData(FILEKEY_NS, "fileKey");
+  } catch {
+    // shared plugin data may be unavailable in some contexts
   }
-  return cachedFallbackFileKey;
+  if (persisted) {
+    cachedFallbackFileKey = persisted;
+    return persisted;
+  }
+
+  const rand =
+    Math.floor(Math.random() * 0xffffffff).toString(36) +
+    Date.now().toString(36);
+  const key = `local-${rand}`;
+  try {
+    // One-time, invisible write (shared plugin data is not document content).
+    figma.root.setSharedPluginData(FILEKEY_NS, "fileKey", key);
+  } catch {
+    // If persistence fails, the key still works for this session.
+  }
+  cachedFallbackFileKey = key;
+  console.warn(
+    `[figma-limitless-mcp] figma.fileKey unavailable for "${figma.root.name}". ` +
+      `Using persisted per-file key "${key}".`
+  );
+  return key;
 };
 
 const sendStatus = () => {

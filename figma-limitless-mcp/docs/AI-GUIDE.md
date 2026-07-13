@@ -77,6 +77,16 @@ Build order:
 - `get_file_digest` `scope: "all-pages"` is slow the first time — use only when you need the full component inventory.
 - Fine detail you discovered (node ids, property keys, exact font strings) goes into `save_checkpoint` — never re-discover what a ledger already holds.
 
+## Bulk operations (hundreds/thousands of nodes)
+
+For large reads and writes, keep the payload out of your context:
+
+1. **Read once, to disk.** A big `execute_code` return (e.g. a whole variable graph) exceeds the result cap and is saved to a file automatically — process it there with shell/jq, don't parse it in context.
+2. **Write via `execute_code`, not per-node tool calls.** One script creating N nodes beats N round-trips. Build a name→id map inside the script and resolve cross-references (aliases, style bindings) by name. Yield to the UI (`await new Promise(r=>setTimeout(r,0))`) every ~25 items.
+3. **Copy between files** (source → dest): read the source (its own `fileKey`), transform, then run a generated `execute_code` against the dest `fileKey`. A plugin instance is scoped to one file — you cannot read source and write dest in the same script.
+4. **Order by dependency.** Create primitive collections before the semantic collections that alias them; create variables before the styles/components that bind them.
+5. Checkpoint after each phase so a failure resumes mid-copy, not from scratch.
+
 ## Multi-agent and resume
 
 - `acquire_lock` on what you mutate (`styles:text`, `page:<id>`). Locks expire on TTL — a dead agent never wedges the workspace.
