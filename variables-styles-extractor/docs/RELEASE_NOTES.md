@@ -52,7 +52,7 @@ variable scopes, and Timing/Easing motion-token counts in the preview.
 
 Matches the listing's existing version-section style (header + "•" bullets).
 
-v2.2.0 — New style types, motion tokens & safer imports
+v2.2.0 — New style types, motion tokens, team-library support & safer, faster imports
 
 • Imports are additive by default — Simple mode always Smart Merges: it adds
 and updates, never removes. Clean Import (replace everything) is now an
@@ -76,6 +76,18 @@ longer drops the rest
 • Motion tokens are first-class: durations and easings (cubic-bezier, spring,
 steps) are counted as Timing & Easing in the preview — and native
 timing/easing variable types are supported ahead of Figma shipping them
+
+• Team-library aware: variables that reference connected library collections
+are detected, exported with their library reference, and re-linked to the
+real library variables on import (only the referenced variables are pulled
+in, so a small import against a huge library stays fast)
+
+• Faster on large design systems: parallelized reads and cached lookups make
+exporting and importing thousands of variables and cross-collection aliases
+noticeably quicker
+
+• Copy JSON now preserves emoji in collection and variable names (e.g.
+"💨 Tailwind"), so emoji-named design systems round-trip cleanly
 
 • Sturdier imports: an unsupported effect, paint, or style is skipped with a
 note instead of stopping the whole import
