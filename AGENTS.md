@@ -25,7 +25,7 @@ Builder projects have been removed):
 | Project | Folder | Status |
 |---------|--------|--------|
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published on Figma Community ([1584331992332668732](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)) |
-| Figma Limitless MCP | [`figma-limitless-mcp/`](figma-limitless-mcp/) | Active (v0.1.0, 2026-07-13) — local Figma MCP server + Desktop plugin (fork of gethopp/figma-mcp-bridge, MIT) exposing local fonts + text/effect-style tooling; registered user-scope in `~/.claude.json` |
+| Figma Limitless MCP | [`figma-limitless-mcp/`](figma-limitless-mcp/) | Active (v0.3.0, 2026-07-13) — local Figma MCP server + Desktop plugin giving AI full, unthrottled Figma access: local fonts, variable/component/prototype authoring, crash-safe orchestration (72 tools). Portions derive from an MIT-licensed upstream (notice retained in its LICENSE.md). |
 
 Also on disk but **not** part of the repo: `figma-mcp-bridge-main/` (pristine
 upstream reference ZIP — do not modify), and the gutted relics `Design System

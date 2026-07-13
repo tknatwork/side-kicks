@@ -13,6 +13,7 @@ A multi-project workspace for Figma plugins and design tools.
 | Project | Folder | Status | Notes |
 |---------|--------|--------|-------|
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.1.2 · first published 17 Jan 2026 | Figma plugin · [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
+| Figma Limitless MCP | [`figma-limitless-mcp/`](figma-limitless-mcp/) | v0.3.0 · 2026-07-13 | Local Figma MCP server + Desktop plugin — gives AI assistants full, unthrottled Figma access (local fonts, variable/component/prototype authoring, crash-safe orchestration). 72 tools. |
 
 ---
 
@@ -54,7 +55,16 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── assets/                     ← Plugin logo (SVG) + icon
 │   ├── .github/copilot-instructions.md
 │   └── docs/                       ← CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
-└── (single active project: variables-styles-extractor)
+└── figma-limitless-mcp/            ← Project: local Figma MCP (server + plugin)
+    ├── AGENTS.md                   ← Project AI rules (canonical)
+    ├── CLAUDE.md                   ← Pointer to project AGENTS.md
+    ├── README.md                   ← Public-facing docs (install, AI usage, tools)
+    ├── LICENSE.md                  ← MIT (+ retained upstream notice)
+    ├── server/                     ← MCP server (TypeScript → dist/, built locally)
+    ├── plugin/                     ← Figma Desktop plugin (TypeScript/React → dist/)
+    ├── scripts/e2e-live-test.mjs   ← Live end-to-end tool suite
+    ├── docs/                       ← structural-conventions, figma-mcp-distillation
+    └── .gcc/                       ← Project session memory + build log
 ```
 
 ---
@@ -142,4 +152,4 @@ Then update:
 
 ---
 
-*Last updated: 2026-05-22 (Portfolio-style AI structure adopted)*
+*Last updated: 2026-07-13 (added Figma Limitless MCP project)*
