@@ -500,11 +500,32 @@ export class Orchestrator {
   private readCodeMappings(fileKey: string): Record<string, unknown> {
     const p = this.codeMappingPath(fileKey);
     try {
-      if (existsSync(p)) return JSON.parse(readFileSync(p, "utf8"));
+      if (existsSync(p)) {
+        // Null-prototype object so target strings like '__proto__' behave
+        // as plain keys instead of silently vanishing.
+        return Object.assign(
+          Object.create(null),
+          JSON.parse(readFileSync(p, "utf8"))
+        );
+      }
     } catch {
-      /* corrupt — start clean */
+      // Corrupt file: preserve it for forensics instead of silently wiping.
+      try {
+        renameSync(p, p + ".corrupt");
+      } catch {
+        /* best-effort */
+      }
     }
-    return {};
+    return Object.create(null);
+  }
+
+  private writeCodeMappings(fileKey: string, mappings: Record<string, unknown>): void {
+    // Atomic write: temp file + rename, so a crash mid-write never truncates
+    // the store.
+    const p = this.codeMappingPath(fileKey);
+    const tmp = p + ".tmp";
+    writeFileSync(tmp, JSON.stringify(mappings, null, 2));
+    renameSync(tmp, p);
   }
 
   /**
@@ -537,7 +558,7 @@ export class Orchestrator {
         ts: new Date().toISOString(),
       };
     }
-    writeFileSync(this.codeMappingPath(fileKey), JSON.stringify(mappings, null, 2));
+    this.writeCodeMappings(fileKey, mappings);
     return {
       saved: params.remove !== true,
       removed: params.remove === true,
@@ -552,12 +573,25 @@ export class Orchestrator {
       typeof params.fileKey === "string" && params.fileKey
         ? params.fileKey
         : GLOBAL_BUCKET;
+    // Merge the global bucket as a fallback layer: mappings saved while no
+    // file was connected stay visible; file-bucket entries win on conflict.
     const mappings = this.readCodeMappings(fileKey);
+    if (fileKey !== GLOBAL_BUCKET) {
+      const globalMappings = this.readCodeMappings(GLOBAL_BUCKET);
+      for (const key of Object.keys(globalMappings)) {
+        if (!(key in mappings)) mappings[key] = globalMappings[key];
+      }
+    }
     const targets = Array.isArray(params.targets)
       ? (params.targets as unknown[]).filter((t): t is string => typeof t === "string")
       : null;
     const selected = targets
-      ? Object.fromEntries(targets.map((t) => [t, mappings[t] ?? null]))
+      ? Object.fromEntries(
+          targets.map((t) => [
+            t,
+            Object.prototype.hasOwnProperty.call(mappings, t) ? mappings[t] : null,
+          ])
+        )
       : mappings;
     return { fileKey, count: Object.keys(selected).length, mappings: selected };
   }

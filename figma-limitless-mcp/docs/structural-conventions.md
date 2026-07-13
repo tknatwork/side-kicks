@@ -26,7 +26,7 @@ BEFORE components — no token = no component.
 4. `combine_as_variants` (variants stack at 0,0 — the tool auto-arranges).
 5. `add_component_property` for TEXT / BOOLEAN / INSTANCE_SWAP / SLOT. Use the returned `#`-suffixed key verbatim afterwards.
 6. INSTANCE_SWAP + preferredValues for icon systems — never a variant per icon (variant explosion).
-7. Slots: `create_slot` then a SLOT property with slotSettings; slot frames reject GRID layout; instances fill slots by appending children, not setProperties.
+7. Slots: `create_slot` — the SLOT component property is created automatically (the tool returns its key; adding another via add_component_property duplicates it). Slot frames reject GRID layout; instances fill slots by appending children, not setProperties.
 8. Cap variant matrices ~30 combinations; validate with `get_file_digest` + `get_screenshot`.
 
 ## 4. Screen assembly
