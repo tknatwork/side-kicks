@@ -620,6 +620,22 @@ export const lintDesignSystemInput = z.object({
     .enum(["error", "warn", "all"])
     .optional()
     .describe("Filter findings: 'error' only, 'warn' (error+warn), or 'all' (default)"),
+  enable: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Turn ON opt-in (default-off) rules by rule_id — house-style/config rules kept off by default (advise, don't dictate). See a report's available_optin for what exists and each rule's config_shape."
+    ),
+  disable: z
+    .array(z.string())
+    .optional()
+    .describe("Turn OFF otherwise-default-on rules by rule_id."),
+  config: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      'Per-rule config keyed by rule_id, e.g. {"variant-count-ceiling-60":{"ceiling":40},"semantic-role-allowlist":{"allowlist":["bg","fg","border"]}}. Invalid/missing config for an enabled rule is reported under config_errors (non-fatal), not thrown.'
+    ),
   fileKey: fileKeyField,
 });
 

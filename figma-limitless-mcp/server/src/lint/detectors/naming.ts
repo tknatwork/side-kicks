@@ -5,7 +5,7 @@
 
 import type { Detector } from "../runner.js";
 import type { PartialFinding } from "./shared.js";
-import { analyze } from "./shared.js";
+import { analyze, roleSegment } from "./shared.js";
 
 // True chromatic hues only — neutral/gray/slate/etc. are commonly used as
 // legitimate semantic role names, so they're excluded to avoid false positives.
@@ -126,9 +126,86 @@ const surfaceOnPairCompleteness: Detector = (snap) => {
   return out;
 };
 
+// ---- Opt-in, config-driven detectors (defaultOn:false) -------------------
+// These encode a TEAM'S house style, so they never run by default — only when
+// explicitly enabled with the team's own vocabulary/params (config.ts validates
+// the shape; the runner passes it here already resolved).
+
+interface RoleAllowlistConfig {
+  allowlist: string[]; // lowercased by the resolver
+  resolvedType: string;
+}
+const semanticRoleAllowlist: Detector = (snap, config) => {
+  const cfg = config as RoleAllowlistConfig | undefined;
+  if (!cfg || !Array.isArray(cfg.allowlist) || cfg.allowlist.length === 0) return [];
+  const allow = new Set(cfg.allowlist);
+  const a = analyze(snap);
+  const out: PartialFinding[] = [];
+  for (const v of a.variables) {
+    if (v.tier !== "semantic" || v.resolvedType !== cfg.resolvedType) continue;
+    const role = roleSegment(v.name);
+    if (!allow.has(role)) {
+      out.push({
+        rule_id: "semantic-role-allowlist",
+        variableId: v.id,
+        message: `Semantic ${cfg.resolvedType} token '${v.name}' uses role '${role}', not in the configured allowlist (${cfg.allowlist.join(", ")}); rename to an approved role or extend the allowlist deliberately.`,
+      });
+    }
+  }
+  return out;
+};
+
+interface TierVocabConfig {
+  vocab: { primitive?: string[]; semantic?: string[]; component?: string[] };
+}
+const topSegmentInTierVocabulary: Detector = (snap, config) => {
+  const cfg = config as TierVocabConfig | undefined;
+  if (!cfg || !cfg.vocab) return [];
+  const a = analyze(snap);
+  const out: PartialFinding[] = [];
+  for (const v of a.variables) {
+    const list = cfg.vocab[v.tier as "primitive" | "semantic" | "component"];
+    if (!list || list.length === 0) continue; // no vocabulary configured for this tier
+    const top = roleSegment(v.name);
+    if (!list.includes(top)) {
+      out.push({
+        rule_id: "top-segment-in-tier-vocabulary",
+        variableId: v.id,
+        message: `${v.tier} token '${v.name}' starts with '${top}', not in the configured ${v.tier} vocabulary (${list.join(", ")}); rename or move it to the tier its name implies.`,
+      });
+    }
+  }
+  return out;
+};
+
+interface ZeroPadConfig {
+  width: number;
+}
+const numericScaleZeroPadded: Detector = (snap, config) => {
+  const width = (config as ZeroPadConfig | undefined)?.width ?? 3;
+  const a = analyze(snap);
+  const out: PartialFinding[] = [];
+  for (const v of a.variables) {
+    for (const seg of v.name.split("/")) {
+      if (/^\d+$/.test(seg) && seg.length < width) {
+        out.push({
+          rule_id: "numeric-scale-zero-padded",
+          variableId: v.id,
+          message: `'${v.name}' has numeric step '${seg}' not zero-padded to ${width} digits (e.g. '${seg.padStart(width, "0")}'); pad for stable sort order and codegen.`,
+        });
+        break; // one finding per variable
+      }
+    }
+  }
+  return out;
+};
+
 export const namingDetectors: Record<string, Detector> = {
   "name-kebab-segments": nameKebabSegments,
   "name-slash-structure-depth": nameSlashStructureDepth,
   "hue-ramp-words-primitives-only": hueRampWordsPrimitivesOnly,
   "surface-on-pair-completeness": surfaceOnPairCompleteness,
+  "semantic-role-allowlist": semanticRoleAllowlist,
+  "top-segment-in-tier-vocabulary": topSegmentInTierVocabulary,
+  "numeric-scale-zero-padded": numericScaleZeroPadded,
 };

@@ -110,13 +110,19 @@ const noAssetEnumerationVariant: Detector = (snap) => {
   return out;
 };
 
-const VARIANT_MATRIX_CEILING = 60;
+const DEFAULT_VARIANT_CEILING = 60;
+
+interface CeilingConfig {
+  ceiling: number;
+}
 
 // The full variant matrix is the PRODUCT of each VARIANT property's option
-// count. Past ~60 cells a set gets slow to edit and instantiate; the fix is to
-// convert an axis to a BOOLEAN/INSTANCE_SWAP prop or split the component.
-// Computed from propertyDefinitions alone — no variant-child data needed.
-const variantCountCeiling60: Detector = (snap) => {
+// count. Past the ceiling (~60 by default, tunable via config) a set gets slow
+// to edit and instantiate; the fix is to convert an axis to a BOOLEAN/
+// INSTANCE_SWAP prop or split the component. Computed from propertyDefinitions
+// alone — no variant-child data needed.
+const variantCountCeiling60: Detector = (snap, config) => {
+  const ceiling = (config as CeilingConfig | undefined)?.ceiling ?? DEFAULT_VARIANT_CEILING;
   const out: PartialFinding[] = [];
   for (const c of snap.components ?? []) {
     const defs = c.propertyDefinitions;
@@ -130,11 +136,11 @@ const variantCountCeiling60: Detector = (snap) => {
         variantProps++;
       }
     }
-    if (variantProps > 0 && product > VARIANT_MATRIX_CEILING) {
+    if (variantProps > 0 && product > ceiling) {
       out.push({
         rule_id: "variant-count-ceiling-60",
         nodeId: c.id,
-        message: `Component '${c.name}' declares a ${product}-cell variant matrix across ${variantProps} variant propert${variantProps === 1 ? "y" : "ies"}; past ~${VARIANT_MATRIX_CEILING} the set gets slow and unwieldy — convert an axis to a BOOLEAN/INSTANCE_SWAP property or split the component.`,
+        message: `Component '${c.name}' declares a ${product}-cell variant matrix across ${variantProps} variant propert${variantProps === 1 ? "y" : "ies"}; past ~${ceiling} the set gets slow and unwieldy — convert an axis to a BOOLEAN/INSTANCE_SWAP property or split the component.`,
       });
     }
   }

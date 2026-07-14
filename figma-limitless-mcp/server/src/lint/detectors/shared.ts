@@ -69,7 +69,21 @@ function nameHint(name: string): Tier {
  * Empty/ambiguous collections fall back to a name hint. A cyclic graph
  * classifies both ends as component (the acyclic rule flags the cycle).
  */
+// analyze() is called independently by ~30 detectors; recomputing the alias-DAG
+// classification per detector over a 1,121-variable / 48-page file is wasteful.
+// Memoize on the snapshot identity (WeakMap = no leak, GC-friendly) so the whole
+// suite pays the cost once — transparently, with zero detector changes.
+const analysisCache = new WeakMap<LintSnapshot, Analysis>();
+
 export function analyze(snap: LintSnapshot): Analysis {
+  const cached = analysisCache.get(snap);
+  if (cached) return cached;
+  const result = computeAnalysis(snap);
+  analysisCache.set(snap, result);
+  return result;
+}
+
+function computeAnalysis(snap: LintSnapshot): Analysis {
   const varById = new Map(snap.variables.map((v) => [v.id, v]));
   const collName = new Map(snap.collections.map((c) => [c.id, c.name]));
   const collModes = new Map(

@@ -68,12 +68,27 @@ must only assert what they can prove: e.g. a11y contrast pairs fg↔bg *only* vi
 the explicit `on-<X>` naming convention, never by guessing from suffixes (loose
 matching fabricated 53 findings on a real 3-tier DS that just doesn't use `on-X`).
 
+**Opt-in config surface.** House-style / config-required rules (`semantic-role-allowlist`,
+`top-segment-in-tier-vocabulary`, `numeric-scale-zero-padded`, `codesyntax-web-matches-name`)
+are marked `defaultOn:false` in the registry and run ONLY when explicitly enabled
+— so the default lint stays advisory-but-precise. `runLint`/`lint_design_system`
+take `enable[]` / `disable[]` / `config{}` (per-rule, keyed by rule_id). Config is
+validated in `lint/config.ts` (`resolveRuleConfig` → `LintConfigError`); bad/missing
+config for an enabled rule is reported under `config_errors` and the rule skipped —
+never a crash (detectors also run inside per-rule try/catch → `rule_failures`). The
+report's `available_optin[]` advertises every off-by-default rule with its
+`config_shape` + an `enable_hint`, so the AI can discover and turn them on.
+`analyze(snap)` is WeakMap-memoized so the whole suite classifies the graph once.
+
 **Adding a detector** touches 3 places: the pure fn in
-`server/src/lint/detectors/<tier>.ts` + its bundle export, the `Object.assign` in
-`detectors/register.ts`, and the rule entry in `server/src/lint/registry.ts`
-(objectively-broken → `error`, else `warn`). Then add a fixture case to
-`server/test/` and, if it belongs to a build step, wire it into `STEP_GATES` in
-`skills.ts`.
+`server/src/lint/detectors/<tier>.ts` (signature `(snap, config?)`) + its bundle
+export (already `Object.assign`ed in `detectors/register.ts`), and the rule entry
+in `server/src/lint/registry.ts` (objectively-broken → `error`, else `warn`; add
+`defaultOn:false` for house-style/config rules). For a **configurable/opt-in**
+rule also add a `RULE_CONFIG` entry in `lint/config.ts` (shape + defaults +
+validation) and read the resolved `config` arg in the detector. Then add a fixture
+case to `server/test/` and, if it belongs to a build step, wire it into
+`STEP_GATES` in `skills.ts`.
 
 ## Conventions & invariants
 

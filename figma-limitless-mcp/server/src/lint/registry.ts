@@ -10,6 +10,14 @@ export interface RuleMeta {
   severity: RuleSeverity;
   skillUri: string;
   fixHint: string;
+  /**
+   * Whether the rule runs by default. Omitted => true. Set false for opinionated
+   * or config-required rules (house-style vocabularies, allowlists) that would
+   * be noise default-on — they run only when explicitly enabled (opts.enable /
+   * opts.only). Keeps the default lint advisory-but-precise (advise, don't
+   * dictate) while letting a team opt in to house-style enforcement.
+   */
+  defaultOn?: boolean;
 }
 
 export const RULES: RuleMeta[] = [
@@ -210,6 +218,7 @@ export const RULES: RuleMeta[] = [
     title: "codeSyntax.WEB must be derivable from the variable name",
     category: "code-output",
     severity: "warn",
+    defaultOn: false, // code names legitimately differ from design names — opt-in
     skillUri: "skill://design-system/design-to-code-correctness",
     fixHint: "Regenerate codeSyntax.WEB from the canonical name so design and code stay in lockstep.",
   },
@@ -306,6 +315,7 @@ export const RULES: RuleMeta[] = [
     title: "Top name segment must belong to the tier vocabulary",
     category: "naming",
     severity: "error",
+    defaultOn: false, // needs a team-supplied per-tier vocabulary — opt-in
     skillUri: "skill://design-system/accessibility-naming-conventions",
     fixHint: "Rename so the leading segment matches the tier's controlled vocabulary, or move the token to the tier its name implies.",
   },
@@ -314,6 +324,7 @@ export const RULES: RuleMeta[] = [
     title: "Numeric scale steps must be zero-padded to 3 digits",
     category: "naming",
     severity: "warn",
+    defaultOn: false, // zero-padding is a house style, not a universal rule — opt-in
     skillUri: "skill://design-system/accessibility-naming-conventions",
     fixHint: "Zero-pad scale steps to three digits for stable sort order and codegen.",
   },
@@ -330,6 +341,7 @@ export const RULES: RuleMeta[] = [
     title: "Semantic color names must use the closed role allowlist",
     category: "naming",
     severity: "warn",
+    defaultOn: false, // the role vocabulary is a team's own choice — opt-in
     skillUri: "skill://design-system/accessibility-naming-conventions",
     fixHint: "Rename to an approved role/intent, or extend the allowlist deliberately rather than ad hoc.",
   },

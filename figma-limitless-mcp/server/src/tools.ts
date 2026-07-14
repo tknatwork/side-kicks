@@ -737,9 +737,9 @@ export function registerTools(
 
   server.tool(
     "lint_design_system",
-    "Structure-lint the design system in the current file against the 57-rule canonical catalog. Gathers the variable graph, styles, and components (loads all pages) and reports structural defects — color token on ALL_SCOPES, node bound to a primitive, dangling alias, missing codeSyntax, low-contrast token pairs, etc. — each with a fix hint linked to the skill that explains it. Run after every build step: build -> lint -> fix. Detectors roll out tier-by-tier; not-yet-implemented rules are listed under not_yet_implemented.",
+    "Structure-lint the design system in the current file against the canonical catalog. Gathers the variable graph, styles, and components (loads all pages) and reports structural defects — color token on ALL_SCOPES, node bound to a primitive, dangling alias, missing codeSyntax, low-contrast token pairs, etc. — each with a fix hint linked to the skill that explains it. Run after every build step: build -> lint -> fix. Advise-not-dictate: only objectively-broken issues are severity:error; opinionated/house-style rules are OFF by default — see available_optin and turn them on with enable:[rule_id] + config:{rule_id:{…}} (report config_errors flags bad config; not_yet_implemented lists rules whose detector hasn't landed).",
     lintDesignSystemInput.shape,
-    async ({ only, categories, severity, fileKey }): Promise<ToolResult> =>
+    async ({ only, categories, severity, enable, disable, config, fileKey }): Promise<ToolResult> =>
       renderLocal(async () => {
         const resp = await node.sendWithParams(
           "lint_run",
@@ -749,7 +749,14 @@ export function registerTools(
           { timeoutMs: 120_000 }
         );
         if (resp.error) throw new Error(resp.error);
-        return runLint(resp.data as LintSnapshot, { only, categories, severity });
+        return runLint(resp.data as LintSnapshot, {
+          only,
+          categories,
+          severity,
+          enable,
+          disable,
+          config,
+        });
       })
   );
 

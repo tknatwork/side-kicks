@@ -70,8 +70,45 @@ const publishedVariableHasDescription: Detector = (snap) => {
   return out;
 };
 
+// Opt-in (defaultOn:false): code names legitimately differ from design names, so
+// this only runs when a team asks for it. Fuzzy drift check — flags a WEB
+// codeSyntax that shares fewer than `minSharedSegments` alphanumeric tokens with
+// the variable name (a strong signal the codeSyntax was copy-pasted / left stale).
+const segTokens = (s: string): Set<string> => {
+  const set = new Set<string>();
+  for (const t of s.toLowerCase().split(/[^a-z0-9]+/)) if (t) set.add(t);
+  return set;
+};
+
+interface WebMatchConfig {
+  minSharedSegments: number;
+}
+const codesyntaxWebMatchesName: Detector = (snap, config) => {
+  const min = (config as WebMatchConfig | undefined)?.minSharedSegments ?? 1;
+  const a = analyze(snap);
+  const out: PartialFinding[] = [];
+  for (const v of a.variables) {
+    const web = webOf(v);
+    if (web === undefined) continue;
+    const nameTokens = segTokens(v.name);
+    const webTokens = segTokens(web);
+    if (nameTokens.size === 0 || webTokens.size === 0) continue;
+    let shared = 0;
+    for (const t of webTokens) if (nameTokens.has(t)) shared++;
+    if (shared < min) {
+      out.push({
+        rule_id: "codesyntax-web-matches-name",
+        variableId: v.id,
+        message: `'${v.name}' has WEB codeSyntax '${web}' sharing ${shared} name segment(s) (< ${min} required); likely stale or mis-set — codegen would emit a name unrelated to the token.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const codegenDetectors: Record<string, Detector> = {
   "published-variable-has-codesyntax-web": publishedVariableHasCodesyntaxWeb,
   "codesyntax-web-unique": codesyntaxWebUnique,
   "published-variable-has-description": publishedVariableHasDescription,
+  "codesyntax-web-matches-name": codesyntaxWebMatchesName,
 };

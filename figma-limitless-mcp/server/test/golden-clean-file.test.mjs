@@ -66,9 +66,11 @@ test("golden clean DS produces zero findings across the full suite", () => {
   assert.equal(report.summary.warnings, 0);
 });
 
-test("every implemented detector actually ran on the golden DS (no silent skips)", () => {
+test("every default-on implemented detector ran on the golden DS (no silent skips)", () => {
   const report = runLint(goldenSnapshot(), { severity: "all" });
-  const implemented = ruleInventory().filter((r) => r.implemented).length;
-  assert.equal(report.summary.rules_run, implemented);
-  assert.ok(implemented >= 30, `expected >=30 implemented detectors, got ${implemented}`);
+  // Opt-in (defaultOn:false) rules don't run in a default lint, so the invariant
+  // is: rules_run == implemented AND default-on.
+  const defaultOnImpl = ruleInventory().filter((r) => r.implemented && r.defaultOn).length;
+  assert.equal(report.summary.rules_run, defaultOnImpl);
+  assert.ok(defaultOnImpl >= 30, `expected >=30 default-on detectors, got ${defaultOnImpl}`);
 });
