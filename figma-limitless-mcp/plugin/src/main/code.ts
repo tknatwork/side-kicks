@@ -62,6 +62,29 @@ type RequestType =
   | "import_library_asset"
   | "list_library_variables"
   | "create_slot"
+  | "get_slots"
+  | "reset_slot"
+  | "append_to_slot"
+  | "create_sticky"
+  | "create_shape_with_text"
+  | "create_connector"
+  | "create_section"
+  | "create_table"
+  | "create_code_block"
+  | "create_gif"
+  | "create_slide"
+  | "create_slide_row"
+  | "set_slide_transition"
+  | "set_slide_skip"
+  | "focus_slide"
+  | "get_slide_grid"
+  | "set_slide_grid"
+  | "create_buzz_frame"
+  | "set_buzz_asset_type"
+  | "get_buzz_content"
+  | "set_buzz_text"
+  | "buzz_smart_resize"
+  | "lint_run"
   | "dev_resources";
 
 type ServerRequestParams = Record<string, unknown> & {
@@ -886,16 +909,97 @@ const EDIT_REQUEST_TYPES = new Set<RequestType>([
   "create_effect_style",
   "import_library_asset",
   "create_slot",
+  "reset_slot",
+  "append_to_slot",
 ]);
 
 const requireEditorMode = (toolName: RequestType): void => {
-  // Dev Mode is read-only — every figma.create*/setter throws at runtime there,
-  // and the resulting errors are confusing. Reject up front with a clear hint.
-  if (figma.editorType === "dev") {
+  // The plugin runs across multiple editors (figma/figjam/slides/buzz/dev), but
+  // design-canvas write tools only apply to the design-style surfaces. Reject up
+  // front with a clear, editor-specific hint instead of a confusing runtime error.
+  const editor = figma.editorType;
+  if (editor === "dev") {
     throw new Error(
-      `${toolName} requires the plugin to be opened in Figma's design editor (Dev Mode is read-only). Switch to the design editor and re-run.`
+      `${toolName} requires an editable surface — Dev Mode is read-only. Switch to the design editor and re-run.`
     );
   }
+  if (editor === "figjam") {
+    throw new Error(
+      `${toolName} is a design-canvas tool and isn't available in FigJam. Use FigJam-native creation (figma.createSticky/createConnector/createSection/…) via execute_code, or run this tool in a Figma design file.`
+    );
+  }
+};
+
+const FIGJAM_REQUEST_TYPES = new Set<RequestType>([
+  "create_sticky",
+  "create_shape_with_text",
+  "create_connector",
+  "create_section",
+  "create_table",
+  "create_code_block",
+  "create_gif",
+]);
+
+const requireFigJam = (toolName: RequestType): void => {
+  if (figma.editorType !== "figjam") {
+    throw new Error(
+      `${toolName} is a FigJam tool and only runs in a FigJam file (current editor: ${figma.editorType}). Open a FigJam board and re-run.`
+    );
+  }
+};
+
+const SLIDES_REQUEST_TYPES = new Set<RequestType>([
+  "create_slide",
+  "create_slide_row",
+  "set_slide_transition",
+  "set_slide_skip",
+  "focus_slide",
+  "get_slide_grid",
+  "set_slide_grid",
+]);
+
+const requireSlides = (toolName: RequestType): void => {
+  if (figma.editorType !== "slides") {
+    throw new Error(
+      `${toolName} is a Figma Slides tool and only runs in a Slides file (current editor: ${figma.editorType}). Open a Slides file and re-run.`
+    );
+  }
+};
+
+const BUZZ_REQUEST_TYPES = new Set<RequestType>([
+  "create_buzz_frame",
+  "set_buzz_asset_type",
+  "get_buzz_content",
+  "set_buzz_text",
+  "buzz_smart_resize",
+]);
+
+const requireBuzz = (toolName: RequestType): void => {
+  if (figma.editorType !== "buzz") {
+    throw new Error(
+      `${toolName} is a Figma Buzz tool and only runs in a Buzz file (current editor: ${figma.editorType}). Open a Buzz file and re-run.`
+    );
+  }
+};
+
+const solidPaintFromHex = (hex: string): SolidPaint => ({
+  type: "SOLID",
+  color: parseHexColor(hex),
+});
+
+// FigJam text lives in a TextSublayerNode; setting characters requires the
+// sublayer's font loaded first (Inter Medium is the FigJam default).
+const setSublayerText = async (
+  sublayer: TextSublayerNode,
+  text: string
+): Promise<void> => {
+  const font = sublayer.fontName;
+  if (typeof font === "symbol") {
+    await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+  } else {
+    await figma.loadFontAsync(font);
+  }
+  sublayer.characters = text;
 };
 
 const handleRequest = async (
@@ -904,6 +1008,15 @@ const handleRequest = async (
   try {
     if (EDIT_REQUEST_TYPES.has(request.type)) {
       requireEditorMode(request.type);
+    }
+    if (FIGJAM_REQUEST_TYPES.has(request.type)) {
+      requireFigJam(request.type);
+    }
+    if (SLIDES_REQUEST_TYPES.has(request.type)) {
+      requireSlides(request.type);
+    }
+    if (BUZZ_REQUEST_TYPES.has(request.type)) {
+      requireBuzz(request.type);
     }
     switch (request.type) {
       case "get_document":
@@ -2687,6 +2800,89 @@ const handleRequest = async (
               variable.remove();
               return { action: a.action, deleted: name };
             }
+            case "rename_variable": {
+              if (typeof a.variableId !== "string" || typeof a.name !== "string") {
+                throw new Error("rename_variable needs variableId and name");
+              }
+              const variable = await figma.variables.getVariableByIdAsync(a.variableId);
+              if (!variable) throw new Error(`Variable not found: ${a.variableId}`);
+              variable.name = a.name;
+              return { action: a.action, variableId: variable.id, name: variable.name };
+            }
+            case "update_variable": {
+              if (typeof a.variableId !== "string") {
+                throw new Error("update_variable needs variableId");
+              }
+              const variable = await figma.variables.getVariableByIdAsync(a.variableId);
+              if (!variable) throw new Error(`Variable not found: ${a.variableId}`);
+              if (Array.isArray(a.scopes)) {
+                variable.scopes = a.scopes as VariableScope[];
+              }
+              if (typeof a.description === "string") {
+                variable.description = a.description;
+              }
+              if (typeof a.hiddenFromPublishing === "boolean") {
+                variable.hiddenFromPublishing = a.hiddenFromPublishing;
+              }
+              if (a.codeSyntax && typeof a.codeSyntax === "object") {
+                for (const [platform, value] of Object.entries(
+                  a.codeSyntax as Record<string, unknown>
+                )) {
+                  if (typeof value === "string") {
+                    variable.setVariableCodeSyntax(
+                      platform as CodeSyntaxPlatform,
+                      value
+                    );
+                  }
+                }
+              }
+              return { action: a.action, variableId: variable.id };
+            }
+            case "rename_collection": {
+              if (typeof a.collectionId !== "string" || typeof a.name !== "string") {
+                throw new Error("rename_collection needs collectionId and name");
+              }
+              const collection =
+                await figma.variables.getVariableCollectionByIdAsync(a.collectionId);
+              if (!collection) throw new Error(`Collection not found: ${a.collectionId}`);
+              collection.name = a.name;
+              return { action: a.action, collectionId: collection.id, name: collection.name };
+            }
+            case "delete_collection": {
+              if (typeof a.collectionId !== "string") {
+                throw new Error("delete_collection needs collectionId");
+              }
+              const collection =
+                await figma.variables.getVariableCollectionByIdAsync(a.collectionId);
+              if (!collection) throw new Error(`Collection not found: ${a.collectionId}`);
+              const name = collection.name;
+              collection.remove();
+              return { action: a.action, deleted: name };
+            }
+            case "rename_mode": {
+              if (
+                typeof a.collectionId !== "string" ||
+                typeof a.modeId !== "string" ||
+                typeof a.name !== "string"
+              ) {
+                throw new Error("rename_mode needs collectionId, modeId, and name");
+              }
+              const collection =
+                await figma.variables.getVariableCollectionByIdAsync(a.collectionId);
+              if (!collection) throw new Error(`Collection not found: ${a.collectionId}`);
+              collection.renameMode(a.modeId, a.name);
+              return { action: a.action, modeId: a.modeId, name: a.name };
+            }
+            case "remove_mode": {
+              if (typeof a.collectionId !== "string" || typeof a.modeId !== "string") {
+                throw new Error("remove_mode needs collectionId and modeId");
+              }
+              const collection =
+                await figma.variables.getVariableCollectionByIdAsync(a.collectionId);
+              if (!collection) throw new Error(`Collection not found: ${a.collectionId}`);
+              collection.removeMode(a.modeId);
+              return { action: a.action, removedModeId: a.modeId };
+            }
             default:
               throw new Error(`Unknown write_variables action: ${String(a.action)}`);
           }
@@ -3748,6 +3944,824 @@ const handleRequest = async (
           },
         };
       }
+      case "get_slots": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for get_slots");
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node) throw new Error(`Node not found: ${nodeId}`);
+        const slots: SlotNode[] = [];
+        if (node.type === "SLOT") slots.push(node);
+        if ("findAll" in node) {
+          for (const found of (node as ChildrenMixin).findAll(
+            (n) => n.type === "SLOT"
+          )) {
+            slots.push(found as SlotNode);
+          }
+        }
+        const slotData = slots.map((s) => ({
+          slotId: s.id,
+          name: s.name,
+          childCount: s.children.length,
+          limitViolations: s.limitViolations,
+        }));
+        let slotProperties:
+          | Array<{
+              key: string;
+              description?: string;
+              slotSettings?: SlotSettings;
+            }>
+          | undefined;
+        if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+          slotProperties = Object.entries(node.componentPropertyDefinitions)
+            .filter(([, def]) => def.type === "SLOT")
+            .map(([key, def]) => ({
+              key,
+              description: def.description,
+              slotSettings: def.slotSettings,
+            }));
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, slots: slotData, slotProperties },
+        };
+      }
+      case "reset_slot": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for reset_slot");
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node || node.type !== "SLOT") {
+          throw new Error(
+            `reset_slot needs a SLOT node, got ${node?.type ?? "missing"}`
+          );
+        }
+        node.resetSlot();
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { slotId: node.id, reset: true },
+        };
+      }
+      case "append_to_slot": {
+        const params = request.params ?? {};
+        const slotId = params.slotId;
+        const childId = params.nodeId;
+        if (typeof slotId !== "string" || typeof childId !== "string") {
+          throw new Error("append_to_slot needs slotId and nodeId");
+        }
+        const slot = await figma.getNodeByIdAsync(slotId);
+        if (!slot || slot.type !== "SLOT") {
+          throw new Error(
+            `append_to_slot slotId must be a SLOT, got ${slot?.type ?? "missing"}`
+          );
+        }
+        const child = await getSceneNodeById(childId);
+        if (typeof params.index === "number") {
+          slot.insertChild(params.index, child);
+        } else {
+          slot.appendChild(child);
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            slotId: slot.id,
+            appended: child.id,
+            childCount: slot.children.length,
+            limitViolations: slot.limitViolations,
+          },
+        };
+      }
+      case "create_sticky": {
+        const params = request.params ?? {};
+        const sticky = figma.createSticky();
+        if (params.wide === true) sticky.isWideWidth = true;
+        if (typeof params.fillHex === "string") {
+          sticky.fills = [solidPaintFromHex(params.fillHex)];
+        }
+        if (typeof params.text === "string") {
+          await setSublayerText(sticky.text, params.text);
+        }
+        positionNode(sticky, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: sticky.id, nodeName: sticky.name },
+        };
+      }
+      case "create_shape_with_text": {
+        const params = request.params ?? {};
+        const shape = figma.createShapeWithText();
+        if (typeof params.shapeType === "string") {
+          shape.shapeType = params.shapeType as ShapeWithTextNode["shapeType"];
+        }
+        if (typeof params.fillHex === "string") {
+          shape.fills = [solidPaintFromHex(params.fillHex)];
+        }
+        if (typeof params.text === "string") {
+          await setSublayerText(shape.text, params.text);
+        }
+        if (typeof params.width === "number" && typeof params.height === "number") {
+          shape.resize(params.width, params.height);
+        }
+        positionNode(shape, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: shape.id, shapeType: shape.shapeType },
+        };
+      }
+      case "create_connector": {
+        const params = request.params ?? {};
+        const connector = figma.createConnector();
+        const makeEndpoint = (
+          nodeId: unknown,
+          x: unknown,
+          y: unknown,
+          magnet: unknown
+        ): ConnectorEndpoint => {
+          if (typeof nodeId === "string") {
+            return {
+              endpointNodeId: nodeId,
+              magnet: (typeof magnet === "string" ? magnet : "AUTO") as
+                | "NONE"
+                | "AUTO"
+                | "TOP"
+                | "LEFT"
+                | "BOTTOM"
+                | "RIGHT"
+                | "CENTER",
+            };
+          }
+          return {
+            position: {
+              x: typeof x === "number" ? x : 0,
+              y: typeof y === "number" ? y : 0,
+            },
+          };
+        };
+        connector.connectorStart = makeEndpoint(
+          params.startNodeId,
+          params.startX,
+          params.startY,
+          params.startMagnet
+        );
+        connector.connectorEnd = makeEndpoint(
+          params.endNodeId,
+          params.endX,
+          params.endY,
+          params.endMagnet
+        );
+        if (typeof params.lineType === "string") {
+          connector.connectorLineType = params.lineType as
+            | "ELBOWED"
+            | "STRAIGHT"
+            | "CURVED";
+        }
+        if (typeof params.startCap === "string") {
+          connector.connectorStartStrokeCap = params.startCap as ConnectorStrokeCap;
+        }
+        if (typeof params.endCap === "string") {
+          connector.connectorEndStrokeCap = params.endCap as ConnectorStrokeCap;
+        }
+        if (typeof params.text === "string") {
+          await setSublayerText(connector.text, params.text);
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: connector.id },
+        };
+      }
+      case "create_section": {
+        const params = request.params ?? {};
+        const section = figma.createSection();
+        if (typeof params.name === "string") section.name = params.name;
+        if (typeof params.width === "number" && typeof params.height === "number") {
+          section.resizeWithoutConstraints(params.width, params.height);
+        }
+        positionNode(section, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: section.id, nodeName: section.name },
+        };
+      }
+      case "create_table": {
+        const params = request.params ?? {};
+        const rows = typeof params.rows === "number" ? params.rows : 2;
+        const columns = typeof params.columns === "number" ? params.columns : 2;
+        const table = figma.createTable(rows, columns);
+        if (Array.isArray(params.cells)) {
+          const cellRows = params.cells as unknown[];
+          for (let r = 0; r < cellRows.length && r < table.numRows; r++) {
+            const row = cellRows[r];
+            if (!Array.isArray(row)) continue;
+            for (let c = 0; c < row.length && c < table.numColumns; c++) {
+              const value = row[c];
+              if (typeof value === "string" && value.length > 0) {
+                await setSublayerText(table.cellAt(r, c).text, value);
+              }
+            }
+          }
+        }
+        positionNode(table, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: table.id,
+            numRows: table.numRows,
+            numColumns: table.numColumns,
+          },
+        };
+      }
+      case "create_code_block": {
+        const params = request.params ?? {};
+        if (typeof params.code !== "string") {
+          throw new Error("create_code_block needs code");
+        }
+        const block = figma.createCodeBlock();
+        block.code = params.code;
+        if (typeof params.language === "string") {
+          block.codeLanguage = params.language as CodeBlockNode["codeLanguage"];
+        }
+        positionNode(block, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: block.id, codeLanguage: block.codeLanguage },
+        };
+      }
+      case "create_gif": {
+        const params = request.params ?? {};
+        if (typeof params.hash !== "string") {
+          throw new Error("create_gif needs a media hash");
+        }
+        const gif = figma.createGif(params.hash);
+        positionNode(gif, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: gif.id },
+        };
+      }
+      case "create_slide": {
+        const params = request.params ?? {};
+        const row = typeof params.row === "number" ? params.row : undefined;
+        const col = typeof params.col === "number" ? params.col : undefined;
+        const slide =
+          row !== undefined && col !== undefined
+            ? figma.createSlide(row, col)
+            : row !== undefined
+              ? figma.createSlide(row)
+              : figma.createSlide();
+        if (typeof params.backgroundHex === "string") {
+          slide.fills = [solidPaintFromHex(params.backgroundHex)];
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: slide.id, nodeName: slide.name },
+        };
+      }
+      case "create_slide_row": {
+        const params = request.params ?? {};
+        const row = typeof params.row === "number" ? params.row : undefined;
+        const slideRow =
+          row !== undefined ? figma.createSlideRow(row) : figma.createSlideRow();
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: slideRow.id },
+        };
+      }
+      case "set_slide_transition": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("set_slide_transition needs a slide nodeId");
+        }
+        const node = await figma.getNodeByIdAsync(params.nodeId);
+        if (!node || node.type !== "SLIDE") {
+          throw new Error(
+            `set_slide_transition needs a SLIDE node, got ${node?.type ?? "missing"}`
+          );
+        }
+        const current = node.getSlideTransition();
+        const transition: SlideTransition = {
+          style: (typeof params.style === "string"
+            ? params.style
+            : current.style) as SlideTransition["style"],
+          duration:
+            typeof params.duration === "number" ? params.duration : current.duration,
+          curve: (typeof params.curve === "string"
+            ? params.curve
+            : current.curve) as SlideTransition["curve"],
+          timing: {
+            type: (typeof params.timingType === "string"
+              ? params.timingType
+              : current.timing.type) as "ON_CLICK" | "AFTER_DELAY",
+            delay:
+              typeof params.delay === "number" ? params.delay : current.timing.delay,
+          },
+        };
+        node.setSlideTransition(transition);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, transition },
+        };
+      }
+      case "set_slide_skip": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("set_slide_skip needs a slide nodeId");
+        }
+        const node = await figma.getNodeByIdAsync(params.nodeId);
+        if (!node || node.type !== "SLIDE") {
+          throw new Error(
+            `set_slide_skip needs a SLIDE node, got ${node?.type ?? "missing"}`
+          );
+        }
+        node.isSkippedSlide = params.skip === true;
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, isSkippedSlide: node.isSkippedSlide },
+        };
+      }
+      case "focus_slide": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("focus_slide needs a slide nodeId");
+        }
+        const node = await figma.getNodeByIdAsync(params.nodeId);
+        if (!node || node.type !== "SLIDE") {
+          throw new Error(
+            `focus_slide needs a SLIDE node, got ${node?.type ?? "missing"}`
+          );
+        }
+        figma.currentPage.focusedSlide = node;
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { focusedSlideId: node.id },
+        };
+      }
+      case "get_slide_grid": {
+        const grid = figma.getSlideGrid();
+        const idGrid = grid.map((rowArr) =>
+          rowArr.map((s) => ({ id: s.id, name: s.name }))
+        );
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { grid: idGrid, rows: idGrid.length },
+        };
+      }
+      case "set_slide_grid": {
+        const params = request.params ?? {};
+        if (!Array.isArray(params.grid)) {
+          throw new Error("set_slide_grid needs grid (a 2D array of slide ids)");
+        }
+        const inputRows = params.grid as unknown[];
+        const slideGrid: SlideNode[][] = [];
+        for (const row of inputRows) {
+          if (!Array.isArray(row)) {
+            throw new Error("set_slide_grid: grid must be a 2D array");
+          }
+          const slideRow: SlideNode[] = [];
+          for (const id of row) {
+            if (typeof id !== "string") {
+              throw new Error("set_slide_grid: each cell must be a slide id string");
+            }
+            const n = await figma.getNodeByIdAsync(id);
+            if (!n || n.type !== "SLIDE") {
+              throw new Error(`set_slide_grid: not a SLIDE node: ${id}`);
+            }
+            slideRow.push(n);
+          }
+          slideGrid.push(slideRow);
+        }
+        figma.setSlideGrid(slideGrid);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { rows: slideGrid.length },
+        };
+      }
+      case "create_buzz_frame": {
+        const params = request.params ?? {};
+        const row = typeof params.row === "number" ? params.row : undefined;
+        const col = typeof params.col === "number" ? params.col : undefined;
+        const frame =
+          row !== undefined && col !== undefined
+            ? figma.buzz.createFrame(row, col)
+            : row !== undefined
+              ? figma.buzz.createFrame(row)
+              : figma.buzz.createFrame();
+        if (typeof params.assetType === "string") {
+          figma.buzz.setBuzzAssetTypeForNode(frame, params.assetType as BuzzAssetType);
+        }
+        if (typeof params.backgroundHex === "string") {
+          frame.fills = [solidPaintFromHex(params.backgroundHex)];
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: frame.id,
+            nodeName: frame.name,
+            assetType: figma.buzz.getBuzzAssetTypeForNode(frame),
+          },
+        };
+      }
+      case "set_buzz_asset_type": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string" || typeof params.assetType !== "string") {
+          throw new Error("set_buzz_asset_type needs nodeId and assetType");
+        }
+        const node = await getSceneNodeById(params.nodeId);
+        figma.buzz.setBuzzAssetTypeForNode(node, params.assetType as BuzzAssetType);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, assetType: params.assetType },
+        };
+      }
+      case "get_buzz_content": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("get_buzz_content needs nodeId");
+        }
+        const node = await getSceneNodeById(params.nodeId);
+        const textFields = figma.buzz.getTextContent(node).map((f, i) => ({
+          index: i,
+          value: f.value,
+          nodeId: f.node ? f.node.id : null,
+        }));
+        const mediaFields = figma.buzz.getMediaContent(node).map((f, i) => ({
+          index: i,
+          type: f.type,
+          hash: f.hash,
+          nodeId: f.node ? f.node.id : null,
+        }));
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: node.id,
+            assetType: figma.buzz.getBuzzAssetTypeForNode(node),
+            textFields,
+            mediaFields,
+          },
+        };
+      }
+      case "set_buzz_text": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("set_buzz_text needs nodeId");
+        }
+        if (!Array.isArray(params.values)) {
+          throw new Error(
+            "set_buzz_text needs values (array of strings applied positionally to the asset's text fields)"
+          );
+        }
+        const node = await getSceneNodeById(params.nodeId);
+        const fields = figma.buzz.getTextContent(node);
+        const values = params.values as unknown[];
+        let updated = 0;
+        for (let i = 0; i < values.length && i < fields.length; i++) {
+          const value = values[i];
+          if (typeof value === "string") {
+            await fields[i].setValueAsync(value);
+            updated++;
+          }
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, updated, totalFields: fields.length },
+        };
+      }
+      case "buzz_smart_resize": {
+        const params = request.params ?? {};
+        if (
+          typeof params.nodeId !== "string" ||
+          typeof params.width !== "number" ||
+          typeof params.height !== "number"
+        ) {
+          throw new Error("buzz_smart_resize needs nodeId, width, and height");
+        }
+        const node = await getSceneNodeById(params.nodeId);
+        figma.buzz.smartResize(node, params.width, params.height);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, width: params.width, height: params.height },
+        };
+      }
+      case "lint_run": {
+        // Gather a serializable snapshot of the design system for the server-side
+        // linter. loadAllPagesAsync() first: the manifest is dynamic-page, so a
+        // whole-file component scan otherwise sees only the current page.
+        await figma.loadAllPagesAsync();
+        const [collections, variables, paintStyles, textStyles, effectStyles] =
+          await Promise.all([
+            figma.variables.getLocalVariableCollectionsAsync(),
+            figma.variables.getLocalVariablesAsync(),
+            figma.getLocalPaintStylesAsync(),
+            figma.getLocalTextStylesAsync(),
+            figma.getLocalEffectStylesAsync(),
+          ]);
+
+        const serializeValue = (val: unknown): unknown => {
+          if (
+            val &&
+            typeof val === "object" &&
+            (val as { type?: string }).type === "VARIABLE_ALIAS"
+          ) {
+            return { alias: (val as { id: string }).id };
+          }
+          return val;
+        };
+
+        const snapVariables = variables.map((vr) => ({
+          id: vr.id,
+          name: vr.name,
+          collectionId: vr.variableCollectionId,
+          resolvedType: vr.resolvedType,
+          scopes: vr.scopes,
+          hiddenFromPublishing: vr.hiddenFromPublishing,
+          codeSyntax: vr.codeSyntax,
+          description: vr.description,
+          valuesByMode: Object.fromEntries(
+            Object.entries(vr.valuesByMode).map(([modeId, val]) => [
+              modeId,
+              serializeValue(val),
+            ])
+          ),
+        }));
+
+        const snapCollections = collections.map((c) => ({
+          id: c.id,
+          name: c.name,
+          defaultModeId: c.defaultModeId,
+          modes: c.modes.map((m) => ({ modeId: m.modeId, name: m.name })),
+        }));
+
+        const snapStyles = [
+          ...paintStyles.map((s) => ({ id: s.id, name: s.name, styleType: "PAINT" })),
+          ...textStyles.map((s) => ({
+            id: s.id,
+            name: s.name,
+            styleType: "TEXT",
+            fontSize: typeof s.fontSize === "number" ? s.fontSize : undefined,
+            fontFamily: s.fontName && typeof s.fontName === "object" ? s.fontName.family : undefined,
+          })),
+          ...effectStyles.map((s) => ({ id: s.id, name: s.name, styleType: "EFFECT" })),
+        ];
+
+        const componentNodes = figma.root.findAllWithCriteria({
+          types: ["COMPONENT", "COMPONENT_SET"],
+        });
+
+        // Component-subtree enrichment (Wave 10b). One bounded DFS per non-variant
+        // root (sets + standalone components; variant children are covered by their
+        // set's walk). We emit AGGREGATES (booleans/counts/min/key-union), never raw
+        // node trees, so the payload stays small. A shared node budget caps total
+        // work; a component only gets `enriched:true` if its walk finished within
+        // budget — server detectors treat enriched!==true as "no data".
+        const COMPONENT_NODE_BUDGET = 20000;
+        const MAX_VARIANT_TUPLES = 400;
+        const RAW_PAINT_TYPES = new Set([
+          "FRAME", "RECTANGLE", "ELLIPSE", "COMPONENT", "COMPONENT_SET",
+        ]);
+        let componentBudget = COMPONENT_NODE_BUDGET;
+        let componentScanTruncated = false;
+
+        const isRawPaintArray = (paints: unknown, styleId: unknown, bound: unknown): boolean => {
+          if (styleId || bound) return false; // styled or bound -> not raw
+          if (!Array.isArray(paints)) return false; // undefined / figma.mixed
+          return paints.some(
+            (p) =>
+              p &&
+              (p as { visible?: boolean }).visible !== false &&
+              typeof (p as { type?: string }).type === "string" &&
+              ((p as { type: string }).type === "SOLID" ||
+                (p as { type: string }).type.startsWith("GRADIENT"))
+          );
+        };
+
+        interface Enrichment {
+          enriched: boolean;
+          hasRawPaintLayer: boolean;
+          rawPaintSample?: string;
+          textLayersMissingType: number;
+          textLayerSample?: string;
+          minTextFontSize?: number;
+          referencedPropKeys: string[];
+        }
+
+        const walkComponent = (root: SceneNode): Enrichment => {
+          const refKeys = new Set<string>();
+          let hasRaw = false;
+          let rawSample: string | undefined;
+          let textMissing = 0;
+          let textSample: string | undefined;
+          let minFont: number | undefined;
+          let truncated = false;
+          const stack: SceneNode[] = [root];
+          while (stack.length > 0) {
+            if (componentBudget <= 0) {
+              truncated = true;
+              componentScanTruncated = true;
+              break;
+            }
+            componentBudget--;
+            const node = stack.pop() as SceneNode & Record<string, unknown>;
+            try {
+              // Nested instances/components/sets are their OWN roots: an
+              // instance's children are the main component's cloned layers
+              // (linted when that component is walked), and a nested standalone
+              // component/set is walked separately — so we must NOT attribute
+              // their paint/text/font to THIS component, nor descend into them
+              // (which would also double-walk and burn the shared budget). A
+              // COMPONENT_SET root's direct variant children ARE part of the set,
+              // so they aren't boundaries. We still read a boundary node's own
+              // componentPropertyReferences (it may wire an exposed property of
+              // THIS component).
+              const isBoundary =
+                node !== root &&
+                (node.type === "INSTANCE" ||
+                  ((node.type === "COMPONENT" || node.type === "COMPONENT_SET") &&
+                    !(root.type === "COMPONENT_SET" && node.parent === root)));
+
+              const refs = node.componentPropertyReferences as Record<string, unknown> | null;
+              if (refs) {
+                for (const v of Object.values(refs)) if (typeof v === "string") refKeys.add(v);
+              }
+
+              if (!isBoundary) {
+                // Raw (unbound + unstyled) paint on a container-ish layer.
+                if (!hasRaw && RAW_PAINT_TYPES.has(node.type)) {
+                  const bv = (node.boundVariables ?? {}) as Record<string, unknown>;
+                  if (
+                    isRawPaintArray(node.fills, node.fillStyleId, bv.fills) ||
+                    isRawPaintArray(node.strokes, node.strokeStyleId, bv.strokes)
+                  ) {
+                    hasRaw = true;
+                    rawSample = node.name;
+                  }
+                }
+                // Untyped TEXT (no text style, no bound type) + min font size.
+                if (node.type === "TEXT") {
+                  const bv = (node.boundVariables ?? {}) as Record<string, unknown>;
+                  const styled = !!node.textStyleId; // "" -> false, mixed(symbol) -> true
+                  const boundType = !!bv.fontSize || !!bv.lineHeight;
+                  if (!styled && !boundType) {
+                    textMissing++;
+                    if (!textSample) textSample = node.name;
+                  }
+                  const fs = node.fontSize;
+                  if (typeof fs === "number") minFont = minFont === undefined ? fs : Math.min(minFont, fs);
+                }
+                const kids = (node as { children?: readonly SceneNode[] }).children;
+                if (kids) for (const ch of kids) stack.push(ch);
+              }
+            } catch {
+              // A single unreadable node must not abort the walk.
+            }
+          }
+          return {
+            enriched: !truncated,
+            hasRawPaintLayer: hasRaw,
+            rawPaintSample: rawSample,
+            textLayersMissingType: textMissing,
+            textLayerSample: textSample,
+            minTextFontSize: minFont,
+            referencedPropKeys: [...refKeys],
+          };
+        };
+
+        const snapComponents = componentNodes.map((n) => {
+          // A variant COMPONENT (child of a COMPONENT_SET) throws on
+          // componentPropertyDefinitions — only sets and standalone components
+          // expose it. Guard so the whole scan doesn't abort on one variant.
+          const isVariant =
+            n.type === "COMPONENT" && n.parent?.type === "COMPONENT_SET";
+          const out: Record<string, unknown> = {
+            id: n.id,
+            name: n.name,
+            type: n.type,
+            isVariant,
+            propertyDefinitions: isVariant ? undefined : n.componentPropertyDefinitions,
+          };
+          if (isVariant) return out; // covered by its set's walk
+          try {
+            const e = walkComponent(n);
+            Object.assign(out, e);
+          } catch {
+            /* leave un-enriched */
+          }
+          // COMPONENT_SET: realized variant tuples + default variant tuple.
+          if (n.type === "COMPONENT_SET") {
+            try {
+              const set = n as ComponentSetNode;
+              const tuples: Array<Record<string, string>> = [];
+              let tuplesTruncated = false;
+              for (const child of set.children) {
+                if (child.type !== "COMPONENT") continue;
+                if (tuples.length >= MAX_VARIANT_TUPLES) {
+                  tuplesTruncated = true;
+                  break;
+                }
+                tuples.push({ ...(child.variantProperties ?? {}) });
+              }
+              out.variantTuples = tuples;
+              out.variantTuplesTruncated = tuplesTruncated;
+              const dv = set.defaultVariant;
+              out.defaultVariantTuple = dv ? { ...(dv.variantProperties ?? {}) } : undefined;
+            } catch {
+              /* no variant data */
+            }
+          }
+          return out;
+        });
+
+        // Node -> variable bindings (for no-node-binds-primitive etc.). Recurse
+        // into each field's binding value to pull VARIABLE_ALIAS ids wherever
+        // they sit (scalar fields, fills[] arrays, nested paint boundVariables).
+        // Bounded so a huge file can't produce an unbounded payload.
+        figma.skipInvisibleInstanceChildren = true;
+        const collectAliasIds = (binding: unknown, into: string[]): void => {
+          if (!binding || typeof binding !== "object") return;
+          if (Array.isArray(binding)) {
+            for (const b of binding) collectAliasIds(b, into);
+            return;
+          }
+          const o = binding as Record<string, unknown>;
+          if (o.type === "VARIABLE_ALIAS" && typeof o.id === "string") {
+            into.push(o.id);
+            return;
+          }
+          for (const val of Object.values(o)) collectAliasIds(val, into);
+        };
+        const MAX_BINDINGS = 10000;
+        const nodeBindings: Array<{
+          nodeId: string;
+          nodeName: string;
+          nodeType: string;
+          field: string;
+          variableId: string;
+        }> = [];
+        let bindingsTruncated = false;
+        const boundNodes = figma.root.findAll((n) => {
+          const bv = (n as { boundVariables?: unknown }).boundVariables;
+          return (
+            !!bv && typeof bv === "object" && Object.keys(bv as object).length > 0
+          );
+        });
+        scan: for (const n of boundNodes) {
+          const bv = (n as unknown as { boundVariables: Record<string, unknown> })
+            .boundVariables;
+          for (const [field, binding] of Object.entries(bv)) {
+            const ids: string[] = [];
+            collectAliasIds(binding, ids);
+            for (const variableId of ids) {
+              nodeBindings.push({
+                nodeId: n.id,
+                nodeName: n.name,
+                nodeType: n.type,
+                field,
+                variableId,
+              });
+              if (nodeBindings.length >= MAX_BINDINGS) {
+                bindingsTruncated = true;
+                break scan;
+              }
+            }
+          }
+        }
+
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            collections: snapCollections,
+            variables: snapVariables,
+            styles: snapStyles,
+            components: snapComponents,
+            nodeBindings,
+            bindingsTruncated,
+            componentScanTruncated,
+            meta: {
+              pageCount: figma.root.children.length,
+              scannedAllPages: true,
+            },
+          },
+        };
+      }
       case "dev_resources": {
         const nodeId = request.nodeIds && request.nodeIds[0];
         if (!nodeId) throw new Error("nodeIds is required for dev_resources");
@@ -3945,7 +4959,13 @@ figma.ui.onmessage = async (message) => {
       }
     };
 
-    if (EDIT_REQUEST_TYPES.has(request.type) || request.type === "execute_code") {
+    if (
+      EDIT_REQUEST_TYPES.has(request.type) ||
+      FIGJAM_REQUEST_TYPES.has(request.type) ||
+      SLIDES_REQUEST_TYPES.has(request.type) ||
+      BUZZ_REQUEST_TYPES.has(request.type) ||
+      request.type === "execute_code"
+    ) {
       mutationChain = mutationChain.then(run, run);
     } else {
       void run();

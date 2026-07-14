@@ -1,0 +1,118 @@
+{
+  "skills": [
+    {
+      "slug": "token-architecture",
+      "title": "Token Architecture \u2014 The Flawless 3-Tier Derivation Structure",
+      "summary": "The canonical, opinionated PRIMITIVE -> SEMANTIC -> COMPONENT variable structure (one collection per tier, theme as Semantic modes, strictly one-tier-down aliases, tightly scoped bound tokens) that a code-gen pipeline consumes deterministically \u2014 plus the Plugin-API-detectable structural laws that seed the linter.",
+      "when_to_use": "Read before any write_variables call that creates or edits color/dimension tokens or collections, before wiring theming/modes, and whenever lint_tokens flags a token-structure error. It defines WHAT structure to build and in what order (Primitives -> Semantic -> Component, lint between each).",
+      "uri": "skill://design-system/token-architecture",
+      "related_rules": [
+        "three-tier-collections-exist",
+        "no-node-binds-primitive",
+        "alias-one-tier-down",
+        "primitive-raw-values-only",
+        "semantic-alias-in-every-mode",
+        "component-token-must-alias-semantic",
+        "alias-target-resolves",
+        "alias-graph-acyclic-max-depth-2",
+        "primitive-hidden-from-publishing",
+        "single-use-component-passthrough",
+        "duplicate-primitive-value",
+        "unused-variable-orphan"
+      ]
+    },
+    {
+      "slug": "variable-scopes-binding-tokens",
+      "title": "Variable Scopes \u2014 Binding the Right Token to the Right Property",
+      "summary": "Map Figma's 22 VariableScopes to correct usage so every non-primitive token binds only to its real property \u2014 the guardrail that makes design\u2192code output correct by construction.",
+      "when_to_use": "Read this whenever you create or edit any non-primitive variable (semantic or component token) with write_variables, whenever you set or change a variable's `scopes`, and before you bind a variable to a node property. Also read it before running lint_tokens / lint_design_system so you know what \"correctly scoped\" means. If a token's scope is left at the default ALL_SCOPES, this skill applies.",
+      "uri": "skill://design-system/variable-scopes-binding-tokens",
+      "related_rules": [
+        "no-all-scopes-on-typed-token",
+        "scope-legal-for-resolved-type",
+        "non-redundant-scope-set",
+        "color-role-scope-match",
+        "dimension-role-scope-match",
+        "type-role-scope-match",
+        "no-text-content-scope-on-token",
+        "binding-on-scope-for-property"
+      ]
+    },
+    {
+      "slug": "theming-with-modes",
+      "title": "Theming with Modes \u2014 Light/Dark and Multi-Brand",
+      "summary": "Model light/dark and multi-brand theming as modes on the semantic layer with a primitive\u2192semantic\u2192component alias chain, so one mode switch flips the whole system and design\u2192code output stays deterministic.",
+      "when_to_use": "Read BEFORE creating or restructuring any themed design system in Figma \u2014 light/dark, multi-brand, or any variable set that must change appearance by mode. Also read when a lint_tokens / lint_design_system run flags a mode-count, alias-chain, raw-literal-in-mode, or axis-mixing violation, so you can self-correct instead of guessing.",
+      "uri": "skill://design-system/theming-with-modes",
+      "related_rules": [
+        "primitive-component-single-mode",
+        "every-mode-populated",
+        "mode-count-ceiling",
+        "semantic-default-mode-is-base",
+        "consistent-mode-names-across-axis",
+        "one-theme-axis-per-collection",
+        "multi-brand-alias-discipline"
+      ]
+    },
+    {
+      "slug": "component-variant-structure-for-codegen",
+      "title": "Component & Variant Structure That Survives Code-Gen",
+      "summary": "Build Figma component/variant sets whose property structure maps 1:1 to code component props, so design\u2192code export stops mangling components.",
+      "when_to_use": "Read before creating or editing any component or variant set, before adding any component property (variant / boolean / instance-swap / slot), before wiring slots or instance overrides, and before exporting a component to code. Also read whenever `lint_design_system` flags component or variant structure.",
+      "uri": "skill://design-system/component-variant-structure-for-codegen",
+      "related_rules": [
+        "no-dead-component-property",
+        "boolean-vocab-variant-should-be-boolean",
+        "variant-matrix-complete",
+        "variant-count-ceiling-60",
+        "no-asset-enumeration-variant",
+        "property-name-convention-unique",
+        "shared-property-value-consistency",
+        "instance-swap-preferred-values",
+        "boolean-prop-no-sizing-intent",
+        "no-instance-restyle-override",
+        "detached-component-frame-signal",
+        "default-variant-is-base-tuple"
+      ]
+    },
+    {
+      "slug": "design-to-code-correctness",
+      "title": "Design\u2192Code Correctness: Token Structure That Survives Code-Gen",
+      "summary": "Build a 3-tier token structure (Primitives\u2192Semantic\u2192Component) where every visual property is bound to a scoped, codeSyntax-carrying semantic token, so Figma Dev Mode / code-gen emits clean, stable, themeable code the first time \u2014 and self-correct via the linter before handoff.",
+      "when_to_use": "Read BEFORE authoring any variables/tokens or components that will be handed to code, and again as a pre-handoff gate. Trigger it whenever the goal is \"design\u2192code,\" the generated code emits raw hex / raw values, a design lacks a semantic layer, codeSyntax is missing, or Dev Mode surfaces the wrong or unscoped tokens. Pair with the structure linter (lint_tokens / lint_design_system).",
+      "uri": "skill://design-system/design-to-code-correctness",
+      "related_rules": [
+        "no-raw-value-on-component-node",
+        "text-layer-uses-style-or-bound-type",
+        "published-variable-has-codesyntax-web",
+        "codesyntax-web-unique",
+        "codesyntax-web-matches-name",
+        "published-variable-has-description",
+        "component-set-has-code-mapping"
+      ]
+    },
+    {
+      "slug": "accessibility-naming-conventions",
+      "title": "Accessibility & Naming Conventions (niche DS quality)",
+      "summary": "Enforce WCAG/APCA contrast on semantic fg/bg token pairs, minimum text sizes, a strict kebab/slash naming grammar, and orphan/duplicate/unused-token hygiene \u2014 all locally detectable via Figma Plugin API 1.130 so build\u2192lint\u2192fix replaces one-component-at-a-time trial-and-error.",
+      "when_to_use": "Read this before or right after any write_variables run that creates/renames color, text-size, or semantic tokens; before a design\u2192code handoff; when building semantic color pairs or text styles; and whenever lint_design_system / lint_tokens / lint_a11y reports a naming, contrast, tiering, or orphan finding. It is the paired knowledge doc for the accessibility + naming linter checks.",
+      "uri": "skill://design-system/accessibility-naming-conventions",
+      "related_rules": [
+        "name-kebab-segments",
+        "name-slash-structure-depth",
+        "top-segment-in-tier-vocabulary",
+        "numeric-scale-zero-padded",
+        "hue-ramp-words-primitives-only",
+        "semantic-role-allowlist",
+        "surface-on-pair-completeness",
+        "fg-bg-pair-contrast",
+        "border-icon-graphical-contrast",
+        "min-font-size",
+        "contrast-fallback-export-sampling"
+      ]
+    }
+  ],
+  "canonical": "skill://design-system/canonical-structure",
+  "rules_catalog": "skill://design-system/lint-rules",
+  "rule_count": 57
+}

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently \"vite build --watch\" \"vite build --watch -c vite.config.main.ts\"",
-    "build": "vite build && vite build -c vite.config.main.ts",
+    "build": "vite build && vite build -c vite.config.main.ts && node scripts/sync-extras.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {

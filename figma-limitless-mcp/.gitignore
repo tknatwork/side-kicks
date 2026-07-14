@@ -176,6 +176,11 @@ binaries/
 # Server build output
 server/dist/
 
+# Extras companion (FigJam/Slides/Buzz): copies of the built bundle (kept in
+# sync by plugin/scripts/sync-extras.mjs). The manifest.json itself IS tracked.
+plugin/extras/code.js
+plugin/extras/index.html
+
 # Editor/IDE
 .idea/
 .vscode/

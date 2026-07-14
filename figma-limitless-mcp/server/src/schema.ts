@@ -564,6 +564,81 @@ export const getVariablesDeepInput = z.object({
   fileKey: fileKeyField,
 });
 
+// --- Design-system skills layer (server-local, offline knowledge) ---
+
+export const listSkillsInput = z.object({
+  query: z
+    .string()
+    .optional()
+    .describe("Filter skills by keyword in title/summary/slug"),
+});
+
+export const readSkillInput = z.object({
+  slug: z
+    .string()
+    .min(1)
+    .describe(
+      "Skill slug from list_skills — the six skills plus 'canonical-structure' (build order) and 'lint-rules' (rule catalog)"
+    ),
+});
+
+export const getBuildRecipeInput = z.object({
+  step: z
+    .enum([
+      "collections",
+      "primitives",
+      "semantic",
+      "component",
+      "components",
+      "codegen",
+      "a11y",
+      "all",
+    ])
+    .optional()
+    .describe(
+      "Which build step's recipe + lint gate (default 'all' = the whole canonical build order)"
+    ),
+});
+
+export const lintDesignSystemInput = z.object({
+  only: z.array(z.string()).optional().describe("Run only these rule_ids"),
+  categories: z
+    .array(
+      z.enum([
+        "tokens",
+        "scopes",
+        "theming",
+        "components",
+        "code-output",
+        "naming",
+        "a11y",
+      ])
+    )
+    .optional()
+    .describe("Run only these rule categories"),
+  severity: z
+    .enum(["error", "warn", "all"])
+    .optional()
+    .describe("Filter findings: 'error' only, 'warn' (error+warn), or 'all' (default)"),
+  enable: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Turn ON opt-in (default-off) rules by rule_id — house-style/config rules kept off by default (advise, don't dictate). See a report's available_optin for what exists and each rule's config_shape."
+    ),
+  disable: z
+    .array(z.string())
+    .optional()
+    .describe("Turn OFF otherwise-default-on rules by rule_id."),
+  config: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe(
+      'Per-rule config keyed by rule_id, e.g. {"variant-count-ceiling-60":{"ceiling":40},"semantic-role-allowlist":{"allowlist":["bg","fg","border"]}}. Invalid/missing config for an enabled rule is reported under config_errors (non-fatal), not thrown.'
+    ),
+  fileKey: fileKeyField,
+});
+
 const variableAction = z.object({
   action: z
     .enum([
@@ -574,9 +649,20 @@ const variableAction = z.object({
       "set_alias",
       "bind_to_node",
       "delete_variable",
+      "rename_variable",
+      "update_variable",
+      "rename_collection",
+      "delete_collection",
+      "rename_mode",
+      "remove_mode",
     ])
     .describe("What this step does"),
-  name: z.string().optional().describe("create_collection/add_mode/create_variable: name"),
+  name: z
+    .string()
+    .optional()
+    .describe(
+      "create_collection/add_mode/create_variable: name. Also the NEW name for rename_variable/rename_collection/rename_mode."
+    ),
   initialModeName: z
     .string()
     .optional()
@@ -600,7 +686,20 @@ const variableAction = z.object({
     .describe(
       "create_variable: VariableScope list, e.g. ['FONT_FAMILY'] or ['ALL_SCOPES'] — never leave color tokens on ALL_SCOPES in a design system"
     ),
-  description: z.string().optional(),
+  description: z
+    .string()
+    .optional()
+    .describe("create_variable/update_variable: human-readable description"),
+  hiddenFromPublishing: z
+    .boolean()
+    .optional()
+    .describe("update_variable: hide this variable from published libraries"),
+  codeSyntax: z
+    .record(z.enum(["WEB", "ANDROID", "iOS"]), z.string())
+    .optional()
+    .describe(
+      "update_variable: platform code-syntax names, e.g. { WEB: '--color-brand', ANDROID: 'color_brand' }"
+    ),
   value: z
     .unknown()
     .optional()
@@ -944,6 +1043,272 @@ export const listLibraryVariablesInput = z.object({
 
 export const createSlotInput = z.object({
   nodeId: createFigmaNodeIdSchema().describe("COMPONENT to add a slot frame to"),
+  fileKey: fileKeyField,
+});
+
+export const getSlotsInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe(
+    "Node to search for SLOT frames — a COMPONENT, COMPONENT_SET, INSTANCE, or any frame subtree"
+  ),
+  fileKey: fileKeyField,
+});
+
+export const resetSlotInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe(
+    "The SLOT node to reset to its empty/default state (discover via get_slots)"
+  ),
+  fileKey: fileKeyField,
+});
+
+export const appendToSlotInput = z.object({
+  slotId: createFigmaNodeIdSchema().describe("The SLOT node to populate (must be type SLOT)"),
+  nodeId: createFigmaNodeIdSchema().describe("The scene node to move into the slot"),
+  index: z
+    .number()
+    .min(0)
+    .optional()
+    .describe("Insert position among the slot's children (default: append to end)"),
+  fileKey: fileKeyField,
+});
+
+// --- FigJam authoring (editorType: figjam) ---
+
+export const createStickyInput = z.object({
+  text: z.string().optional().describe("Sticky note text"),
+  fillHex: createHexColorSchema().optional().describe("Background color, e.g. '#FFD966'"),
+  wide: z
+    .boolean()
+    .optional()
+    .describe("Use the wide rectangular sticky shape instead of square"),
+  x: z.number().optional().describe("X position on the FigJam board"),
+  y: z.number().optional().describe("Y position on the FigJam board"),
+  fileKey: fileKeyField,
+});
+
+export const createShapeWithTextInput = z.object({
+  shapeType: z
+    .enum([
+      "SQUARE", "ELLIPSE", "ROUNDED_RECTANGLE", "DIAMOND", "TRIANGLE_UP",
+      "TRIANGLE_DOWN", "PARALLELOGRAM_RIGHT", "PARALLELOGRAM_LEFT", "ENG_DATABASE",
+      "ENG_QUEUE", "ENG_FILE", "ENG_FOLDER", "TRAPEZOID", "PREDEFINED_PROCESS",
+      "SHIELD", "DOCUMENT_SINGLE", "DOCUMENT_MULTIPLE", "MANUAL_INPUT", "HEXAGON",
+      "CHEVRON", "PENTAGON", "OCTAGON", "STAR", "PLUS", "ARROW_LEFT", "ARROW_RIGHT",
+      "SUMMING_JUNCTION", "OR", "SPEECH_BUBBLE", "INTERNAL_STORAGE",
+    ])
+    .describe("FigJam shape kind (flowchart/diagram shapes)"),
+  text: z.string().optional().describe("Text inside the shape"),
+  fillHex: createHexColorSchema().optional().describe("Fill color"),
+  width: z.number().min(0.01).optional().describe("Shape width"),
+  height: z.number().min(0.01).optional().describe("Shape height"),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
+export const createConnectorInput = z.object({
+  startNodeId: createFigmaNodeIdSchema()
+    .optional()
+    .describe("Node to connect FROM (magnet-attached). Omit to use a free startX/startY."),
+  endNodeId: createFigmaNodeIdSchema()
+    .optional()
+    .describe("Node to connect TO (magnet-attached). Omit to use a free endX/endY."),
+  startX: z.number().optional().describe("Free start X (used when startNodeId is omitted)"),
+  startY: z.number().optional().describe("Free start Y"),
+  endX: z.number().optional().describe("Free end X (used when endNodeId is omitted)"),
+  endY: z.number().optional().describe("Free end Y"),
+  text: z.string().optional().describe("Connector label"),
+  lineType: z
+    .enum(["ELBOWED", "STRAIGHT", "CURVED"])
+    .optional()
+    .describe("Path style (default ELBOWED)"),
+  startMagnet: z
+    .enum(["NONE", "AUTO", "TOP", "LEFT", "BOTTOM", "RIGHT", "CENTER"])
+    .optional()
+    .describe("Attachment point on the start node (default AUTO)"),
+  endMagnet: z
+    .enum(["NONE", "AUTO", "TOP", "LEFT", "BOTTOM", "RIGHT", "CENTER"])
+    .optional()
+    .describe("Attachment point on the end node (default AUTO)"),
+  startCap: z
+    .enum([
+      "NONE", "ARROW_EQUILATERAL", "ARROW_LINES", "TRIANGLE_FILLED",
+      "DIAMOND_FILLED", "CIRCLE_FILLED", "ERD_ZERO_OR_ONE", "ERD_EXACTLY_ONE",
+      "ERD_ZERO_OR_MORE", "ERD_ONE_OR_MORE", "ERD_ONE", "ERD_MANY",
+    ])
+    .optional()
+    .describe("Start stroke cap"),
+  endCap: z
+    .enum([
+      "NONE", "ARROW_EQUILATERAL", "ARROW_LINES", "TRIANGLE_FILLED",
+      "DIAMOND_FILLED", "CIRCLE_FILLED", "ERD_ZERO_OR_ONE", "ERD_EXACTLY_ONE",
+      "ERD_ZERO_OR_MORE", "ERD_ONE_OR_MORE", "ERD_ONE", "ERD_MANY",
+    ])
+    .optional()
+    .describe("End stroke cap (e.g. ARROW_LINES for a directed arrow)"),
+  fileKey: fileKeyField,
+});
+
+export const createSectionInput = z.object({
+  name: z.string().optional().describe("Section title"),
+  width: z.number().min(0.01).optional().describe("Section width"),
+  height: z.number().min(0.01).optional().describe("Section height"),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
+export const createTableInput = z.object({
+  rows: z.number().int().min(1).max(100).optional().describe("Number of rows (default 2)"),
+  columns: z.number().int().min(1).max(100).optional().describe("Number of columns (default 2)"),
+  cells: z
+    .array(z.array(z.string()))
+    .optional()
+    .describe("Row-major cell text, e.g. [['Name','Role'],['Ada','Eng']]"),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
+export const createCodeBlockInput = z.object({
+  code: z.string().describe("Code contents"),
+  language: z
+    .enum([
+      "TYPESCRIPT", "CPP", "RUBY", "CSS", "JAVASCRIPT", "HTML", "JSON", "GRAPHQL",
+      "PYTHON", "GO", "SQL", "SWIFT", "KOTLIN", "RUST", "BASH", "PLAINTEXT", "DART",
+    ])
+    .optional()
+    .describe("Syntax-highlighting language (default PLAINTEXT)"),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
+export const createGifInput = z.object({
+  hash: z
+    .string()
+    .min(1)
+    .describe(
+      "Media hash of a GIF already present in the document. Note: this MCP is local-only, so importing new GIFs from a URL is not supported."
+    ),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
+// --- Figma Slides authoring (editorType: slides) ---
+
+export const createSlideInput = z.object({
+  row: z.number().int().min(0).optional().describe("Grid row to place the new slide"),
+  col: z.number().int().min(0).optional().describe("Grid column (used with row)"),
+  backgroundHex: createHexColorSchema().optional().describe("Slide background color"),
+  fileKey: fileKeyField,
+});
+
+export const createSlideRowInput = z.object({
+  row: z.number().int().min(0).optional().describe("Index at which to insert the new slide row"),
+  fileKey: fileKeyField,
+});
+
+export const setSlideTransitionInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The SLIDE node"),
+  style: z
+    .enum([
+      "NONE", "DISSOLVE", "SLIDE_FROM_LEFT", "SLIDE_FROM_RIGHT", "SLIDE_FROM_BOTTOM",
+      "SLIDE_FROM_TOP", "PUSH_FROM_LEFT", "PUSH_FROM_RIGHT", "PUSH_FROM_BOTTOM",
+      "PUSH_FROM_TOP", "MOVE_FROM_LEFT", "MOVE_FROM_RIGHT", "MOVE_FROM_TOP",
+      "MOVE_FROM_BOTTOM", "SLIDE_OUT_TO_LEFT", "SLIDE_OUT_TO_RIGHT", "SLIDE_OUT_TO_TOP",
+      "SLIDE_OUT_TO_BOTTOM", "MOVE_OUT_TO_LEFT", "MOVE_OUT_TO_RIGHT", "MOVE_OUT_TO_TOP",
+      "MOVE_OUT_TO_BOTTOM", "SMART_ANIMATE",
+    ])
+    .optional()
+    .describe("Transition style (unchanged if omitted)"),
+  duration: z.number().min(0).optional().describe("Duration in seconds"),
+  curve: z
+    .enum(["EASE_IN", "EASE_OUT", "EASE_IN_AND_OUT", "LINEAR", "GENTLE", "QUICK", "BOUNCY", "SLOW"])
+    .optional()
+    .describe("Easing curve"),
+  timingType: z
+    .enum(["ON_CLICK", "AFTER_DELAY"])
+    .optional()
+    .describe("Advance on click or automatically after a delay"),
+  delay: z.number().min(0).optional().describe("Delay in seconds (for AFTER_DELAY)"),
+  fileKey: fileKeyField,
+});
+
+export const setSlideSkipInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The SLIDE node"),
+  skip: z.boolean().describe("Whether to skip this slide during presentation"),
+  fileKey: fileKeyField,
+});
+
+export const focusSlideInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The SLIDE node to focus in the editor"),
+  fileKey: fileKeyField,
+});
+
+export const getSlideGridInput = z.object({
+  fileKey: fileKeyField,
+});
+
+export const setSlideGridInput = z.object({
+  grid: z
+    .array(z.array(createFigmaNodeIdSchema()))
+    .describe(
+      "2D array of slide ids in the new row/column order. IMPORTANT: must contain EVERY slide currently in the grid — call get_slide_grid first, reorder, and pass all of them back."
+    ),
+  fileKey: fileKeyField,
+});
+
+// --- Figma Buzz authoring (editorType: buzz) ---
+
+const buzzAssetType = z.enum([
+  "CUSTOM", "TWITTER_POST", "LINKEDIN_POST", "INSTA_POST_SQUARE", "INSTA_POST_PORTRAIT",
+  "INSTA_STORY", "INSTA_AD", "FACEBOOK_POST", "FACEBOOK_COVER_PHOTO", "FACEBOOK_EVENT_COVER",
+  "FACEBOOK_AD_PORTRAIT", "FACEBOOK_AD_SQUARE", "PINTEREST_AD_PIN", "TWITTER_BANNER",
+  "LINKEDIN_POST_SQUARE", "LINKEDIN_POST_PORTRAIT", "LINKEDIN_POST_LANDSCAPE",
+  "LINKEDIN_PROFILE_BANNER", "LINKEDIN_ARTICLE_BANNER", "LINKEDIN_AD_LANDSCAPE",
+  "LINKEDIN_AD_SQUARE", "LINKEDIN_AD_VERTICAL", "YOUTUBE_THUMBNAIL", "YOUTUBE_BANNER",
+  "YOUTUBE_AD", "TWITCH_BANNER", "GOOGLE_LEADERBOARD_AD", "GOOGLE_LARGE_AD", "GOOGLE_MED_AD",
+  "GOOGLE_MOBILE_BANNER_AD", "GOOGLE_SKYSCRAPER_AD", "CARD_HORIZONTAL", "CARD_VERTICAL",
+  "PRINT_US_LETTER", "POSTER", "BANNER_STANDARD", "BANNER_WIDE", "BANNER_ULTRAWIDE",
+  "NAME_TAG_PORTRAIT", "NAME_TAG_LANDSCAPE", "INSTA_REEL_COVER", "ZOOM_BACKGROUND",
+]);
+
+export const createBuzzFrameInput = z.object({
+  row: z.number().int().min(0).optional().describe("Canvas-grid row (appends to the end if omitted)"),
+  col: z.number().int().min(0).optional().describe("Canvas-grid column (used with row)"),
+  assetType: buzzAssetType
+    .optional()
+    .describe("Platform asset type/size to apply (e.g. LINKEDIN_POST, INSTA_STORY)"),
+  backgroundHex: createHexColorSchema().optional().describe("Frame background color"),
+  fileKey: fileKeyField,
+});
+
+export const setBuzzAssetTypeInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The Buzz asset node"),
+  assetType: buzzAssetType.describe("Platform asset type/size to assign"),
+  fileKey: fileKeyField,
+});
+
+export const getBuzzContentInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The Buzz asset node to read text + media fields from"),
+  fileKey: fileKeyField,
+});
+
+export const setBuzzTextInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The Buzz asset node"),
+  values: z
+    .array(z.string())
+    .describe(
+      "Text values applied positionally to the asset's text fields (values[i] -> field i). Read current fields with get_buzz_content first."
+    ),
+  fileKey: fileKeyField,
+});
+
+export const buzzSmartResizeInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The Buzz node to resize"),
+  width: z.number().min(1).describe("Target width in pixels"),
+  height: z.number().min(1).describe("Target height in pixels"),
   fileKey: fileKeyField,
 });
 
@@ -1591,6 +1956,50 @@ export const toolInputSchemas = {
 
   create_slot: createSlotInput,
 
+  get_slots: getSlotsInput,
+
+  reset_slot: resetSlotInput,
+
+  append_to_slot: appendToSlotInput,
+
+  create_sticky: createStickyInput,
+
+  create_shape_with_text: createShapeWithTextInput,
+
+  create_connector: createConnectorInput,
+
+  create_section: createSectionInput,
+
+  create_table: createTableInput,
+
+  create_code_block: createCodeBlockInput,
+
+  create_gif: createGifInput,
+
+  create_slide: createSlideInput,
+
+  create_slide_row: createSlideRowInput,
+
+  set_slide_transition: setSlideTransitionInput,
+
+  set_slide_skip: setSlideSkipInput,
+
+  focus_slide: focusSlideInput,
+
+  get_slide_grid: getSlideGridInput,
+
+  set_slide_grid: setSlideGridInput,
+
+  create_buzz_frame: createBuzzFrameInput,
+
+  set_buzz_asset_type: setBuzzAssetTypeInput,
+
+  get_buzz_content: getBuzzContentInput,
+
+  set_buzz_text: setBuzzTextInput,
+
+  buzz_smart_resize: buzzSmartResizeInput,
+
   dev_resources: devResourcesInput,
 
   set_code_mapping: setCodeMappingInput,
@@ -1701,6 +2110,28 @@ const rpcToArgs: Record<
   import_library_asset: (_nodeIds, params) => ({ ...params }),
   list_library_variables: (_nodeIds, params) => ({ ...params }),
   create_slot: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  get_slots: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  reset_slot: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  append_to_slot: (_nodeIds, params) => ({ ...params }),
+  create_sticky: (_nodeIds, params) => ({ ...params }),
+  create_shape_with_text: (_nodeIds, params) => ({ ...params }),
+  create_connector: (_nodeIds, params) => ({ ...params }),
+  create_section: (_nodeIds, params) => ({ ...params }),
+  create_table: (_nodeIds, params) => ({ ...params }),
+  create_code_block: (_nodeIds, params) => ({ ...params }),
+  create_gif: (_nodeIds, params) => ({ ...params }),
+  create_slide: (_nodeIds, params) => ({ ...params }),
+  create_slide_row: (_nodeIds, params) => ({ ...params }),
+  set_slide_transition: (_nodeIds, params) => ({ ...params }),
+  set_slide_skip: (_nodeIds, params) => ({ ...params }),
+  focus_slide: (_nodeIds, params) => ({ ...params }),
+  get_slide_grid: (_nodeIds, params) => ({ ...params }),
+  set_slide_grid: (_nodeIds, params) => ({ ...params }),
+  create_buzz_frame: (_nodeIds, params) => ({ ...params }),
+  set_buzz_asset_type: (_nodeIds, params) => ({ ...params }),
+  get_buzz_content: (_nodeIds, params) => ({ ...params }),
+  set_buzz_text: (_nodeIds, params) => ({ ...params }),
+  buzz_smart_resize: (_nodeIds, params) => ({ ...params }),
   dev_resources: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   set_code_mapping: (_nodeIds, params) => ({ ...params }),
   get_code_mappings: (_nodeIds, params) => ({ ...params }),

@@ -5,6 +5,8 @@ import { isIP } from "node:net";
 import path from "node:path";
 import type { z } from "zod";
 import type { Node } from "./node.js";
+import { listSkills, readSkill, getBuildRecipe } from "./skills.js";
+import { runLint, type LintSnapshot } from "./lint/index.js";
 import {
   createFrameInput,
   createImageInput,
@@ -69,6 +71,32 @@ import {
   importLibraryAssetInput,
   listLibraryVariablesInput,
   createSlotInput,
+  getSlotsInput,
+  resetSlotInput,
+  appendToSlotInput,
+  createStickyInput,
+  createShapeWithTextInput,
+  createConnectorInput,
+  createSectionInput,
+  createTableInput,
+  createCodeBlockInput,
+  createGifInput,
+  createSlideInput,
+  createSlideRowInput,
+  setSlideTransitionInput,
+  setSlideSkipInput,
+  focusSlideInput,
+  getSlideGridInput,
+  setSlideGridInput,
+  createBuzzFrameInput,
+  setBuzzAssetTypeInput,
+  getBuzzContentInput,
+  setBuzzTextInput,
+  buzzSmartResizeInput,
+  listSkillsInput,
+  readSkillInput,
+  getBuildRecipeInput,
+  lintDesignSystemInput,
   devResourcesShape,
   devResourcesInput,
   setCodeMappingShape,
@@ -687,6 +715,52 @@ export function registerTools(
   );
 
   server.tool(
+    "list_skills",
+    "List the bundled offline design-system skills — token architecture, scopes, theming, components, code-output, accessibility — plus the canonical build order and the 57-rule lint catalog. Read one with read_skill. Call this BEFORE building a design system so you follow the flawless structure instead of trial-and-error. Local, no network.",
+    listSkillsInput.shape,
+    async ({ query }): Promise<ToolResult> => renderLocal(() => listSkills(query))
+  );
+
+  server.tool(
+    "read_skill",
+    "Return the full Markdown of one bundled design-system skill (slug from list_skills). Slugs include the six skills plus 'canonical-structure' (the build order) and 'lint-rules' (the rule catalog). Local, offline.",
+    readSkillInput.shape,
+    async ({ slug }): Promise<ToolResult> => renderLocal(() => readSkill(slug))
+  );
+
+  server.tool(
+    "get_build_recipe",
+    "Return the canonical design-system build order (Primitive -> Semantic -> Component, lint-gated) plus the lint rule_ids to run after a given step. Follow it top-to-bottom: build a tier, lint it, fix, descend. Default step 'all' returns the whole build order. Local, offline.",
+    getBuildRecipeInput.shape,
+    async ({ step }): Promise<ToolResult> => renderLocal(() => getBuildRecipe(step))
+  );
+
+  server.tool(
+    "lint_design_system",
+    "Structure-lint the design system in the current file against the canonical catalog. Gathers the variable graph, styles, and components (loads all pages) and reports structural defects — color token on ALL_SCOPES, node bound to a primitive, dangling alias, missing codeSyntax, low-contrast token pairs, etc. — each with a fix hint linked to the skill that explains it. Run after every build step: build -> lint -> fix. Advise-not-dictate: only objectively-broken issues are severity:error; opinionated/house-style rules are OFF by default — see available_optin and turn them on with enable:[rule_id] + config:{rule_id:{…}} (report config_errors flags bad config; not_yet_implemented lists rules whose detector hasn't landed).",
+    lintDesignSystemInput.shape,
+    async ({ only, categories, severity, enable, disable, config, fileKey }): Promise<ToolResult> =>
+      renderLocal(async () => {
+        const resp = await node.sendWithParams(
+          "lint_run",
+          undefined,
+          undefined,
+          fileKey,
+          { timeoutMs: 120_000 }
+        );
+        if (resp.error) throw new Error(resp.error);
+        return runLint(resp.data as LintSnapshot, {
+          only,
+          categories,
+          severity,
+          enable,
+          disable,
+          config,
+        });
+      })
+  );
+
+  server.tool(
     "save_checkpoint",
     "Persist a named JSON resume-ledger (≤256KB) on disk, keyed per file. Survives server restarts, session compaction, and context loss — write completed steps, discovered node/style-id maps, and the next action after each milestone so ANY future session can continue exactly where this one stopped. Overwrites the same name.",
     saveCheckpointInput.shape,
@@ -796,7 +870,7 @@ export function registerTools(
 
   server.tool(
     "write_variables",
-    "Author design tokens — the official MCP has NO variable-write surface. Sequential action batch: create_collection, add_mode, create_variable (with scopes/description/valuesByMode), set_value, set_alias, bind_to_node (node fields or solid-paint colors), delete_variable. Later actions reference earlier results via '$N.<field>' (e.g. collectionId: '$0.collectionId'), so one call builds a whole collection. Stops at the first error by default and reports per-action outcomes.",
+    "Author design tokens — the official MCP has NO variable-write surface. Sequential action batch: create_collection, rename_collection, delete_collection, add_mode, rename_mode, remove_mode, create_variable (with scopes/description/valuesByMode), rename_variable, update_variable (scopes/description/hiddenFromPublishing/codeSyntax), set_value, set_alias, bind_to_node (node fields or solid-paint colors), delete_variable. Later actions reference earlier results via '$N.<field>' (e.g. collectionId: '$0.collectionId'), so one call builds a whole collection. Stops at the first error by default and reports per-action outcomes.",
     writeVariablesInput.shape,
     async ({ actions, stopOnError, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = { actions };
@@ -1092,6 +1166,250 @@ export function registerTools(
   );
 
   server.tool(
+    "get_slots",
+    "List the SLOT frames within a node (Slots, GA June 2026). Returns each slot's id, name, child count, and limitViolations, plus — when the node is a COMPONENT/COMPONENT_SET — its SLOT component-property definitions (key, description, slotSettings). Read-only.",
+    getSlotsInput.shape,
+    async ({ nodeId, fileKey }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("get_slots", [nodeId], undefined, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "reset_slot",
+    "Reset a SLOT node to its empty/default state, clearing content added into it. nodeId must be a SLOT (discover via get_slots).",
+    resetSlotInput.shape,
+    async ({ nodeId, fileKey }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("reset_slot", [nodeId], undefined, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "append_to_slot",
+    "Move a scene node into a SLOT frame to populate it, on a COMPONENT definition. Note: Figma blocks appending into a slot that lives inside an INSTANCE (a platform limit) — populate the master component instead. Returns the slot's limitViolations after insertion.",
+    appendToSlotInput.shape,
+    async ({ slotId, nodeId, index, fileKey }): Promise<ToolResult> => {
+      const params: Record<string, unknown> = { slotId, nodeId };
+      if (index !== undefined) params.index = index;
+      return renderResponse(() =>
+        node.sendWithParams("append_to_slot", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_sticky",
+    "FigJam: create a sticky note with optional text, background color, and wide shape. Runs only in a FigJam file.",
+    createStickyInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_sticky", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_shape_with_text",
+    "FigJam: create a flowchart/diagram shape (square, diamond, ellipse, arrows, ENG_* shapes, …) with optional text, fill, and size. FigJam only.",
+    createShapeWithTextInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_shape_with_text", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_connector",
+    "FigJam: draw a connector between two nodes (magnet-attached via startNodeId/endNodeId) or between free points, with an optional label, line type, and stroke caps. FigJam only.",
+    createConnectorInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_connector", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_section",
+    "FigJam: create a titled section to group board content, with optional name and size. FigJam only.",
+    createSectionInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_section", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_table",
+    "FigJam: create a table with the given rows/columns, optionally pre-filling cell text (row-major). FigJam only.",
+    createTableInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_table", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_code_block",
+    "FigJam: create a syntax-highlighted code block with the given code and language. FigJam only.",
+    createCodeBlockInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_code_block", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_gif",
+    "FigJam: place a GIF by its existing media hash. Note: local-only — importing new GIFs from URLs is not supported. FigJam only.",
+    createGifInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_gif", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_slide",
+    "Figma Slides: create a new 1920×1080 slide (optionally at a grid row/col) with an optional background color. Slides only.",
+    createSlideInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_slide", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_slide_row",
+    "Figma Slides: create a new slide row (optionally at an index). Slides only.",
+    createSlideRowInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_slide_row", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_slide_transition",
+    "Figma Slides: set a slide's transition — style, duration, easing curve, and on-click/after-delay timing. Only the fields you pass change. Slides only.",
+    setSlideTransitionInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_slide_transition", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_slide_skip",
+    "Figma Slides: skip or unskip a slide during presentation. Slides only.",
+    setSlideSkipInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_slide_skip", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "focus_slide",
+    "Figma Slides: focus a slide in the editor (sets currentPage.focusedSlide). Slides only.",
+    focusSlideInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("focus_slide", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "get_slide_grid",
+    "Figma Slides: read the slide grid as a 2D array of slide ids/names (row-major presentation order). Read-only. Slides only.",
+    getSlideGridInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("get_slide_grid", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_slide_grid",
+    "Figma Slides: reorder the deck by passing the full 2D grid of slide ids in the desired order. Must include EVERY current slide (get_slide_grid first). Slides only.",
+    setSlideGridInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_slide_grid", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_buzz_frame",
+    "Figma Buzz: create a marketing-asset frame on the canvas grid, optionally setting its platform asset type (LINKEDIN_POST, INSTA_STORY, …) and background. Buzz only.",
+    createBuzzFrameInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_buzz_frame", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_buzz_asset_type",
+    "Figma Buzz: set a node's platform asset type/size (drives Buzz's per-platform dimensions). Buzz only.",
+    setBuzzAssetTypeInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_buzz_asset_type", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "get_buzz_content",
+    "Figma Buzz: read a Buzz asset's dynamic text and media fields (index, value/type/hash, backing node id) plus its asset type. Read-only. Buzz only.",
+    getBuzzContentInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("get_buzz_content", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_buzz_text",
+    "Figma Buzz: fill an asset's text fields from an array applied positionally (values[i] -> field i) — the core data-driven, bulk-content workflow. Read fields first with get_buzz_content. Buzz only.",
+    setBuzzTextInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_buzz_text", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "buzz_smart_resize",
+    "Figma Buzz: intelligently resize a node to target dimensions while preserving layout/aspect (for reflowing an asset across platform sizes). Buzz only.",
+    buzzSmartResizeInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("buzz_smart_resize", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
     "dev_resources",
     "Read/add/edit/delete dev resources (links to tickets, docs, storybook) attached to nodes — the Dev-Mode handoff surface, editable here without a Dev seat's UI.",
     devResourcesShape.shape,
@@ -1243,6 +1561,20 @@ async function renderResponse(
           type: "text",
           text: err instanceof Error ? err.message : String(err),
         },
+      ],
+      isError: true,
+    };
+  }
+}
+
+/** Wrap a purely-local (no-plugin, no shared-state) producer into a ToolResult. */
+async function renderLocal(fn: () => Promise<unknown>): Promise<ToolResult> {
+  try {
+    return { content: [{ type: "text", text: JSON.stringify(await fn()) }] };
+  } catch (err) {
+    return {
+      content: [
+        { type: "text", text: err instanceof Error ? err.message : String(err) },
       ],
       isError: true,
     };

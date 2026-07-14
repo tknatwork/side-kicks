@@ -1,0 +1,23 @@
+{
+  "name": "Figma Limitless MCP — Extras (FigJam / Slides / Buzz)",
+  "id": "figma-limitless-mcp-extras",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "index.html",
+  "permissions": [
+    "teamlibrary"
+  ],
+  "networkAccess": {
+    "allowedDomains": [
+      "ws://localhost:1994"
+    ],
+    "reasoning": "Connects to the local figma-limitless-mcp server via WebSocket to stream Figma document data to AI tools"
+  },
+  "documentAccess": "dynamic-page",
+  "editorType": [
+    "figma",
+    "figjam",
+    "slides",
+    "buzz"
+  ]
+}
