@@ -69,6 +69,9 @@ import {
   importLibraryAssetInput,
   listLibraryVariablesInput,
   createSlotInput,
+  getSlotsInput,
+  resetSlotInput,
+  appendToSlotInput,
   devResourcesShape,
   devResourcesInput,
   setCodeMappingShape,
@@ -1087,6 +1090,41 @@ export function registerTools(
     async ({ nodeId, fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
         node.sendWithParams("create_slot", [nodeId], undefined, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "get_slots",
+    "List the SLOT frames within a node (Slots, GA June 2026). Returns each slot's id, name, child count, and limitViolations, plus — when the node is a COMPONENT/COMPONENT_SET — its SLOT component-property definitions (key, description, slotSettings). Read-only.",
+    getSlotsInput.shape,
+    async ({ nodeId, fileKey }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("get_slots", [nodeId], undefined, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "reset_slot",
+    "Reset a SLOT node to its empty/default state, clearing content added into it. nodeId must be a SLOT (discover via get_slots).",
+    resetSlotInput.shape,
+    async ({ nodeId, fileKey }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("reset_slot", [nodeId], undefined, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "append_to_slot",
+    "Move a scene node into a SLOT frame to populate it, on a COMPONENT definition. Note: Figma blocks appending into a slot that lives inside an INSTANCE (a platform limit) — populate the master component instead. Returns the slot's limitViolations after insertion.",
+    appendToSlotInput.shape,
+    async ({ slotId, nodeId, index, fileKey }): Promise<ToolResult> => {
+      const params: Record<string, unknown> = { slotId, nodeId };
+      if (index !== undefined) params.index = index;
+      return renderResponse(() =>
+        node.sendWithParams("append_to_slot", undefined, params, fileKey)
       );
     }
   );

@@ -971,6 +971,31 @@ export const createSlotInput = z.object({
   fileKey: fileKeyField,
 });
 
+export const getSlotsInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe(
+    "Node to search for SLOT frames — a COMPONENT, COMPONENT_SET, INSTANCE, or any frame subtree"
+  ),
+  fileKey: fileKeyField,
+});
+
+export const resetSlotInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe(
+    "The SLOT node to reset to its empty/default state (discover via get_slots)"
+  ),
+  fileKey: fileKeyField,
+});
+
+export const appendToSlotInput = z.object({
+  slotId: createFigmaNodeIdSchema().describe("The SLOT node to populate (must be type SLOT)"),
+  nodeId: createFigmaNodeIdSchema().describe("The scene node to move into the slot"),
+  index: z
+    .number()
+    .min(0)
+    .optional()
+    .describe("Insert position among the slot's children (default: append to end)"),
+  fileKey: fileKeyField,
+});
+
 export const devResourcesShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("Target node"),
   action: z.enum(["get", "add", "edit", "delete"]),
@@ -1615,6 +1640,12 @@ export const toolInputSchemas = {
 
   create_slot: createSlotInput,
 
+  get_slots: getSlotsInput,
+
+  reset_slot: resetSlotInput,
+
+  append_to_slot: appendToSlotInput,
+
   dev_resources: devResourcesInput,
 
   set_code_mapping: setCodeMappingInput,
@@ -1725,6 +1756,9 @@ const rpcToArgs: Record<
   import_library_asset: (_nodeIds, params) => ({ ...params }),
   list_library_variables: (_nodeIds, params) => ({ ...params }),
   create_slot: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  get_slots: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  reset_slot: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
+  append_to_slot: (_nodeIds, params) => ({ ...params }),
   dev_resources: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   set_code_mapping: (_nodeIds, params) => ({ ...params }),
   get_code_mappings: (_nodeIds, params) => ({ ...params }),

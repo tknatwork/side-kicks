@@ -108,6 +108,8 @@ export const JOURNALED_TOOLS = new Set([
   "create_effect_style",
   "import_library_asset",
   "create_slot",
+  "reset_slot",
+  "append_to_slot",
   "dev_resources",
 ]);
 

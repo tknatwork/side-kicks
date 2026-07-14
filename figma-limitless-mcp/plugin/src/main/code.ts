@@ -62,6 +62,9 @@ type RequestType =
   | "import_library_asset"
   | "list_library_variables"
   | "create_slot"
+  | "get_slots"
+  | "reset_slot"
+  | "append_to_slot"
   | "dev_resources";
 
 type ServerRequestParams = Record<string, unknown> & {
@@ -886,6 +889,8 @@ const EDIT_REQUEST_TYPES = new Set<RequestType>([
   "create_effect_style",
   "import_library_asset",
   "create_slot",
+  "reset_slot",
+  "append_to_slot",
 ]);
 
 const requireEditorMode = (toolName: RequestType): void => {
@@ -3828,6 +3833,94 @@ const handleRequest = async (
             slotId: slot.id,
             slotPropertyKey: newKey ?? null,
             hint: "The SLOT component property was created automatically — do NOT add another via add_component_property; adjust it with editComponentProperty (execute_code) if slotSettings need changing.",
+          },
+        };
+      }
+      case "get_slots": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for get_slots");
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node) throw new Error(`Node not found: ${nodeId}`);
+        const slots: SlotNode[] = [];
+        if (node.type === "SLOT") slots.push(node);
+        if ("findAll" in node) {
+          for (const found of (node as ChildrenMixin).findAll(
+            (n) => n.type === "SLOT"
+          )) {
+            slots.push(found as SlotNode);
+          }
+        }
+        const slotData = slots.map((s) => ({
+          slotId: s.id,
+          name: s.name,
+          childCount: s.children.length,
+          limitViolations: s.limitViolations,
+        }));
+        let slotProperties:
+          | Array<{
+              key: string;
+              description?: string;
+              slotSettings?: SlotSettings;
+            }>
+          | undefined;
+        if (node.type === "COMPONENT" || node.type === "COMPONENT_SET") {
+          slotProperties = Object.entries(node.componentPropertyDefinitions)
+            .filter(([, def]) => def.type === "SLOT")
+            .map(([key, def]) => ({
+              key,
+              description: def.description,
+              slotSettings: def.slotSettings,
+            }));
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, slots: slotData, slotProperties },
+        };
+      }
+      case "reset_slot": {
+        const nodeId = request.nodeIds && request.nodeIds[0];
+        if (!nodeId) throw new Error("nodeIds is required for reset_slot");
+        const node = await figma.getNodeByIdAsync(nodeId);
+        if (!node || node.type !== "SLOT") {
+          throw new Error(
+            `reset_slot needs a SLOT node, got ${node?.type ?? "missing"}`
+          );
+        }
+        node.resetSlot();
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { slotId: node.id, reset: true },
+        };
+      }
+      case "append_to_slot": {
+        const params = request.params ?? {};
+        const slotId = params.slotId;
+        const childId = params.nodeId;
+        if (typeof slotId !== "string" || typeof childId !== "string") {
+          throw new Error("append_to_slot needs slotId and nodeId");
+        }
+        const slot = await figma.getNodeByIdAsync(slotId);
+        if (!slot || slot.type !== "SLOT") {
+          throw new Error(
+            `append_to_slot slotId must be a SLOT, got ${slot?.type ?? "missing"}`
+          );
+        }
+        const child = await getSceneNodeById(childId);
+        if (typeof params.index === "number") {
+          slot.insertChild(params.index, child);
+        } else {
+          slot.appendChild(child);
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            slotId: slot.id,
+            appended: child.id,
+            childCount: slot.children.length,
+            limitViolations: slot.limitViolations,
           },
         };
       }
