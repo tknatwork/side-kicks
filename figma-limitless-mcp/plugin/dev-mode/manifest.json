@@ -2,8 +2,8 @@
   "name": "Figma Limitless MCP (Dev Mode)",
   "id": "figma-limitless-mcp-dev",
   "api": "1.0.0",
-  "main": "dist/code.js",
-  "ui": "dist/index.html",
+  "main": "../dist/code.js",
+  "ui": "../dist/index.html",
   "permissions": [
     "teamlibrary"
   ],
