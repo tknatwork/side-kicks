@@ -4,5 +4,6 @@
 import { DETECTORS } from "../runner.js";
 import { tokenDetectors } from "./tokens.js";
 import { scopeDetectors } from "./scopes.js";
+import { bindingDetectors } from "./bindings.js";
 
-Object.assign(DETECTORS, tokenDetectors, scopeDetectors);
+Object.assign(DETECTORS, tokenDetectors, scopeDetectors, bindingDetectors);

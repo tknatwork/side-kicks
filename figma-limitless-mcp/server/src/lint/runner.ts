@@ -42,11 +42,22 @@ export interface SnapComponent {
   propertyDefinitions?: Record<string, unknown>;
 }
 
+/** One node->variable binding edge (a node field bound to a variable). */
+export interface SnapBinding {
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  field: string;
+  variableId: string;
+}
+
 export interface LintSnapshot {
   collections: SnapCollection[];
   variables: SnapVariable[];
   styles: SnapStyle[];
   components: SnapComponent[];
+  nodeBindings?: SnapBinding[];
+  bindingsTruncated?: boolean;
   meta: { pageCount: number; scannedAllPages: boolean };
 }
 

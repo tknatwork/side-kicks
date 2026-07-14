@@ -4536,6 +4536,61 @@ const handleRequest = async (
           };
         });
 
+        // Node -> variable bindings (for no-node-binds-primitive etc.). Recurse
+        // into each field's binding value to pull VARIABLE_ALIAS ids wherever
+        // they sit (scalar fields, fills[] arrays, nested paint boundVariables).
+        // Bounded so a huge file can't produce an unbounded payload.
+        figma.skipInvisibleInstanceChildren = true;
+        const collectAliasIds = (binding: unknown, into: string[]): void => {
+          if (!binding || typeof binding !== "object") return;
+          if (Array.isArray(binding)) {
+            for (const b of binding) collectAliasIds(b, into);
+            return;
+          }
+          const o = binding as Record<string, unknown>;
+          if (o.type === "VARIABLE_ALIAS" && typeof o.id === "string") {
+            into.push(o.id);
+            return;
+          }
+          for (const val of Object.values(o)) collectAliasIds(val, into);
+        };
+        const MAX_BINDINGS = 10000;
+        const nodeBindings: Array<{
+          nodeId: string;
+          nodeName: string;
+          nodeType: string;
+          field: string;
+          variableId: string;
+        }> = [];
+        let bindingsTruncated = false;
+        const boundNodes = figma.root.findAll((n) => {
+          const bv = (n as { boundVariables?: unknown }).boundVariables;
+          return (
+            !!bv && typeof bv === "object" && Object.keys(bv as object).length > 0
+          );
+        });
+        scan: for (const n of boundNodes) {
+          const bv = (n as unknown as { boundVariables: Record<string, unknown> })
+            .boundVariables;
+          for (const [field, binding] of Object.entries(bv)) {
+            const ids: string[] = [];
+            collectAliasIds(binding, ids);
+            for (const variableId of ids) {
+              nodeBindings.push({
+                nodeId: n.id,
+                nodeName: n.name,
+                nodeType: n.type,
+                field,
+                variableId,
+              });
+              if (nodeBindings.length >= MAX_BINDINGS) {
+                bindingsTruncated = true;
+                break scan;
+              }
+            }
+          }
+        }
+
         return {
           type: request.type,
           requestId: request.requestId,
@@ -4544,6 +4599,8 @@ const handleRequest = async (
             variables: snapVariables,
             styles: snapStyles,
             components: snapComponents,
+            nodeBindings,
+            bindingsTruncated,
             meta: {
               pageCount: figma.root.children.length,
               scannedAllPages: true,
