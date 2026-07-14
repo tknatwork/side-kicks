@@ -98,18 +98,40 @@ test("no-instance-restyle-override: flags restyled instances, silent on old plug
   assert.equal(runLint(base({})).findings.filter((x) => x.rule_id === "no-instance-restyle-override").length, 0);
 });
 
-test("component-set-has-code-mapping: conditional on adoption", () => {
+test("component-set-has-code-mapping: opt-in; conditional on adoption", () => {
   const sets = (mapped) => base({ components: [
     { id: "s1", name: "Button", type: "COMPONENT_SET", hasCodeMapping: mapped[0] },
     { id: "s2", name: "Chip", type: "COMPONENT_SET", hasCodeMapping: mapped[1] },
   ] });
-  // one mapped, one not -> flags the unmapped
-  const rep = runLint(sets([true, false]));
-  assert.ok(rep.findings.some((f) => f.rule_id === "component-set-has-code-mapping" && f.nodeId === "s2"));
-  // none mapped (not adopted) -> silent
-  assert.equal(runLint(sets([false, false])).findings.filter((f) => f.rule_id === "component-set-has-code-mapping").length, 0);
+  const run = (m) => runLint(sets(m), { only: ["component-set-has-code-mapping"] });
+  // opt-in off by default -> silent even when one linked, one not
+  assert.equal(runLint(sets([true, false])).findings.filter((f) => f.rule_id === "component-set-has-code-mapping").length, 0);
+  // enabled: one linked, one not -> flags the unlinked
+  assert.ok(run([true, false]).findings.some((f) => f.nodeId === "s2"));
+  // none linked (not adopted) -> silent
+  assert.equal(run([false, false]).findings.length, 0);
   // old plugin (undefined) -> silent
-  assert.equal(runLint(base({ components: [{ id: "s1", name: "B", type: "COMPONENT_SET" }] })).findings.filter((f) => f.rule_id === "component-set-has-code-mapping").length, 0);
+  assert.equal(runLint(base({ components: [{ id: "s1", name: "B", type: "COMPONENT_SET" }] }), { only: ["component-set-has-code-mapping"] }).findings.length, 0);
+});
+
+test("multi-brand-alias-discipline: multi-hop chain follows the SAME mode (not order-dependent)", () => {
+  const snap = base({
+    collections: [
+      { id: "P", name: "Primitives", defaultModeId: "p", modes: [{ modeId: "p", name: "V" }] },
+      { id: "S", name: "Semantic", defaultModeId: "L", modes: [{ modeId: "L", name: "Light" }, { modeId: "D", name: "Dark" }] },
+    ],
+    variables: [
+      { ...V("p_blue", "blue/500", "P", { p: { r: 0, g: 0, b: 1 } }), hiddenFromPublishing: true },
+      V("brand_primary", "brand/primary", "S", { L: A("p_blue"), D: A("p_blue") }),
+      // per-mode divergent: LIGHT -> primitive, DARK -> brand layer
+      V("mid", "mid/tone", "S", { L: A("p_blue"), D: A("brand_primary") }),
+      V("accent", "accent/default", "S", { L: A("mid"), D: A("mid") }),
+    ],
+  });
+  const rep = runLint(snap, { enable: ["multi-brand-alias-discipline"], config: { "multi-brand-alias-discipline": { brandPrefix: "brand" } } });
+  // Mode-threaded: accent's DARK chain (accent->mid[D]->brand_primary) reaches brand => routed => NOT flagged.
+  // The old first-mode-collapse bug would follow mid's LIGHT value (p_blue) in both modes => fabricate a finding.
+  assert.ok(!rep.findings.some((f) => f.rule_id === "multi-brand-alias-discipline" && f.variableId === "accent"));
 });
 
 test("detached-component-frame-signal: opt-in; exact name+structure match fires, complete fingerprints only", () => {

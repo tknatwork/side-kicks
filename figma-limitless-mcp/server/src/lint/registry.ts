@@ -232,11 +232,12 @@ export const RULES: RuleMeta[] = [
   },
   {
     id: "component-set-has-code-mapping",
-    title: "Component sets should have a Code Connect mapping matching their props",
+    title: "Component sets should link to their code (a Dev Mode dev resource)",
     category: "code-output",
     severity: "warn",
+    defaultOn: false, // dev-resource presence is a weak proxy (not Code Connect) — opt-in
     skillUri: "skill://design-system/design-to-code-correctness",
-    fixHint: "Create/update the Code Connect mapping via set_code_mapping so its props match componentPropertyDefinitions exactly.",
+    fixHint: "Attach a Dev Mode dev resource linking the set to its implementation (code/story/docs) so it's discoverable. (This checks dev-resource presence, not Code Connect specifically.)",
   },
   {
     id: "primitive-component-single-mode",

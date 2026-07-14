@@ -137,9 +137,12 @@ const multiBrandAliasDiscipline: Detector = (snap, config) => {
     if (v.tier !== "semantic") continue;
     if (isBrandVar(v.name)) continue; // the brand layer itself needn't route through itself
     if (!roles.has(v.name.toLowerCase().split("/")[0])) continue;
-    // Does the token alias through the brand layer in ANY mode?
+    // Does the token alias through the brand layer in ANY mode? Follow each
+    // mode's chain in THAT SAME mode (falling back to a target's first mode only
+    // when the mode is absent) — collapsing to the first mode makes the result
+    // order-dependent and can fabricate/miss a finding on per-mode-divergent chains.
     let routed = false;
-    for (const val of Object.values(v.valuesByMode)) {
+    for (const [modeId, val] of Object.entries(v.valuesByMode)) {
       let t = aliasTarget(val);
       const seen = new Set<string>();
       let hops = 0;
@@ -151,7 +154,8 @@ const multiBrandAliasDiscipline: Detector = (snap, config) => {
           routed = true;
           break;
         }
-        t = aliasTarget(Object.values(tv.valuesByMode)[0]);
+        const next = modeId in tv.valuesByMode ? tv.valuesByMode[modeId] : Object.values(tv.valuesByMode)[0];
+        t = aliasTarget(next);
         hops++;
       }
       if (routed) break;

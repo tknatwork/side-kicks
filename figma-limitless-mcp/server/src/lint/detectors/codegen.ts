@@ -142,23 +142,25 @@ const textLayerUsesStyleOrBoundType: Detector = (snap) => {
   return out;
 };
 
-// Wave 11b (needs the per-set getDevResourcesAsync gather). CONDITIONAL on
-// adoption: only flag missing mappings once SOME set has one — a team that
-// doesn't use Code Connect isn't spammed. Sets past the async cap carry
-// hasCodeMapping===undefined => excluded from both numerator and denominator.
+// Wave 11b — opt-in (defaultOn:false). hasCodeMapping is sourced from the
+// plugin's getDevResourcesAsync, which returns ANY Dev Mode dev resource (a
+// Storybook/Jira/docs link), NOT Code Connect specifically — so this is a weak
+// "is this set linked to its code?" proxy, kept off by default and honestly
+// worded. CONDITIONAL on adoption: only flag once SOME set carries a dev
+// resource. Sets past the async cap are undefined and excluded from both sides.
 const componentSetHasCodeMapping: Detector = (snap) => {
   const sets = (snap.components ?? []).filter(
     (c) => c.type === "COMPONENT_SET" && typeof c.hasCodeMapping === "boolean"
   );
   if (sets.length === 0) return []; // old plugin / none checked
-  if (!sets.some((c) => c.hasCodeMapping === true)) return []; // not adopted — don't spam
+  if (!sets.some((c) => c.hasCodeMapping === true)) return []; // none linked — nothing to compare against
   const out: PartialFinding[] = [];
   for (const c of sets) {
     if (c.hasCodeMapping === false) {
       out.push({
         rule_id: "component-set-has-code-mapping",
         nodeId: c.id,
-        message: `Component set '${c.name}' has no Code Connect / dev-resource mapping, but others do; add one via set_code_mapping so codegen resolves its props.`,
+        message: `Component set '${c.name}' has no Dev Mode dev resource (code/story/docs link), but other sets do; attach one so its implementation is discoverable. (Checks dev-resource presence, not Code Connect specifically.)`,
       });
     }
   }
