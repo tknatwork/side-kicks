@@ -5,11 +5,15 @@
 ## What this is
 
 A local Figma MCP server + Figma Desktop plugin. No REST calls, no rate
-limits. 72 tools: local fonts, text/paint/effect styles, variable authoring,
-grid layout, master components, instances, prototyping, annotations, dev
-resources, Motion/shaders (beta), plus a crash-safe orchestration layer
-(journal, checkpoints, TTL locks, cached digests). AI operating rules:
-`docs/AI-GUIDE.md`.
+limits. **98 tools** across Design, Dev Mode, FigJam, Slides & Buzz: local
+fonts, text/paint/effect styles, variable authoring, grid layout, master
+components, instances, prototyping, annotations, dev resources, Motion/shaders
+(beta), and the FigJam/Slides/Buzz surfaces — plus a **bundled design-system
+knowledge layer + 57-rule structure linter** (`list_skills`, `read_skill`,
+`get_build_recipe`, `lint_design_system` — the build → lint → fix closed loop;
+see the "Design-system skills + structure linter" section below) and a
+crash-safe orchestration layer (journal, checkpoints, TTL locks, cached
+digests). AI operating rules: `docs/AI-GUIDE.md`.
 
 ## Architecture (2 packages)
 
