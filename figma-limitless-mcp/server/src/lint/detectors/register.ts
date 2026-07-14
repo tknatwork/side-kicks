@@ -3,5 +3,6 @@
 // bundle here as they land (Waves 3b–7).
 import { DETECTORS } from "../runner.js";
 import { tokenDetectors } from "./tokens.js";
+import { scopeDetectors } from "./scopes.js";
 
-Object.assign(DETECTORS, tokenDetectors);
+Object.assign(DETECTORS, tokenDetectors, scopeDetectors);
