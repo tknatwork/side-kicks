@@ -65,6 +65,13 @@ type RequestType =
   | "get_slots"
   | "reset_slot"
   | "append_to_slot"
+  | "create_sticky"
+  | "create_shape_with_text"
+  | "create_connector"
+  | "create_section"
+  | "create_table"
+  | "create_code_block"
+  | "create_gif"
   | "dev_resources";
 
 type ServerRequestParams = Record<string, unknown> & {
@@ -910,12 +917,53 @@ const requireEditorMode = (toolName: RequestType): void => {
   }
 };
 
+const FIGJAM_REQUEST_TYPES = new Set<RequestType>([
+  "create_sticky",
+  "create_shape_with_text",
+  "create_connector",
+  "create_section",
+  "create_table",
+  "create_code_block",
+  "create_gif",
+]);
+
+const requireFigJam = (toolName: RequestType): void => {
+  if (figma.editorType !== "figjam") {
+    throw new Error(
+      `${toolName} is a FigJam tool and only runs in a FigJam file (current editor: ${figma.editorType}). Open a FigJam board and re-run.`
+    );
+  }
+};
+
+const solidPaintFromHex = (hex: string): SolidPaint => ({
+  type: "SOLID",
+  color: parseHexColor(hex),
+});
+
+// FigJam text lives in a TextSublayerNode; setting characters requires the
+// sublayer's font loaded first (Inter Medium is the FigJam default).
+const setSublayerText = async (
+  sublayer: TextSublayerNode,
+  text: string
+): Promise<void> => {
+  const font = sublayer.fontName;
+  if (typeof font === "symbol") {
+    await figma.loadFontAsync({ family: "Inter", style: "Medium" });
+  } else {
+    await figma.loadFontAsync(font);
+  }
+  sublayer.characters = text;
+};
+
 const handleRequest = async (
   request: ServerRequest
 ): Promise<PluginResponse> => {
   try {
     if (EDIT_REQUEST_TYPES.has(request.type)) {
       requireEditorMode(request.type);
+    }
+    if (FIGJAM_REQUEST_TYPES.has(request.type)) {
+      requireFigJam(request.type);
     }
     switch (request.type) {
       case "get_document":
@@ -3931,6 +3979,180 @@ const handleRequest = async (
           },
         };
       }
+      case "create_sticky": {
+        const params = request.params ?? {};
+        const sticky = figma.createSticky();
+        if (params.wide === true) sticky.isWideWidth = true;
+        if (typeof params.fillHex === "string") {
+          sticky.fills = [solidPaintFromHex(params.fillHex)];
+        }
+        if (typeof params.text === "string") {
+          await setSublayerText(sticky.text, params.text);
+        }
+        positionNode(sticky, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: sticky.id, nodeName: sticky.name },
+        };
+      }
+      case "create_shape_with_text": {
+        const params = request.params ?? {};
+        const shape = figma.createShapeWithText();
+        if (typeof params.shapeType === "string") {
+          shape.shapeType = params.shapeType as ShapeWithTextNode["shapeType"];
+        }
+        if (typeof params.fillHex === "string") {
+          shape.fills = [solidPaintFromHex(params.fillHex)];
+        }
+        if (typeof params.text === "string") {
+          await setSublayerText(shape.text, params.text);
+        }
+        if (typeof params.width === "number" && typeof params.height === "number") {
+          shape.resize(params.width, params.height);
+        }
+        positionNode(shape, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: shape.id, shapeType: shape.shapeType },
+        };
+      }
+      case "create_connector": {
+        const params = request.params ?? {};
+        const connector = figma.createConnector();
+        const makeEndpoint = (
+          nodeId: unknown,
+          x: unknown,
+          y: unknown,
+          magnet: unknown
+        ): ConnectorEndpoint => {
+          if (typeof nodeId === "string") {
+            return {
+              endpointNodeId: nodeId,
+              magnet: (typeof magnet === "string" ? magnet : "AUTO") as
+                | "NONE"
+                | "AUTO"
+                | "TOP"
+                | "LEFT"
+                | "BOTTOM"
+                | "RIGHT"
+                | "CENTER",
+            };
+          }
+          return {
+            position: {
+              x: typeof x === "number" ? x : 0,
+              y: typeof y === "number" ? y : 0,
+            },
+          };
+        };
+        connector.connectorStart = makeEndpoint(
+          params.startNodeId,
+          params.startX,
+          params.startY,
+          params.startMagnet
+        );
+        connector.connectorEnd = makeEndpoint(
+          params.endNodeId,
+          params.endX,
+          params.endY,
+          params.endMagnet
+        );
+        if (typeof params.lineType === "string") {
+          connector.connectorLineType = params.lineType as
+            | "ELBOWED"
+            | "STRAIGHT"
+            | "CURVED";
+        }
+        if (typeof params.startCap === "string") {
+          connector.connectorStartStrokeCap = params.startCap as ConnectorStrokeCap;
+        }
+        if (typeof params.endCap === "string") {
+          connector.connectorEndStrokeCap = params.endCap as ConnectorStrokeCap;
+        }
+        if (typeof params.text === "string") {
+          await setSublayerText(connector.text, params.text);
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: connector.id },
+        };
+      }
+      case "create_section": {
+        const params = request.params ?? {};
+        const section = figma.createSection();
+        if (typeof params.name === "string") section.name = params.name;
+        if (typeof params.width === "number" && typeof params.height === "number") {
+          section.resizeWithoutConstraints(params.width, params.height);
+        }
+        positionNode(section, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: section.id, nodeName: section.name },
+        };
+      }
+      case "create_table": {
+        const params = request.params ?? {};
+        const rows = typeof params.rows === "number" ? params.rows : 2;
+        const columns = typeof params.columns === "number" ? params.columns : 2;
+        const table = figma.createTable(rows, columns);
+        if (Array.isArray(params.cells)) {
+          const cellRows = params.cells as unknown[];
+          for (let r = 0; r < cellRows.length && r < table.numRows; r++) {
+            const row = cellRows[r];
+            if (!Array.isArray(row)) continue;
+            for (let c = 0; c < row.length && c < table.numColumns; c++) {
+              const value = row[c];
+              if (typeof value === "string" && value.length > 0) {
+                await setSublayerText(table.cellAt(r, c).text, value);
+              }
+            }
+          }
+        }
+        positionNode(table, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: table.id,
+            numRows: table.numRows,
+            numColumns: table.numColumns,
+          },
+        };
+      }
+      case "create_code_block": {
+        const params = request.params ?? {};
+        if (typeof params.code !== "string") {
+          throw new Error("create_code_block needs code");
+        }
+        const block = figma.createCodeBlock();
+        block.code = params.code;
+        if (typeof params.language === "string") {
+          block.codeLanguage = params.language as CodeBlockNode["codeLanguage"];
+        }
+        positionNode(block, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: block.id, codeLanguage: block.codeLanguage },
+        };
+      }
+      case "create_gif": {
+        const params = request.params ?? {};
+        if (typeof params.hash !== "string") {
+          throw new Error("create_gif needs a media hash");
+        }
+        const gif = figma.createGif(params.hash);
+        positionNode(gif, params.x, params.y);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: gif.id },
+        };
+      }
       case "dev_resources": {
         const nodeId = request.nodeIds && request.nodeIds[0];
         if (!nodeId) throw new Error("nodeIds is required for dev_resources");
@@ -4128,7 +4350,11 @@ figma.ui.onmessage = async (message) => {
       }
     };
 
-    if (EDIT_REQUEST_TYPES.has(request.type) || request.type === "execute_code") {
+    if (
+      EDIT_REQUEST_TYPES.has(request.type) ||
+      FIGJAM_REQUEST_TYPES.has(request.type) ||
+      request.type === "execute_code"
+    ) {
       mutationChain = mutationChain.then(run, run);
     } else {
       void run();

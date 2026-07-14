@@ -72,6 +72,13 @@ import {
   getSlotsInput,
   resetSlotInput,
   appendToSlotInput,
+  createStickyInput,
+  createShapeWithTextInput,
+  createConnectorInput,
+  createSectionInput,
+  createTableInput,
+  createCodeBlockInput,
+  createGifInput,
   devResourcesShape,
   devResourcesInput,
   setCodeMappingShape,
@@ -1125,6 +1132,83 @@ export function registerTools(
       if (index !== undefined) params.index = index;
       return renderResponse(() =>
         node.sendWithParams("append_to_slot", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_sticky",
+    "FigJam: create a sticky note with optional text, background color, and wide shape. Runs only in a FigJam file.",
+    createStickyInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_sticky", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_shape_with_text",
+    "FigJam: create a flowchart/diagram shape (square, diamond, ellipse, arrows, ENG_* shapes, …) with optional text, fill, and size. FigJam only.",
+    createShapeWithTextInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_shape_with_text", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_connector",
+    "FigJam: draw a connector between two nodes (magnet-attached via startNodeId/endNodeId) or between free points, with an optional label, line type, and stroke caps. FigJam only.",
+    createConnectorInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_connector", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_section",
+    "FigJam: create a titled section to group board content, with optional name and size. FigJam only.",
+    createSectionInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_section", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_table",
+    "FigJam: create a table with the given rows/columns, optionally pre-filling cell text (row-major). FigJam only.",
+    createTableInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_table", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_code_block",
+    "FigJam: create a syntax-highlighted code block with the given code and language. FigJam only.",
+    createCodeBlockInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_code_block", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_gif",
+    "FigJam: place a GIF by its existing media hash. Note: local-only — importing new GIFs from URLs is not supported. FigJam only.",
+    createGifInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_gif", undefined, params, fileKey)
       );
     }
   );

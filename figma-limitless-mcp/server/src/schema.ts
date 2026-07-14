@@ -996,6 +996,130 @@ export const appendToSlotInput = z.object({
   fileKey: fileKeyField,
 });
 
+// --- FigJam authoring (editorType: figjam) ---
+
+export const createStickyInput = z.object({
+  text: z.string().optional().describe("Sticky note text"),
+  fillHex: createHexColorSchema().optional().describe("Background color, e.g. '#FFD966'"),
+  wide: z
+    .boolean()
+    .optional()
+    .describe("Use the wide rectangular sticky shape instead of square"),
+  x: z.number().optional().describe("X position on the FigJam board"),
+  y: z.number().optional().describe("Y position on the FigJam board"),
+  fileKey: fileKeyField,
+});
+
+export const createShapeWithTextInput = z.object({
+  shapeType: z
+    .enum([
+      "SQUARE", "ELLIPSE", "ROUNDED_RECTANGLE", "DIAMOND", "TRIANGLE_UP",
+      "TRIANGLE_DOWN", "PARALLELOGRAM_RIGHT", "PARALLELOGRAM_LEFT", "ENG_DATABASE",
+      "ENG_QUEUE", "ENG_FILE", "ENG_FOLDER", "TRAPEZOID", "PREDEFINED_PROCESS",
+      "SHIELD", "DOCUMENT_SINGLE", "DOCUMENT_MULTIPLE", "MANUAL_INPUT", "HEXAGON",
+      "CHEVRON", "PENTAGON", "OCTAGON", "STAR", "PLUS", "ARROW_LEFT", "ARROW_RIGHT",
+      "SUMMING_JUNCTION", "OR", "SPEECH_BUBBLE", "INTERNAL_STORAGE",
+    ])
+    .describe("FigJam shape kind (flowchart/diagram shapes)"),
+  text: z.string().optional().describe("Text inside the shape"),
+  fillHex: createHexColorSchema().optional().describe("Fill color"),
+  width: z.number().min(0.01).optional().describe("Shape width"),
+  height: z.number().min(0.01).optional().describe("Shape height"),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
+export const createConnectorInput = z.object({
+  startNodeId: createFigmaNodeIdSchema()
+    .optional()
+    .describe("Node to connect FROM (magnet-attached). Omit to use a free startX/startY."),
+  endNodeId: createFigmaNodeIdSchema()
+    .optional()
+    .describe("Node to connect TO (magnet-attached). Omit to use a free endX/endY."),
+  startX: z.number().optional().describe("Free start X (used when startNodeId is omitted)"),
+  startY: z.number().optional().describe("Free start Y"),
+  endX: z.number().optional().describe("Free end X (used when endNodeId is omitted)"),
+  endY: z.number().optional().describe("Free end Y"),
+  text: z.string().optional().describe("Connector label"),
+  lineType: z
+    .enum(["ELBOWED", "STRAIGHT", "CURVED"])
+    .optional()
+    .describe("Path style (default ELBOWED)"),
+  startMagnet: z
+    .enum(["NONE", "AUTO", "TOP", "LEFT", "BOTTOM", "RIGHT", "CENTER"])
+    .optional()
+    .describe("Attachment point on the start node (default AUTO)"),
+  endMagnet: z
+    .enum(["NONE", "AUTO", "TOP", "LEFT", "BOTTOM", "RIGHT", "CENTER"])
+    .optional()
+    .describe("Attachment point on the end node (default AUTO)"),
+  startCap: z
+    .enum([
+      "NONE", "ARROW_EQUILATERAL", "ARROW_LINES", "TRIANGLE_FILLED",
+      "DIAMOND_FILLED", "CIRCLE_FILLED", "ERD_ZERO_OR_ONE", "ERD_EXACTLY_ONE",
+      "ERD_ZERO_OR_MORE", "ERD_ONE_OR_MORE", "ERD_ONE", "ERD_MANY",
+    ])
+    .optional()
+    .describe("Start stroke cap"),
+  endCap: z
+    .enum([
+      "NONE", "ARROW_EQUILATERAL", "ARROW_LINES", "TRIANGLE_FILLED",
+      "DIAMOND_FILLED", "CIRCLE_FILLED", "ERD_ZERO_OR_ONE", "ERD_EXACTLY_ONE",
+      "ERD_ZERO_OR_MORE", "ERD_ONE_OR_MORE", "ERD_ONE", "ERD_MANY",
+    ])
+    .optional()
+    .describe("End stroke cap (e.g. ARROW_LINES for a directed arrow)"),
+  fileKey: fileKeyField,
+});
+
+export const createSectionInput = z.object({
+  name: z.string().optional().describe("Section title"),
+  width: z.number().min(0.01).optional().describe("Section width"),
+  height: z.number().min(0.01).optional().describe("Section height"),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
+export const createTableInput = z.object({
+  rows: z.number().int().min(1).max(100).optional().describe("Number of rows (default 2)"),
+  columns: z.number().int().min(1).max(100).optional().describe("Number of columns (default 2)"),
+  cells: z
+    .array(z.array(z.string()))
+    .optional()
+    .describe("Row-major cell text, e.g. [['Name','Role'],['Ada','Eng']]"),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
+export const createCodeBlockInput = z.object({
+  code: z.string().describe("Code contents"),
+  language: z
+    .enum([
+      "TYPESCRIPT", "CPP", "RUBY", "CSS", "JAVASCRIPT", "HTML", "JSON", "GRAPHQL",
+      "PYTHON", "GO", "SQL", "SWIFT", "KOTLIN", "RUST", "BASH", "PLAINTEXT", "DART",
+    ])
+    .optional()
+    .describe("Syntax-highlighting language (default PLAINTEXT)"),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
+export const createGifInput = z.object({
+  hash: z
+    .string()
+    .min(1)
+    .describe(
+      "Media hash of a GIF already present in the document. Note: this MCP is local-only, so importing new GIFs from a URL is not supported."
+    ),
+  x: z.number().optional().describe("X position"),
+  y: z.number().optional().describe("Y position"),
+  fileKey: fileKeyField,
+});
+
 export const devResourcesShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("Target node"),
   action: z.enum(["get", "add", "edit", "delete"]),
@@ -1646,6 +1770,20 @@ export const toolInputSchemas = {
 
   append_to_slot: appendToSlotInput,
 
+  create_sticky: createStickyInput,
+
+  create_shape_with_text: createShapeWithTextInput,
+
+  create_connector: createConnectorInput,
+
+  create_section: createSectionInput,
+
+  create_table: createTableInput,
+
+  create_code_block: createCodeBlockInput,
+
+  create_gif: createGifInput,
+
   dev_resources: devResourcesInput,
 
   set_code_mapping: setCodeMappingInput,
@@ -1759,6 +1897,13 @@ const rpcToArgs: Record<
   get_slots: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   reset_slot: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   append_to_slot: (_nodeIds, params) => ({ ...params }),
+  create_sticky: (_nodeIds, params) => ({ ...params }),
+  create_shape_with_text: (_nodeIds, params) => ({ ...params }),
+  create_connector: (_nodeIds, params) => ({ ...params }),
+  create_section: (_nodeIds, params) => ({ ...params }),
+  create_table: (_nodeIds, params) => ({ ...params }),
+  create_code_block: (_nodeIds, params) => ({ ...params }),
+  create_gif: (_nodeIds, params) => ({ ...params }),
   dev_resources: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   set_code_mapping: (_nodeIds, params) => ({ ...params }),
   get_code_mappings: (_nodeIds, params) => ({ ...params }),

@@ -110,6 +110,13 @@ export const JOURNALED_TOOLS = new Set([
   "create_slot",
   "reset_slot",
   "append_to_slot",
+  "create_sticky",
+  "create_shape_with_text",
+  "create_connector",
+  "create_section",
+  "create_table",
+  "create_code_block",
+  "create_gif",
   "dev_resources",
 ]);
 
