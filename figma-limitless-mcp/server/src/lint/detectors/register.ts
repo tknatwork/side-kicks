@@ -1,0 +1,7 @@
+// Populates the runner's DETECTORS map. Imported for its side-effect by
+// lint/index.ts before runLint is ever called. New tiers add their detector
+// bundle here as they land (Waves 3b–7).
+import { DETECTORS } from "../runner.js";
+import { tokenDetectors } from "./tokens.js";
+
+Object.assign(DETECTORS, tokenDetectors);

@@ -6,7 +6,7 @@ import path from "node:path";
 import type { z } from "zod";
 import type { Node } from "./node.js";
 import { listSkills, readSkill, getBuildRecipe } from "./skills.js";
-import { runLint, type LintSnapshot } from "./lint/runner.js";
+import { runLint, type LintSnapshot } from "./lint/index.js";
 import {
   createFrameInput,
   createImageInput,
