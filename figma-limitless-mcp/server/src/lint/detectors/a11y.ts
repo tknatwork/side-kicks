@@ -1,7 +1,16 @@
 // Accessibility detectors. Resolve semantic fg/bg (and border/icon) token
 // PAIRS down to concrete RGB per mode, then run real WCAG contrast math.
-// Pairing is conservative (exact name-suffix match, plus the on-<X> convention)
-// so it only flags clear, real low-contrast pairs — advisory (warn).
+//
+// Pairing is the hard part, and we deliberately DON'T guess it. A foreground is
+// paired with a surface ONLY through the explicit `on-<X>` naming convention
+// (foreground/on-primary -> surface/primary; text/on-emphasis -> */emphasis) —
+// the one signal where the designer has *declared* "this fg is meant to sit on
+// that bg". Loose suffix-matching (fg/primary <-> surface/primary) invents pairs
+// that were never intended (a chromatic fg usually belongs on a neutral surface;
+// a "fixed-light" fg belongs on a dark surface), so it's excluded — the rule
+// would rather stay silent than assert a fabricated failure. A DS that doesn't
+// use the on-<X> convention simply gets no findings here; auditing its real
+// fg/bg combinations needs node-level pixel sampling (deferred below).
 // min-font-size (needs text-node data) and the export-pixel-sampling fallback
 // are deferred.
 
@@ -50,28 +59,59 @@ const contrastRatio = (c1: RGB, c2: RGB): number => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
+// A foreground that resolves to the SAME primitive as its "surface" isn't a
+// real fg/bg pair (it's the same semantic colour in two roles) — the suffix
+// heuristic mismatched them. Skip, so we don't emit 1.00:1 noise.
+const sameColor = (a: RGB, b: RGB): boolean =>
+  Math.abs(a.r - b.r) < 0.004 &&
+  Math.abs(a.g - b.g) < 0.004 &&
+  Math.abs(a.b - b.b) < 0.004;
+
 const roleOf = (name: string): string => name.toLowerCase().split("/")[0] ?? "";
-const suffixOf = (name: string): string => name.toLowerCase().split("/").slice(1).join("/");
 
 const FG_ROLE = /^(fg|foreground|text|ink|content|icon|label)$/;
 const BG_ROLE = /^(bg|background|surface|fill|elevation)$/;
 const LINE_ROLE = /^(border|stroke|outline|divider|separator|ring|icon)$/;
 
-// Build a suffix -> bg-token map for a set of semantic COLOR tokens.
-function bgIndex(colors: AnalyzedVariable[]): Map<string, AnalyzedVariable> {
-  const m = new Map<string, AnalyzedVariable>();
-  for (const v of colors) if (BG_ROLE.test(roleOf(v.name))) m.set(suffixOf(v.name), v);
-  return m;
+// Pull the on-<X> target out of a foreground token name, or null if it isn't an
+// on-token. Handles both `on-primary` (single segment) and `on/primary` (its own
+// segment) — `X` is the surface key the designer declared this fg sits on.
+function onTarget(name: string): string | null {
+  const segs = name.toLowerCase().split("/");
+  for (let i = 0; i < segs.length; i++) {
+    const m = segs[i].match(/^on[-_](.+)$/); // fg/on-primary
+    if (m) return m[1];
+    if (segs[i] === "on" && segs[i + 1]) return segs[i + 1]; // fg/on/primary
+  }
+  return null;
 }
 
-function findSurface(
-  bg: Map<string, AnalyzedVariable>,
-  suffix: string
-): AnalyzedVariable | undefined {
-  if (bg.has(suffix)) return bg.get(suffix);
-  const on = suffix.match(/^on[-/](.+)$/); // fg/on-brand -> surface "brand"
-  if (on && bg.has(on[1])) return bg.get(on[1]);
-  return bg.get("default"); // fall back to the base surface
+// Index bg tokens so an on-<X> target resolves to a surface: by full suffix
+// (surface/primary/emphasis -> "primary/emphasis") and by leading segment
+// (-> "primary", first wins so it's the base surface of that colour).
+interface BgIndex {
+  bySuffix: Map<string, AnalyzedVariable>;
+  byLead: Map<string, AnalyzedVariable>;
+}
+function bgIndex(colors: AnalyzedVariable[]): BgIndex {
+  const bySuffix = new Map<string, AnalyzedVariable>();
+  const byLead = new Map<string, AnalyzedVariable>();
+  for (const v of colors) {
+    if (!BG_ROLE.test(roleOf(v.name))) continue;
+    const suffix = v.name.toLowerCase().split("/").slice(1).join("/");
+    if (suffix) bySuffix.set(suffix, v);
+    const lead = suffix.split("/")[0];
+    if (lead && !byLead.has(lead)) byLead.set(lead, v);
+  }
+  return { bySuffix, byLead };
+}
+
+function findSurface(idx: BgIndex, target: string): AnalyzedVariable | undefined {
+  return (
+    idx.bySuffix.get(target) ??
+    idx.byLead.get(target) ??
+    idx.bySuffix.get(`${target}/default`)
+  );
 }
 
 function contrastRule(
@@ -85,17 +125,20 @@ function contrastRule(
   const colors = a.variables.filter(
     (v) => v.tier === "semantic" && v.resolvedType === "COLOR"
   );
-  const bg = bgIndex(colors);
+  const idx = bgIndex(colors);
   const out: PartialFinding[] = [];
   for (const fore of colors) {
     if (!foreRole.test(roleOf(fore.name))) continue;
-    const surface = findSurface(bg, suffixOf(fore.name));
+    const target = onTarget(fore.name); // only the declared on-<X> convention
+    if (!target) continue;
+    const surface = findSurface(idx, target);
     if (!surface || surface.id === fore.id) continue;
     const modes = a.modesByCollection.get(fore.collectionId) ?? Object.keys(fore.valuesByMode);
     for (const mode of modes) {
       const fc = resolveColor(a, fore.id, mode);
       const bc = resolveColor(a, surface.id, mode);
       if (!fc || !bc) continue;
+      if (sameColor(fc, bc)) continue; // same primitive -> not a real fg/bg pair
       const ratio = contrastRatio(fc, bc);
       if (ratio < threshold) {
         out.push({
