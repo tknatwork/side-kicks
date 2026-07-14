@@ -156,6 +156,77 @@ const typeRoleScopeMatch: Detector = (snap) => {
   return out;
 };
 
+// Figma boundVariables field -> the scope(s) that legitimately cover binding a
+// token to that node property. Conservative: only fields we're sure about;
+// unknown fields are skipped (never guessed). `fills` depends on node type
+// (text-fill vs frame/shape-fill) and is handled inline.
+const FIELD_SCOPES: Record<string, string[]> = {
+  strokes: ["STROKE_COLOR"],
+  cornerRadius: ["CORNER_RADIUS"],
+  topLeftRadius: ["CORNER_RADIUS"],
+  topRightRadius: ["CORNER_RADIUS"],
+  bottomLeftRadius: ["CORNER_RADIUS"],
+  bottomRightRadius: ["CORNER_RADIUS"],
+  width: ["WIDTH_HEIGHT"],
+  height: ["WIDTH_HEIGHT"],
+  minWidth: ["WIDTH_HEIGHT"],
+  maxWidth: ["WIDTH_HEIGHT"],
+  minHeight: ["WIDTH_HEIGHT"],
+  maxHeight: ["WIDTH_HEIGHT"],
+  itemSpacing: ["GAP"],
+  counterAxisSpacing: ["GAP"],
+  paddingLeft: ["GAP"],
+  paddingRight: ["GAP"],
+  paddingTop: ["GAP"],
+  paddingBottom: ["GAP"],
+  opacity: ["OPACITY"],
+  strokeWeight: ["STROKE_FLOAT"],
+  characters: ["TEXT_CONTENT"],
+  fontSize: ["FONT_SIZE"],
+  fontFamily: ["FONT_FAMILY"],
+  fontStyle: ["FONT_STYLE"],
+  fontWeight: ["FONT_WEIGHT"],
+  lineHeight: ["LINE_HEIGHT"],
+  letterSpacing: ["LETTER_SPACING"],
+  paragraphSpacing: ["PARAGRAPH_SPACING"],
+  paragraphIndent: ["PARAGRAPH_INDENT"],
+};
+
+// A token bound to a node property its scopes don't cover: the scope IS the
+// picker/codegen intent, so binding out of scope (e.g. a TEXT_FILL-only colour
+// bound to a rectangle fill, or a GAP token bound to cornerRadius) misleads
+// both the binding menu and the generator. Empty scopes / ALL_SCOPES mean
+// "usable anywhere" and never flag. Needs the plugin's node-binding scan.
+const bindingOnScopeForProperty: Detector = (snap) => {
+  if (!Array.isArray(snap.nodeBindings)) return [];
+  const a = analyze(snap);
+  const out: PartialFinding[] = [];
+  const seen = new Set<string>();
+  for (const b of snap.nodeBindings) {
+    const v = a.byId.get(b.variableId);
+    if (!v) continue; // dangling binding — not this rule's concern
+    if (v.scopes.length === 0 || v.scopes.includes("ALL_SCOPES")) continue;
+    const required =
+      b.field === "fills"
+        ? b.nodeType === "TEXT"
+          ? ["TEXT_FILL", "ALL_FILLS"]
+          : ["FRAME_FILL", "SHAPE_FILL", "ALL_FILLS"]
+        : FIELD_SCOPES[b.field];
+    if (!required) continue; // unknown field — don't guess
+    if (has(v.scopes, required)) continue; // permitted
+    const key = v.id + "|" + b.field;
+    if (seen.has(key)) continue; // one finding per token+property
+    seen.add(key);
+    out.push({
+      rule_id: "binding-on-scope-for-property",
+      variableId: v.id,
+      nodeId: b.nodeId,
+      message: `'${v.name}' (scoped ${v.scopes.join(", ")}) is bound to '${b.field}' on '${b.nodeName}', a property its scope doesn't cover — expected a scope like ${required[0]}. Scope it for that property so the binding menu and code-gen stay honest.`,
+    });
+  }
+  return out;
+};
+
 const noTextContentScopeOnToken: Detector = (snap) => {
   const a = analyze(snap);
   const out: PartialFinding[] = [];
@@ -185,4 +256,5 @@ export const scopeDetectors: Record<string, Detector> = {
   "dimension-role-scope-match": dimensionRoleScopeMatch,
   "type-role-scope-match": typeRoleScopeMatch,
   "no-text-content-scope-on-token": noTextContentScopeOnToken,
+  "binding-on-scope-for-property": bindingOnScopeForProperty,
 };

@@ -216,6 +216,35 @@ const duplicatePrimitiveValue: Detector = (snap) => {
   return out;
 };
 
+const unusedVariableOrphan: Detector = (snap) => {
+  // Only conclude "unused" if bindings were scanned in full. If the plugin
+  // didn't gather bindings, or truncated the scan, we can't prove a variable is
+  // unbound — stay silent rather than false-flag a token that IS used.
+  if (!Array.isArray(snap.nodeBindings) || snap.bindingsTruncated) return [];
+  const a = analyze(snap);
+  const bound = new Set(snap.nodeBindings.map((b) => b.variableId));
+  const aliased = new Set<string>();
+  for (const v of a.variables) {
+    for (const val of Object.values(v.valuesByMode)) {
+      const t = aliasTarget(val);
+      if (t) aliased.add(t);
+    }
+  }
+  const out: PartialFinding[] = [];
+  for (const v of a.variables) {
+    // Published tokens are the public API — unused INTERNALLY is expected, so
+    // only hidden (internal) variables can be genuine orphans.
+    if (v.hiddenFromPublishing !== true) continue;
+    if (aliased.has(v.id) || bound.has(v.id)) continue;
+    out.push({
+      rule_id: "unused-variable-orphan",
+      variableId: v.id,
+      message: `Hidden token '${v.name}' is never aliased by another variable and never bound to a node — dead weight; delete it or wire it up.`,
+    });
+  }
+  return out;
+};
+
 export const tokenDetectors: Record<string, Detector> = {
   "three-tier-collections-exist": threeTierCollectionsExist,
   "primitive-raw-values-only": primitiveRawValuesOnly,
@@ -226,4 +255,5 @@ export const tokenDetectors: Record<string, Detector> = {
   "alias-graph-acyclic-max-depth-2": aliasGraphAcyclic,
   "primitive-hidden-from-publishing": primitiveHiddenFromPublishing,
   "duplicate-primitive-value": duplicatePrimitiveValue,
+  "unused-variable-orphan": unusedVariableOrphan,
 };

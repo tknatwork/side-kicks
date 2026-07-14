@@ -75,8 +75,60 @@ const hueRampWordsPrimitivesOnly: Detector = (snap) => {
   return out;
 };
 
+// Pull the on-<X> target from a token name (mirrors the a11y pairing rule).
+const onTargetSeg = (name: string): string | null => {
+  const segs = name.toLowerCase().split("/");
+  for (let i = 0; i < segs.length; i++) {
+    const m = segs[i].match(/^on[-_](.+)$/);
+    if (m) return m[1];
+    if (segs[i] === "on" && segs[i + 1]) return segs[i + 1];
+  }
+  return null;
+};
+const SURFACE_ROLE = /^(surface|background|bg|fill|elevation)$/;
+const FG_ROLE = /^(fg|foreground|text|ink|content|icon|label)$/;
+// Generic surface modifiers pair with plain foreground/default, not an on-<X>.
+const GENERIC_SURFACE_KEY =
+  /^(default|base|muted|subtle|emphasis|inverse|overlay|disabled|hover|active|focus|selected|pressed)$/;
+
+// Once a DS ADOPTS the on-<X> convention (Material's on-primary, Primer's
+// fg-on-emphasis), every chromatic surface should have its pair, so text on it
+// has a defined, contrast-checkable colour. Fires only on INCONSISTENCY (some
+// surfaces paired, this one forgotten) — a DS that doesn't use on-<X> at all is
+// making a valid choice and gets nothing here.
+const surfaceOnPairCompleteness: Detector = (snap) => {
+  const a = analyze(snap);
+  const colors = a.variables.filter(
+    (v) => v.tier === "semantic" && v.resolvedType === "COLOR"
+  );
+  const onKeys = new Set<string>();
+  for (const v of colors) {
+    if (!FG_ROLE.test(v.name.toLowerCase().split("/")[0])) continue;
+    const t = onTargetSeg(v.name);
+    if (t) onKeys.add(t);
+  }
+  if (onKeys.size === 0) return []; // convention not adopted
+  const out: PartialFinding[] = [];
+  const flagged = new Set<string>();
+  for (const v of colors) {
+    const segs = v.name.toLowerCase().split("/");
+    if (!SURFACE_ROLE.test(segs[0])) continue;
+    const key = segs[1]; // the surface's colour key (leading suffix segment)
+    if (!key || GENERIC_SURFACE_KEY.test(key)) continue;
+    if (onKeys.has(key) || flagged.has(key)) continue;
+    flagged.add(key);
+    out.push({
+      rule_id: "surface-on-pair-completeness",
+      variableId: v.id,
+      message: `Surface '${v.name}' has no matching on-${key} foreground token, though the DS defines on-tokens for other surfaces; text on it has no contrast-checked colour. Add foreground/on-${key}.`,
+    });
+  }
+  return out;
+};
+
 export const namingDetectors: Record<string, Detector> = {
   "name-kebab-segments": nameKebabSegments,
   "name-slash-structure-depth": nameSlashStructureDepth,
   "hue-ramp-words-primitives-only": hueRampWordsPrimitivesOnly,
+  "surface-on-pair-completeness": surfaceOnPairCompleteness,
 };

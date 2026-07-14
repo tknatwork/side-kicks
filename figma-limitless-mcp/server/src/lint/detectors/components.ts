@@ -110,9 +110,41 @@ const noAssetEnumerationVariant: Detector = (snap) => {
   return out;
 };
 
+const VARIANT_MATRIX_CEILING = 60;
+
+// The full variant matrix is the PRODUCT of each VARIANT property's option
+// count. Past ~60 cells a set gets slow to edit and instantiate; the fix is to
+// convert an axis to a BOOLEAN/INSTANCE_SWAP prop or split the component.
+// Computed from propertyDefinitions alone — no variant-child data needed.
+const variantCountCeiling60: Detector = (snap) => {
+  const out: PartialFinding[] = [];
+  for (const c of snap.components ?? []) {
+    const defs = c.propertyDefinitions;
+    if (!defs || typeof defs !== "object") continue;
+    let product = 1;
+    let variantProps = 0;
+    for (const raw of Object.values(defs)) {
+      const def = (raw ?? {}) as PropDef;
+      if (def.type === "VARIANT" && Array.isArray(def.variantOptions) && def.variantOptions.length > 0) {
+        product *= def.variantOptions.length;
+        variantProps++;
+      }
+    }
+    if (variantProps > 0 && product > VARIANT_MATRIX_CEILING) {
+      out.push({
+        rule_id: "variant-count-ceiling-60",
+        nodeId: c.id,
+        message: `Component '${c.name}' declares a ${product}-cell variant matrix across ${variantProps} variant propert${variantProps === 1 ? "y" : "ies"}; past ~${VARIANT_MATRIX_CEILING} the set gets slow and unwieldy — convert an axis to a BOOLEAN/INSTANCE_SWAP property or split the component.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const componentDetectors: Record<string, Detector> = {
   "property-name-convention-unique": propertyNameConventionUnique,
   "boolean-vocab-variant-should-be-boolean": booleanVocabVariantShouldBeBoolean,
   "instance-swap-preferred-values": instanceSwapPreferredValues,
   "no-asset-enumeration-variant": noAssetEnumerationVariant,
+  "variant-count-ceiling-60": variantCountCeiling60,
 };
