@@ -176,10 +176,10 @@ binaries/
 # Server build output
 server/dist/
 
-# Dev-Mode companion: copies of the built bundle (kept in sync by
-# plugin/scripts/sync-dev-mode.mjs). The manifest.json itself IS tracked.
-plugin/dev-mode/code.js
-plugin/dev-mode/index.html
+# Extras companion (FigJam/Slides/Buzz): copies of the built bundle (kept in
+# sync by plugin/scripts/sync-extras.mjs). The manifest.json itself IS tracked.
+plugin/extras/code.js
+plugin/extras/index.html
 
 # Editor/IDE
 .idea/

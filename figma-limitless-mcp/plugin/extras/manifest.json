@@ -1,6 +1,6 @@
 {
-  "name": "Figma Limitless MCP (Dev Mode)",
-  "id": "figma-limitless-mcp-dev",
+  "name": "Figma Limitless MCP — Extras (FigJam / Slides / Buzz)",
+  "id": "figma-limitless-mcp-extras",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "index.html",
@@ -15,10 +15,8 @@
   },
   "documentAccess": "dynamic-page",
   "editorType": [
-    "figma",
-    "dev"
-  ],
-  "capabilities": [
-    "inspect"
+    "figjam",
+    "slides",
+    "buzz"
   ]
 }
