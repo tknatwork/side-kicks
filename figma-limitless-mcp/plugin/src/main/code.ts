@@ -79,6 +79,11 @@ type RequestType =
   | "focus_slide"
   | "get_slide_grid"
   | "set_slide_grid"
+  | "create_buzz_frame"
+  | "set_buzz_asset_type"
+  | "get_buzz_content"
+  | "set_buzz_text"
+  | "buzz_smart_resize"
   | "dev_resources";
 
 type ServerRequestParams = Record<string, unknown> & {
@@ -960,6 +965,22 @@ const requireSlides = (toolName: RequestType): void => {
   }
 };
 
+const BUZZ_REQUEST_TYPES = new Set<RequestType>([
+  "create_buzz_frame",
+  "set_buzz_asset_type",
+  "get_buzz_content",
+  "set_buzz_text",
+  "buzz_smart_resize",
+]);
+
+const requireBuzz = (toolName: RequestType): void => {
+  if (figma.editorType !== "buzz") {
+    throw new Error(
+      `${toolName} is a Figma Buzz tool and only runs in a Buzz file (current editor: ${figma.editorType}). Open a Buzz file and re-run.`
+    );
+  }
+};
+
 const solidPaintFromHex = (hex: string): SolidPaint => ({
   type: "SOLID",
   color: parseHexColor(hex),
@@ -992,6 +1013,9 @@ const handleRequest = async (
     }
     if (SLIDES_REQUEST_TYPES.has(request.type)) {
       requireSlides(request.type);
+    }
+    if (BUZZ_REQUEST_TYPES.has(request.type)) {
+      requireBuzz(request.type);
     }
     switch (request.type) {
       case "get_document":
@@ -4325,6 +4349,117 @@ const handleRequest = async (
           data: { rows: slideGrid.length },
         };
       }
+      case "create_buzz_frame": {
+        const params = request.params ?? {};
+        const row = typeof params.row === "number" ? params.row : undefined;
+        const col = typeof params.col === "number" ? params.col : undefined;
+        const frame =
+          row !== undefined && col !== undefined
+            ? figma.buzz.createFrame(row, col)
+            : row !== undefined
+              ? figma.buzz.createFrame(row)
+              : figma.buzz.createFrame();
+        if (typeof params.assetType === "string") {
+          figma.buzz.setBuzzAssetTypeForNode(frame, params.assetType as BuzzAssetType);
+        }
+        if (typeof params.backgroundHex === "string") {
+          frame.fills = [solidPaintFromHex(params.backgroundHex)];
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: frame.id,
+            nodeName: frame.name,
+            assetType: figma.buzz.getBuzzAssetTypeForNode(frame),
+          },
+        };
+      }
+      case "set_buzz_asset_type": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string" || typeof params.assetType !== "string") {
+          throw new Error("set_buzz_asset_type needs nodeId and assetType");
+        }
+        const node = await getSceneNodeById(params.nodeId);
+        figma.buzz.setBuzzAssetTypeForNode(node, params.assetType as BuzzAssetType);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, assetType: params.assetType },
+        };
+      }
+      case "get_buzz_content": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("get_buzz_content needs nodeId");
+        }
+        const node = await getSceneNodeById(params.nodeId);
+        const textFields = figma.buzz.getTextContent(node).map((f, i) => ({
+          index: i,
+          value: f.value,
+          nodeId: f.node ? f.node.id : null,
+        }));
+        const mediaFields = figma.buzz.getMediaContent(node).map((f, i) => ({
+          index: i,
+          type: f.type,
+          hash: f.hash,
+          nodeId: f.node ? f.node.id : null,
+        }));
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: node.id,
+            assetType: figma.buzz.getBuzzAssetTypeForNode(node),
+            textFields,
+            mediaFields,
+          },
+        };
+      }
+      case "set_buzz_text": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("set_buzz_text needs nodeId");
+        }
+        if (!Array.isArray(params.values)) {
+          throw new Error(
+            "set_buzz_text needs values (array of strings applied positionally to the asset's text fields)"
+          );
+        }
+        const node = await getSceneNodeById(params.nodeId);
+        const fields = figma.buzz.getTextContent(node);
+        const values = params.values as unknown[];
+        let updated = 0;
+        for (let i = 0; i < values.length && i < fields.length; i++) {
+          const value = values[i];
+          if (typeof value === "string") {
+            await fields[i].setValueAsync(value);
+            updated++;
+          }
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, updated, totalFields: fields.length },
+        };
+      }
+      case "buzz_smart_resize": {
+        const params = request.params ?? {};
+        if (
+          typeof params.nodeId !== "string" ||
+          typeof params.width !== "number" ||
+          typeof params.height !== "number"
+        ) {
+          throw new Error("buzz_smart_resize needs nodeId, width, and height");
+        }
+        const node = await getSceneNodeById(params.nodeId);
+        figma.buzz.smartResize(node, params.width, params.height);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, width: params.width, height: params.height },
+        };
+      }
       case "dev_resources": {
         const nodeId = request.nodeIds && request.nodeIds[0];
         if (!nodeId) throw new Error("nodeIds is required for dev_resources");
@@ -4526,6 +4661,7 @@ figma.ui.onmessage = async (message) => {
       EDIT_REQUEST_TYPES.has(request.type) ||
       FIGJAM_REQUEST_TYPES.has(request.type) ||
       SLIDES_REQUEST_TYPES.has(request.type) ||
+      BUZZ_REQUEST_TYPES.has(request.type) ||
       request.type === "execute_code"
     ) {
       mutationChain = mutationChain.then(run, run);

@@ -1184,6 +1184,59 @@ export const setSlideGridInput = z.object({
   fileKey: fileKeyField,
 });
 
+// --- Figma Buzz authoring (editorType: buzz) ---
+
+const buzzAssetType = z.enum([
+  "CUSTOM", "TWITTER_POST", "LINKEDIN_POST", "INSTA_POST_SQUARE", "INSTA_POST_PORTRAIT",
+  "INSTA_STORY", "INSTA_AD", "FACEBOOK_POST", "FACEBOOK_COVER_PHOTO", "FACEBOOK_EVENT_COVER",
+  "FACEBOOK_AD_PORTRAIT", "FACEBOOK_AD_SQUARE", "PINTEREST_AD_PIN", "TWITTER_BANNER",
+  "LINKEDIN_POST_SQUARE", "LINKEDIN_POST_PORTRAIT", "LINKEDIN_POST_LANDSCAPE",
+  "LINKEDIN_PROFILE_BANNER", "LINKEDIN_ARTICLE_BANNER", "LINKEDIN_AD_LANDSCAPE",
+  "LINKEDIN_AD_SQUARE", "LINKEDIN_AD_VERTICAL", "YOUTUBE_THUMBNAIL", "YOUTUBE_BANNER",
+  "YOUTUBE_AD", "TWITCH_BANNER", "GOOGLE_LEADERBOARD_AD", "GOOGLE_LARGE_AD", "GOOGLE_MED_AD",
+  "GOOGLE_MOBILE_BANNER_AD", "GOOGLE_SKYSCRAPER_AD", "CARD_HORIZONTAL", "CARD_VERTICAL",
+  "PRINT_US_LETTER", "POSTER", "BANNER_STANDARD", "BANNER_WIDE", "BANNER_ULTRAWIDE",
+  "NAME_TAG_PORTRAIT", "NAME_TAG_LANDSCAPE", "INSTA_REEL_COVER", "ZOOM_BACKGROUND",
+]);
+
+export const createBuzzFrameInput = z.object({
+  row: z.number().int().min(0).optional().describe("Canvas-grid row (appends to the end if omitted)"),
+  col: z.number().int().min(0).optional().describe("Canvas-grid column (used with row)"),
+  assetType: buzzAssetType
+    .optional()
+    .describe("Platform asset type/size to apply (e.g. LINKEDIN_POST, INSTA_STORY)"),
+  backgroundHex: createHexColorSchema().optional().describe("Frame background color"),
+  fileKey: fileKeyField,
+});
+
+export const setBuzzAssetTypeInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The Buzz asset node"),
+  assetType: buzzAssetType.describe("Platform asset type/size to assign"),
+  fileKey: fileKeyField,
+});
+
+export const getBuzzContentInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The Buzz asset node to read text + media fields from"),
+  fileKey: fileKeyField,
+});
+
+export const setBuzzTextInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The Buzz asset node"),
+  values: z
+    .array(z.string())
+    .describe(
+      "Text values applied positionally to the asset's text fields (values[i] -> field i). Read current fields with get_buzz_content first."
+    ),
+  fileKey: fileKeyField,
+});
+
+export const buzzSmartResizeInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The Buzz node to resize"),
+  width: z.number().min(1).describe("Target width in pixels"),
+  height: z.number().min(1).describe("Target height in pixels"),
+  fileKey: fileKeyField,
+});
+
 export const devResourcesShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("Target node"),
   action: z.enum(["get", "add", "edit", "delete"]),
@@ -1862,6 +1915,16 @@ export const toolInputSchemas = {
 
   set_slide_grid: setSlideGridInput,
 
+  create_buzz_frame: createBuzzFrameInput,
+
+  set_buzz_asset_type: setBuzzAssetTypeInput,
+
+  get_buzz_content: getBuzzContentInput,
+
+  set_buzz_text: setBuzzTextInput,
+
+  buzz_smart_resize: buzzSmartResizeInput,
+
   dev_resources: devResourcesInput,
 
   set_code_mapping: setCodeMappingInput,
@@ -1989,6 +2052,11 @@ const rpcToArgs: Record<
   focus_slide: (_nodeIds, params) => ({ ...params }),
   get_slide_grid: (_nodeIds, params) => ({ ...params }),
   set_slide_grid: (_nodeIds, params) => ({ ...params }),
+  create_buzz_frame: (_nodeIds, params) => ({ ...params }),
+  set_buzz_asset_type: (_nodeIds, params) => ({ ...params }),
+  get_buzz_content: (_nodeIds, params) => ({ ...params }),
+  set_buzz_text: (_nodeIds, params) => ({ ...params }),
+  buzz_smart_resize: (_nodeIds, params) => ({ ...params }),
   dev_resources: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   set_code_mapping: (_nodeIds, params) => ({ ...params }),
   get_code_mappings: (_nodeIds, params) => ({ ...params }),

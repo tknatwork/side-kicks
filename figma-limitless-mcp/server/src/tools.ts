@@ -86,6 +86,11 @@ import {
   focusSlideInput,
   getSlideGridInput,
   setSlideGridInput,
+  createBuzzFrameInput,
+  setBuzzAssetTypeInput,
+  getBuzzContentInput,
+  setBuzzTextInput,
+  buzzSmartResizeInput,
   devResourcesShape,
   devResourcesInput,
   setCodeMappingShape,
@@ -1293,6 +1298,61 @@ export function registerTools(
     async ({ fileKey, ...params }): Promise<ToolResult> => {
       return renderResponse(() =>
         node.sendWithParams("set_slide_grid", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_buzz_frame",
+    "Figma Buzz: create a marketing-asset frame on the canvas grid, optionally setting its platform asset type (LINKEDIN_POST, INSTA_STORY, …) and background. Buzz only.",
+    createBuzzFrameInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_buzz_frame", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_buzz_asset_type",
+    "Figma Buzz: set a node's platform asset type/size (drives Buzz's per-platform dimensions). Buzz only.",
+    setBuzzAssetTypeInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_buzz_asset_type", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "get_buzz_content",
+    "Figma Buzz: read a Buzz asset's dynamic text and media fields (index, value/type/hash, backing node id) plus its asset type. Read-only. Buzz only.",
+    getBuzzContentInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("get_buzz_content", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_buzz_text",
+    "Figma Buzz: fill an asset's text fields from an array applied positionally (values[i] -> field i) — the core data-driven, bulk-content workflow. Read fields first with get_buzz_content. Buzz only.",
+    setBuzzTextInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_buzz_text", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "buzz_smart_resize",
+    "Figma Buzz: intelligently resize a node to target dimensions while preserving layout/aspect (for reflowing an asset across platform sizes). Buzz only.",
+    buzzSmartResizeInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("buzz_smart_resize", undefined, params, fileKey)
       );
     }
   );

@@ -122,6 +122,10 @@ export const JOURNALED_TOOLS = new Set([
   "set_slide_transition",
   "set_slide_skip",
   "set_slide_grid",
+  "create_buzz_frame",
+  "set_buzz_asset_type",
+  "set_buzz_text",
+  "buzz_smart_resize",
   "dev_resources",
 ]);
 
