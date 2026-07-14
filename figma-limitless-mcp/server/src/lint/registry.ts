@@ -291,6 +291,7 @@ export const RULES: RuleMeta[] = [
     title: "Multi-brand tokens must alias through the brand layer",
     category: "theming",
     severity: "warn",
+    defaultOn: false, // only meaningful for multi-brand DSs — opt-in + configured
     skillUri: "skill://design-system/theming-with-modes",
     fixHint: "Route accent/action semantics through a brand/* token so re-branding is a single-layer swap.",
   },
@@ -447,6 +448,7 @@ export const RULES: RuleMeta[] = [
     title: "Default variant must be the neutral base tuple",
     category: "components",
     severity: "warn",
+    defaultOn: false, // "base" per axis is a house convention — opt-in
     skillUri: "skill://design-system/component-variant-structure-for-codegen",
     fixHint: "Reorder/assign the default variant so each axis sits at its documented base value.",
   },

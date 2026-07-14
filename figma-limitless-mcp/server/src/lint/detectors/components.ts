@@ -250,6 +250,36 @@ const variantMatrixComplete: Detector = (snap) => {
   return out;
 };
 
+// Opt-in (defaultOn:false): the "base" per axis is a house convention. Uses the
+// enrichment's defaultVariantTuple + each axis's first-authored option as base
+// (Figma preserves option order). Flags a default variant that isn't the base
+// tuple, so new instances start from the neutral/documented state.
+const defaultVariantIsBaseTuple: Detector = (snap) => {
+  const out: PartialFinding[] = [];
+  for (const c of snap.components ?? []) {
+    if (c.type !== "COMPONENT_SET" || !c.defaultVariantTuple) continue;
+    const defs = c.propertyDefinitions;
+    if (!defs || typeof defs !== "object") continue;
+    const deviations: string[] = [];
+    for (const [key, raw] of Object.entries(defs)) {
+      const def = (raw ?? {}) as PropDef;
+      if (def.type !== "VARIANT" || !Array.isArray(def.variantOptions) || def.variantOptions.length === 0) continue;
+      const axis = baseName(key);
+      const base = def.variantOptions[0];
+      const actual = c.defaultVariantTuple[axis];
+      if (actual !== undefined && actual !== base) deviations.push(`${axis}=${actual} (base '${base}')`);
+    }
+    if (deviations.length > 0) {
+      out.push({
+        rule_id: "default-variant-is-base-tuple",
+        nodeId: c.id,
+        message: `Component set '${c.name}' default variant isn't the base tuple: ${deviations.join(", ")}; set the default to each axis's first/base option so new instances start neutral.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const componentDetectors: Record<string, Detector> = {
   "property-name-convention-unique": propertyNameConventionUnique,
   "boolean-vocab-variant-should-be-boolean": booleanVocabVariantShouldBeBoolean,
@@ -260,4 +290,5 @@ export const componentDetectors: Record<string, Detector> = {
   "shared-property-value-consistency": sharedPropertyValueConsistency,
   "no-dead-component-property": noDeadComponentProperty,
   "variant-matrix-complete": variantMatrixComplete,
+  "default-variant-is-base-tuple": defaultVariantIsBaseTuple,
 };

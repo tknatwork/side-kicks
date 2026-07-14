@@ -4,7 +4,7 @@
 
 import type { Detector } from "../runner.js";
 import type { PartialFinding } from "./shared.js";
-import { analyze } from "./shared.js";
+import { analyze, aliasTarget } from "./shared.js";
 
 const primitiveComponentSingleMode: Detector = (snap) => {
   const a = analyze(snap);
@@ -115,6 +115,58 @@ const oneThemeAxisPerCollection: Detector = (snap) => {
   return out;
 };
 
+// Opt-in (defaultOn:false), config-driven: only meaningful for multi-brand DSs,
+// which must declare their brand layer. A "brandable" semantic (accent/action/
+// brand/... role) should alias THROUGH a brand/* token so re-branding is a
+// single-layer swap; if its alias chain reaches a primitive without passing a
+// brand-layer token, flag it. Requires config { brandPrefix, roles? }.
+interface MultiBrandConfig {
+  brandPrefix: string;
+  roles: string[];
+}
+const multiBrandAliasDiscipline: Detector = (snap, config) => {
+  const cfg = config as MultiBrandConfig | undefined;
+  if (!cfg || typeof cfg.brandPrefix !== "string" || !cfg.brandPrefix) return [];
+  const prefix = cfg.brandPrefix.toLowerCase();
+  const roles = new Set((cfg.roles ?? []).map((r) => r.toLowerCase()));
+  const a = analyze(snap);
+  const isBrandVar = (name: string): boolean =>
+    name.toLowerCase().split("/").includes(prefix);
+  const out: PartialFinding[] = [];
+  for (const v of a.variables) {
+    if (v.tier !== "semantic") continue;
+    if (isBrandVar(v.name)) continue; // the brand layer itself needn't route through itself
+    if (!roles.has(v.name.toLowerCase().split("/")[0])) continue;
+    // Does the token alias through the brand layer in ANY mode?
+    let routed = false;
+    for (const val of Object.values(v.valuesByMode)) {
+      let t = aliasTarget(val);
+      const seen = new Set<string>();
+      let hops = 0;
+      while (t && !seen.has(t) && hops < 16) {
+        seen.add(t);
+        const tv = a.byId.get(t);
+        if (!tv) break;
+        if (isBrandVar(tv.name)) {
+          routed = true;
+          break;
+        }
+        t = aliasTarget(Object.values(tv.valuesByMode)[0]);
+        hops++;
+      }
+      if (routed) break;
+    }
+    if (!routed) {
+      out.push({
+        rule_id: "multi-brand-alias-discipline",
+        variableId: v.id,
+        message: `Brandable semantic '${v.name}' doesn't route through the '${cfg.brandPrefix}' layer; alias it via a ${cfg.brandPrefix}/* token so re-branding is a single-layer swap.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const themingDetectors: Record<string, Detector> = {
   "primitive-component-single-mode": primitiveComponentSingleMode,
   "every-mode-populated": everyModePopulated,
@@ -122,4 +174,5 @@ export const themingDetectors: Record<string, Detector> = {
   "semantic-default-mode-is-base": semanticDefaultModeIsBase,
   "consistent-mode-names-across-axis": consistentModeNamesAcrossAxis,
   "one-theme-axis-per-collection": oneThemeAxisPerCollection,
+  "multi-brand-alias-discipline": multiBrandAliasDiscipline,
 };
