@@ -68,9 +68,58 @@ const semanticDefaultModeIsBase: Detector = (snap) => {
   return out;
 };
 
+// The same mode spelled inconsistently across collections (e.g. 'Light' vs
+// 'light' vs 'Light ') breaks the assumption that same-named modes line up on an
+// axis. Objective (a normalized name with >1 raw spelling), so default-on/warn.
+const consistentModeNamesAcrossAxis: Detector = (snap) => {
+  const spellings = new Map<string, Set<string>>();
+  for (const c of snap.collections) {
+    for (const m of c.modes) {
+      const norm = m.name.trim().toLowerCase();
+      if (!norm) continue;
+      (spellings.get(norm) ?? spellings.set(norm, new Set()).get(norm)!).add(m.name);
+    }
+  }
+  const out: PartialFinding[] = [];
+  for (const [norm, raws] of spellings) {
+    if (raws.size > 1) {
+      out.push({
+        rule_id: "consistent-mode-names-across-axis",
+        message: `Mode '${norm}' is spelled ${raws.size} different ways across collections (${[...raws].map((r) => `'${r}'`).join(", ")}); use one canonical spelling so theme axes line up.`,
+      });
+    }
+  }
+  return out;
+};
+
+// A collection whose modes are a full A×B cross-product ('Light Compact', 'Dark
+// Compact', 'Light Cozy', 'Dark Cozy') folds TWO axes into one collection.
+// Conservative: needs >=4 modes, every mode exactly two separator-split tokens,
+// and count == |A|*|B|. Advisory/info.
+const MODE_SEP = /[\s/·|,_-]+/;
+const oneThemeAxisPerCollection: Detector = (snap) => {
+  const out: PartialFinding[] = [];
+  for (const c of snap.collections) {
+    if (c.modes.length < 4) continue;
+    const parts = c.modes.map((m) => m.name.trim().split(MODE_SEP).filter(Boolean));
+    if (!parts.every((p) => p.length === 2)) continue;
+    const first = new Set(parts.map((p) => p[0].toLowerCase()));
+    const second = new Set(parts.map((p) => p[1].toLowerCase()));
+    if (first.size >= 2 && second.size >= 2 && first.size * second.size === c.modes.length) {
+      out.push({
+        rule_id: "one-theme-axis-per-collection",
+        message: `Collection '${c.name}' has ${c.modes.length} modes that read as a ${first.size}×${second.size} cross-product ({${[...first].join(", ")}} × {${[...second].join(", ")}}); a collection should switch on ONE axis — split the second into its own collection.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const themingDetectors: Record<string, Detector> = {
   "primitive-component-single-mode": primitiveComponentSingleMode,
   "every-mode-populated": everyModePopulated,
   "mode-count-ceiling": modeCountCeiling,
   "semantic-default-mode-is-base": semanticDefaultModeIsBase,
+  "consistent-mode-names-across-axis": consistentModeNamesAcrossAxis,
+  "one-theme-axis-per-collection": oneThemeAxisPerCollection,
 };

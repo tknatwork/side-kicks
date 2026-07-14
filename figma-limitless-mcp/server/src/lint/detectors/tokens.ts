@@ -245,6 +245,41 @@ const unusedVariableOrphan: Detector = (snap) => {
   return out;
 };
 
+// A component token that aliases the SAME semantic in every mode (no per-mode
+// override) and is bound to <=1 node is a pure pass-through that adds a tier for
+// nothing. Needs the full binding scan (skip if truncated/absent — can't prove
+// usage count). warn.
+const singleUseComponentPassthrough: Detector = (snap) => {
+  if (!Array.isArray(snap.nodeBindings) || snap.bindingsTruncated) return [];
+  const a = analyze(snap);
+  const bindCount = new Map<string, number>();
+  for (const b of snap.nodeBindings) bindCount.set(b.variableId, (bindCount.get(b.variableId) ?? 0) + 1);
+  const out: PartialFinding[] = [];
+  for (const v of a.variables) {
+    if (v.tier !== "component") continue;
+    const targets = new Set<string>();
+    let allAlias = true;
+    for (const val of Object.values(v.valuesByMode)) {
+      const t = aliasTarget(val);
+      if (!t) {
+        allAlias = false;
+        break;
+      }
+      targets.add(t);
+    }
+    if (!allAlias || targets.size !== 1) continue; // per-mode variation or raw => not a pure pass-through
+    const uses = bindCount.get(v.id) ?? 0;
+    if (uses <= 1) {
+      out.push({
+        rule_id: "single-use-component-passthrough",
+        variableId: v.id,
+        message: `Component token '${v.name}' is a pure pass-through (aliases one semantic in every mode, no override) used ${uses === 0 ? "nowhere" : "once"}; inline the semantic at the node and delete it, or justify it by reusing it across the subtree.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const tokenDetectors: Record<string, Detector> = {
   "three-tier-collections-exist": threeTierCollectionsExist,
   "primitive-raw-values-only": primitiveRawValuesOnly,
@@ -256,4 +291,5 @@ export const tokenDetectors: Record<string, Detector> = {
   "primitive-hidden-from-publishing": primitiveHiddenFromPublishing,
   "duplicate-primitive-value": duplicatePrimitiveValue,
   "unused-variable-orphan": unusedVariableOrphan,
+  "single-use-component-passthrough": singleUseComponentPassthrough,
 };

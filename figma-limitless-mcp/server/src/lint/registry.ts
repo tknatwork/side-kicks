@@ -406,6 +406,7 @@ export const RULES: RuleMeta[] = [
     title: "Shared property values must be consistent file-wide",
     category: "components",
     severity: "warn",
+    defaultOn: false, // a shared prop name isn't always the same axis — opt-in
     skillUri: "skill://design-system/component-variant-structure-for-codegen",
     fixHint: "Normalize option values (e.g. 'sm/md/lg' everywhere) so the same axis reads identically across components.",
   },

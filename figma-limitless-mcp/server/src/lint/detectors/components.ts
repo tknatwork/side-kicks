@@ -147,10 +147,61 @@ const variantCountCeiling60: Detector = (snap, config) => {
   return out;
 };
 
+// A BOOLEAN property named for a size/layout concept is usually mis-modeled —
+// booleans are show/hide; sizing wants a VARIANT axis or a bound layout token.
+// Matches any word-token in the base name against a sizing vocabulary. info.
+const SIZING_WORD =
+  /^(size|sizing|scale|large|small|big|wide|narrow|tall|short|compact|comfortable|cozy|dense|spacious|width|height|xs|sm|md|lg|xl|xxl)$/;
+const booleanPropNoSizingIntent: Detector = (snap) => {
+  const out: PartialFinding[] = [];
+  eachProp(snap, (c, key, def) => {
+    if (def.type !== "BOOLEAN") return;
+    const words = baseName(key).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    if (words.some((w) => SIZING_WORD.test(w))) {
+      out.push({
+        rule_id: "boolean-prop-no-sizing-intent",
+        nodeId: c.id,
+        message: `Component '${c.name}' BOOLEAN property '${baseName(key)}' names a size/layout concept; booleans are for show/hide — express sizing as a VARIANT size axis or a bound layout token.`,
+      });
+    }
+  });
+  return out;
+};
+
+// Opt-in (defaultOn:false): the SAME variant property name across components
+// should use one option vocabulary (sm/md/lg, not also small/medium/large). But
+// a shared name isn't always the same axis (a Button's 'variant' vs an Alert's),
+// so this is a team judgment call — off by default to avoid false positives.
+const sharedPropertyValueConsistency: Detector = (snap) => {
+  const byProp = new Map<string, Map<string, string[]>>(); // base -> optionSetKey -> component names
+  eachProp(snap, (c, key, def) => {
+    if (def.type !== "VARIANT" || !Array.isArray(def.variantOptions) || def.variantOptions.length === 0) return;
+    const base = baseName(key).toLowerCase();
+    const optKey = [...def.variantOptions].map((o) => String(o).toLowerCase()).sort().join("|");
+    const m = byProp.get(base) ?? byProp.set(base, new Map()).get(base)!;
+    (m.get(optKey) ?? m.set(optKey, []).get(optKey)!).push(c.name);
+  });
+  const out: PartialFinding[] = [];
+  for (const [base, variants] of byProp) {
+    if (variants.size > 1) {
+      const summary = [...variants.entries()]
+        .map(([optKey, comps]) => `{${optKey.replace(/\|/g, ", ")}} in ${comps.length}`)
+        .join("; ");
+      out.push({
+        rule_id: "shared-property-value-consistency",
+        message: `Property '${base}' uses ${variants.size} different option sets across components (${summary}); normalize to one vocabulary so the same axis reads identically file-wide.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const componentDetectors: Record<string, Detector> = {
   "property-name-convention-unique": propertyNameConventionUnique,
   "boolean-vocab-variant-should-be-boolean": booleanVocabVariantShouldBeBoolean,
   "instance-swap-preferred-values": instanceSwapPreferredValues,
   "no-asset-enumeration-variant": noAssetEnumerationVariant,
   "variant-count-ceiling-60": variantCountCeiling60,
+  "boolean-prop-no-sizing-intent": booleanPropNoSizingIntent,
+  "shared-property-value-consistency": sharedPropertyValueConsistency,
 };
