@@ -37,6 +37,44 @@ Agent identity defaults to MCP clientInfo (`node.agentSupplier`); tools accept a
 APIs are beta ("subject to change" per Plugin API Update 127, June 2026). Verified live 2026-07-13:
 Motion styles enumerate; shaders API present (0 shaders in file).
 
+## Design-system skills + structure linter (closed loop)
+
+Two offline halves that answer "how should the tokens be derived?" and "is the
+structure right?" — no network, no Figma AI credits.
+
+- **Knowledge** — Markdown skills bundled in `server/skills/`, copied to
+  `dist/skills/` at build (`scripts/copy-skills.mjs`) and served by
+  `server/src/skills.ts`: `list_skills` (catalog), `read_skill(slug)` (full doc,
+  whitelisted slug — no path traversal), `get_build_recipe(step?)` (the canonical
+  Primitive→Semantic→Component order + the step's **actionable lint gate**).
+- **Linter** — `lint_design_system` runs 33 detectors over a `LintSnapshot`. The
+  plugin's `lint_run` gathers the snapshot (variable graph + styles + components +
+  node bindings, after `loadAllPagesAsync()`); the server runs the detectors,
+  which are **pure functions** `(snap) => PartialFinding[]` in
+  `server/src/lint/detectors/<tier>.ts`, registered into the `DETECTORS` map via
+  the `detectors/register.ts` side-effect that `lint/index.ts` imports.
+
+**The closed loop:** `get_build_recipe(step)` → build that tier → run the gate's
+`run` call (`lint_design_system {only:[…]}`) → fix `severity:error` findings →
+advance to `next_step`. `buildGate` splits each gate into `enforced_now` vs
+`forward_declared` from the live registry at runtime, so a gate never asks the
+lint tool for a rule whose detector hasn't landed.
+
+**Philosophy — advise, don't dictate (load-bearing).** Everyone's DS structure is
+their own choice. Only *objectively broken* things are `severity:error`
+(alias-target-resolves, scope-legal-for-resolved-type); every opinionated rule is
+`warn`. The linter is **read-only — it never mutates the design system.** Rules
+must only assert what they can prove: e.g. a11y contrast pairs fg↔bg *only* via
+the explicit `on-<X>` naming convention, never by guessing from suffixes (loose
+matching fabricated 53 findings on a real 3-tier DS that just doesn't use `on-X`).
+
+**Adding a detector** touches 3 places: the pure fn in
+`server/src/lint/detectors/<tier>.ts` + its bundle export, the `Object.assign` in
+`detectors/register.ts`, and the rule entry in `server/src/lint/registry.ts`
+(objectively-broken → `error`, else `warn`). Then add a fixture case to
+`server/test/` and, if it belongs to a build step, wire it into `STEP_GATES` in
+`skills.ts`.
+
 ## Conventions & invariants
 
 - **pnpm only** (workspace rule). Build: `pnpm install && pnpm run build` in each package.
@@ -49,14 +87,24 @@ Motion styles enumerate; shaders API present (0 shaders in file).
 
 ## Testing
 
-`scripts/e2e-live-test.mjs` is a live end-to-end suite that exercises ~50 tool
-paths against a real Figma file. Prereq: Figma Desktop open with the plugin
-running in a scratch file. Run `node scripts/e2e-live-test.mjs` from the repo
-root (or `FILE_KEY=<key> node …` to target one of several connected files). It
-creates everything inside a dedicated test page and removes all artifacts
-(page, styles, variables, collections, temp state) on exit — the file is left
-as found. Only one MCP server may hold `:1994`; kill stragglers first
-(`lsof -i :1994`) so the test runs as leader, not follower.
+Two layers:
+
+- **Unit** — `cd server && pnpm test` (builds, then `node --test test/*.test.mjs`).
+  Runs against compiled `dist/`, no Figma needed — the lint detectors are pure
+  functions. Covers the a11y contrast regression (on-`X` pairing, same-colour
+  skip, suffix-only non-pairing) and the **golden clean-file fixture** (a correct
+  3-tier DS that must produce 0 findings across the full suite — the anti-noise
+  ratchet). **Server/detector code cannot be hot-reloaded into a running MCP
+  session** (stdio, spawned once at session start), so verify detector changes
+  here offline; a live re-lint only reflects new code after a fresh session.
+- **Live E2E** — `scripts/e2e-live-test.mjs` exercises ~50 tool paths against a
+  real Figma file. Prereq: Figma Desktop open with the plugin running in a scratch
+  file. Run `node scripts/e2e-live-test.mjs` from the repo root (or
+  `FILE_KEY=<key> node …` to target one of several connected files). It creates
+  everything inside a dedicated test page and removes all artifacts (page, styles,
+  variables, collections, temp state) on exit — the file is left as found. Only
+  one MCP server may hold `:1994`; kill stragglers first (`lsof -i :1994`) so the
+  test runs as leader, not follower.
 
 ## Registration
 
