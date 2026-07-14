@@ -4,8 +4,9 @@
 
 ## What this is
 
-A local Figma MCP server + Figma Desktop plugin. No REST calls, no rate
-limits. **98 tools** across Design, Dev Mode, FigJam, Slides & Buzz: local
+A local Figma MCP server + Figma Desktop plugin. No REST calls, so no REST
+rate limits — it uses the Figma Plugin API locally. **98 tools** across
+Design, Dev Mode, FigJam, Slides & Buzz: local
 fonts, text/paint/effect styles, variable authoring, grid layout, master
 components, instances, prototyping, annotations, dev resources, Motion/shaders
 (beta), and the FigJam/Slides/Buzz surfaces — plus a **bundled design-system

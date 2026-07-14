@@ -1,4 +1,4 @@
-# Figma Limitless MCP
+# Limitless MCP for Figma
 
 > **Your whole Figma file as an API — locally.** Give any AI assistant full, unthrottled access to Figma *and* build design systems the right way with a bundled skills + linter closed loop.
 
@@ -11,7 +11,9 @@
 
 A local **Figma MCP server + Figma Desktop plugin** that gives AI assistants everything the official/remote Figma MCP can't reach — your locally-installed fonts, variable authoring, prototype wiring, component mastery, the FigJam/Slides/Buzz surfaces, and a persistent journal/checkpoint layer so AI sessions survive crashes and context loss. Plus an **offline design-system knowledge base + 57-rule structure linter** that turns "design → code always breaks" into a **build → lint → fix** loop.
 
-No Figma REST API calls. No rate limits. No plan-tier tooling locks. Everything runs on your machine.
+No Figma REST API calls — so no REST rate limits; it talks to the Figma **Plugin API** locally. No plan-tier tooling locks. Everything runs on your machine, on your own files.
+
+> **Independent project — not affiliated with, endorsed, or sponsored by Figma.** "Figma" is a trademark of Figma, Inc., used here only descriptively (a tool *"for Figma"*). This is a **local/private developer tool** (a localhost bridge with an `execute_code` escape hatch); it is **not** distributed through Figma Community and isn't intended to be — that's by design, not a limitation.
 
 ```
 AI client (Claude Code / Claude Desktop / Cursor / …)
@@ -43,9 +45,9 @@ Design principle: **advise, don't dictate.** Only objectively-broken things are 
 
 ## Why local beats remote
 
-| | Official/remote Figma MCP | Figma Limitless MCP |
+| | Official/remote Figma MCP | Limitless MCP for Figma |
 |---|---|---|
-| Rate limits | Plan-tiered, shared quota | None — it's your machine |
+| REST rate limits | Plan-tiered, shared quota | N/A — uses the local Plugin API |
 | Locally-installed fonts | Invisible (Google/shared fonts only) | Fully visible + loadable |
 | Variable authoring | None (REST variables API is Enterprise-only) | Full create/edit/bind/alias |
 | Prototype wiring | Read-only context | Author reactions, flows |
@@ -95,7 +97,7 @@ claude mcp add figma-limitless-mcp -s user -- node "$(pwd)/server/dist/index.js"
 ```
 </details>
 
-**Use it:** open a Figma file, run **Plugins → Development → Figma Limitless MCP**, and ask your AI to work in Figma. The plugin window shows the connection state. Health check: `curl http://localhost:1994/ping`.
+**Use it:** open a Figma file, run **Plugins → Development → Limitless MCP for Figma**, and ask your AI to work in Figma. The plugin window shows the connection state. Health check: `curl http://localhost:1994/ping`.
 
 Multiple AI clients can register the same command — the first becomes the leader on :1994, the rest proxy through it automatically. Multiple Figma files connect at once (run the plugin in each; target by `fileKey`).
 
