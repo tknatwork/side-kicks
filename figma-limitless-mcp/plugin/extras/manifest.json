@@ -15,6 +15,7 @@
   },
   "documentAccess": "dynamic-page",
   "editorType": [
+    "figma",
     "figjam",
     "slides",
     "buzz"
