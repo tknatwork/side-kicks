@@ -2687,6 +2687,89 @@ const handleRequest = async (
               variable.remove();
               return { action: a.action, deleted: name };
             }
+            case "rename_variable": {
+              if (typeof a.variableId !== "string" || typeof a.name !== "string") {
+                throw new Error("rename_variable needs variableId and name");
+              }
+              const variable = await figma.variables.getVariableByIdAsync(a.variableId);
+              if (!variable) throw new Error(`Variable not found: ${a.variableId}`);
+              variable.name = a.name;
+              return { action: a.action, variableId: variable.id, name: variable.name };
+            }
+            case "update_variable": {
+              if (typeof a.variableId !== "string") {
+                throw new Error("update_variable needs variableId");
+              }
+              const variable = await figma.variables.getVariableByIdAsync(a.variableId);
+              if (!variable) throw new Error(`Variable not found: ${a.variableId}`);
+              if (Array.isArray(a.scopes)) {
+                variable.scopes = a.scopes as VariableScope[];
+              }
+              if (typeof a.description === "string") {
+                variable.description = a.description;
+              }
+              if (typeof a.hiddenFromPublishing === "boolean") {
+                variable.hiddenFromPublishing = a.hiddenFromPublishing;
+              }
+              if (a.codeSyntax && typeof a.codeSyntax === "object") {
+                for (const [platform, value] of Object.entries(
+                  a.codeSyntax as Record<string, unknown>
+                )) {
+                  if (typeof value === "string") {
+                    variable.setVariableCodeSyntax(
+                      platform as CodeSyntaxPlatform,
+                      value
+                    );
+                  }
+                }
+              }
+              return { action: a.action, variableId: variable.id };
+            }
+            case "rename_collection": {
+              if (typeof a.collectionId !== "string" || typeof a.name !== "string") {
+                throw new Error("rename_collection needs collectionId and name");
+              }
+              const collection =
+                await figma.variables.getVariableCollectionByIdAsync(a.collectionId);
+              if (!collection) throw new Error(`Collection not found: ${a.collectionId}`);
+              collection.name = a.name;
+              return { action: a.action, collectionId: collection.id, name: collection.name };
+            }
+            case "delete_collection": {
+              if (typeof a.collectionId !== "string") {
+                throw new Error("delete_collection needs collectionId");
+              }
+              const collection =
+                await figma.variables.getVariableCollectionByIdAsync(a.collectionId);
+              if (!collection) throw new Error(`Collection not found: ${a.collectionId}`);
+              const name = collection.name;
+              collection.remove();
+              return { action: a.action, deleted: name };
+            }
+            case "rename_mode": {
+              if (
+                typeof a.collectionId !== "string" ||
+                typeof a.modeId !== "string" ||
+                typeof a.name !== "string"
+              ) {
+                throw new Error("rename_mode needs collectionId, modeId, and name");
+              }
+              const collection =
+                await figma.variables.getVariableCollectionByIdAsync(a.collectionId);
+              if (!collection) throw new Error(`Collection not found: ${a.collectionId}`);
+              collection.renameMode(a.modeId, a.name);
+              return { action: a.action, modeId: a.modeId, name: a.name };
+            }
+            case "remove_mode": {
+              if (typeof a.collectionId !== "string" || typeof a.modeId !== "string") {
+                throw new Error("remove_mode needs collectionId and modeId");
+              }
+              const collection =
+                await figma.variables.getVariableCollectionByIdAsync(a.collectionId);
+              if (!collection) throw new Error(`Collection not found: ${a.collectionId}`);
+              collection.removeMode(a.modeId);
+              return { action: a.action, removedModeId: a.modeId };
+            }
             default:
               throw new Error(`Unknown write_variables action: ${String(a.action)}`);
           }

@@ -574,9 +574,20 @@ const variableAction = z.object({
       "set_alias",
       "bind_to_node",
       "delete_variable",
+      "rename_variable",
+      "update_variable",
+      "rename_collection",
+      "delete_collection",
+      "rename_mode",
+      "remove_mode",
     ])
     .describe("What this step does"),
-  name: z.string().optional().describe("create_collection/add_mode/create_variable: name"),
+  name: z
+    .string()
+    .optional()
+    .describe(
+      "create_collection/add_mode/create_variable: name. Also the NEW name for rename_variable/rename_collection/rename_mode."
+    ),
   initialModeName: z
     .string()
     .optional()
@@ -600,7 +611,20 @@ const variableAction = z.object({
     .describe(
       "create_variable: VariableScope list, e.g. ['FONT_FAMILY'] or ['ALL_SCOPES'] — never leave color tokens on ALL_SCOPES in a design system"
     ),
-  description: z.string().optional(),
+  description: z
+    .string()
+    .optional()
+    .describe("create_variable/update_variable: human-readable description"),
+  hiddenFromPublishing: z
+    .boolean()
+    .optional()
+    .describe("update_variable: hide this variable from published libraries"),
+  codeSyntax: z
+    .record(z.enum(["WEB", "ANDROID", "iOS"]), z.string())
+    .optional()
+    .describe(
+      "update_variable: platform code-syntax names, e.g. { WEB: '--color-brand', ANDROID: 'color_brand' }"
+    ),
   value: z
     .unknown()
     .optional()

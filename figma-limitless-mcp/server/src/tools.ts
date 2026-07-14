@@ -796,7 +796,7 @@ export function registerTools(
 
   server.tool(
     "write_variables",
-    "Author design tokens — the official MCP has NO variable-write surface. Sequential action batch: create_collection, add_mode, create_variable (with scopes/description/valuesByMode), set_value, set_alias, bind_to_node (node fields or solid-paint colors), delete_variable. Later actions reference earlier results via '$N.<field>' (e.g. collectionId: '$0.collectionId'), so one call builds a whole collection. Stops at the first error by default and reports per-action outcomes.",
+    "Author design tokens — the official MCP has NO variable-write surface. Sequential action batch: create_collection, rename_collection, delete_collection, add_mode, rename_mode, remove_mode, create_variable (with scopes/description/valuesByMode), rename_variable, update_variable (scopes/description/hiddenFromPublishing/codeSyntax), set_value, set_alias, bind_to_node (node fields or solid-paint colors), delete_variable. Later actions reference earlier results via '$N.<field>' (e.g. collectionId: '$0.collectionId'), so one call builds a whole collection. Stops at the first error by default and reports per-action outcomes.",
     writeVariablesInput.shape,
     async ({ actions, stopOnError, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = { actions };
