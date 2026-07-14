@@ -84,3 +84,53 @@ test("contrast-fallback-export-sampling: flags translucent semantic colour token
   assert.ok(!rep.findings.some((f) => f.rule_id === "contrast-fallback-export-sampling" && f.variableId === "s_fg"));
   assert.ok(!rep.findings.some((f) => f.rule_id === "contrast-fallback-export-sampling" && f.variableId === "s_accent"));
 });
+
+// ---- Wave 11b: the 3 gather-driven rules (silent without the new fields) ----
+test("no-instance-restyle-override: flags restyled instances, silent on old plugin", () => {
+  const snap = base({ instances: [
+    { id: "i1", name: "Button/primary", styleOverrideFields: ["fills", "effects"] },
+    { id: "i2", name: "Button/secondary", styleOverrideFields: [] }, // (won't be emitted by plugin, but safe)
+  ] });
+  const f = runLint(snap).findings.filter((x) => x.rule_id === "no-instance-restyle-override");
+  assert.equal(f.length, 1);
+  assert.equal(f[0].nodeId, "i1");
+  // old plugin (no instances field) -> silent
+  assert.equal(runLint(base({})).findings.filter((x) => x.rule_id === "no-instance-restyle-override").length, 0);
+});
+
+test("component-set-has-code-mapping: conditional on adoption", () => {
+  const sets = (mapped) => base({ components: [
+    { id: "s1", name: "Button", type: "COMPONENT_SET", hasCodeMapping: mapped[0] },
+    { id: "s2", name: "Chip", type: "COMPONENT_SET", hasCodeMapping: mapped[1] },
+  ] });
+  // one mapped, one not -> flags the unmapped
+  const rep = runLint(sets([true, false]));
+  assert.ok(rep.findings.some((f) => f.rule_id === "component-set-has-code-mapping" && f.nodeId === "s2"));
+  // none mapped (not adopted) -> silent
+  assert.equal(runLint(sets([false, false])).findings.filter((f) => f.rule_id === "component-set-has-code-mapping").length, 0);
+  // old plugin (undefined) -> silent
+  assert.equal(runLint(base({ components: [{ id: "s1", name: "B", type: "COMPONENT_SET" }] })).findings.filter((f) => f.rule_id === "component-set-has-code-mapping").length, 0);
+});
+
+test("detached-component-frame-signal: opt-in; exact name+structure match fires, complete fingerprints only", () => {
+  const snap = base({
+    components: [{ id: "c1", name: "Card", type: "COMPONENT", childTypeSeq: ["FRAME", "TEXT"], childCount: 2 }],
+    frameDupCandidates: [
+      { id: "f1", name: "Card", childTypeSeq: ["FRAME", "TEXT"], childCount: 2 }, // exact match -> fires
+      { id: "f2", name: "Card", childTypeSeq: ["FRAME"], childCount: 1 },          // structure differs -> no
+      { id: "f3", name: "Other", childTypeSeq: ["FRAME", "TEXT"], childCount: 2 }, // name differs -> no
+    ],
+  });
+  // opt-in off -> silent
+  assert.equal(runLint(snap).findings.filter((f) => f.rule_id === "detached-component-frame-signal").length, 0);
+  // enabled -> only f1
+  const f = runLint(snap, { enable: ["detached-component-frame-signal"] }).findings.filter((x) => x.rule_id === "detached-component-frame-signal");
+  assert.equal(f.length, 1);
+  assert.equal(f[0].nodeId, "f1");
+  // truncated fingerprint (childCount > seq length) -> skipped even if prefix matches
+  const trunc = base({
+    components: [{ id: "c1", name: "Card", type: "COMPONENT", childTypeSeq: ["FRAME", "TEXT"], childCount: 5 }],
+    frameDupCandidates: [{ id: "f1", name: "Card", childTypeSeq: ["FRAME", "TEXT"], childCount: 5 }],
+  });
+  assert.equal(runLint(trunc, { enable: ["detached-component-frame-signal"] }).findings.filter((f) => f.rule_id === "detached-component-frame-signal").length, 0);
+});

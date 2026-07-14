@@ -59,6 +59,10 @@ export interface SnapComponent {
   variantTuples?: Array<Record<string, string>>; // each child variant's property -> value (capped)
   variantTuplesTruncated?: boolean;
   defaultVariantTuple?: Record<string, string>;
+  // Wave 11b:
+  hasCodeMapping?: boolean; // COMPONENT_SET only: getDevResourcesAsync non-empty. undefined => not checked (old plugin / past cap / errored)
+  childTypeSeq?: string[]; // standalone COMPONENT only: direct-child types, capped
+  childCount?: number; // standalone COMPONENT only: full direct-child count
 }
 
 /** One node->variable binding edge (a node field bound to a variable). */
@@ -70,6 +74,23 @@ export interface SnapBinding {
   variableId: string;
 }
 
+/** One INSTANCE carrying a STYLE override vs its main (Wave 11b). Only restyled
+ *  instances are emitted, so array membership IS the per-instance signal. */
+export interface SnapInstance {
+  id: string;
+  name: string;
+  styleOverrideFields: string[]; // deduped style fields overridden, capped
+}
+
+/** A FRAME whose normalized name collides with a standalone component's name,
+ *  plus its direct-child fingerprint (the cheap detached-copy signal). */
+export interface SnapFrameDup {
+  id: string;
+  name: string;
+  childTypeSeq: string[]; // direct-child node types, capped
+  childCount: number; // full direct-child count (> childTypeSeq.length when capped => incomplete)
+}
+
 export interface LintSnapshot {
   collections: SnapCollection[];
   variables: SnapVariable[];
@@ -77,6 +98,15 @@ export interface LintSnapshot {
   components: SnapComponent[];
   nodeBindings?: SnapBinding[];
   bindingsTruncated?: boolean;
+  componentScanTruncated?: boolean;
+  // Wave 11b. A NEW plugin always emits instances/frameDupCandidates keys (even
+  // []); an OLD plugin omits them — so `undefined` = not-gathered => detector
+  // silent, while `[]` = scanned-clean => pass.
+  instances?: SnapInstance[];
+  instanceScanTruncated?: boolean;
+  frameDupCandidates?: SnapFrameDup[];
+  frameDupScanTruncated?: boolean;
+  codeMappingScanTruncated?: boolean;
   meta: { pageCount: number; scannedAllPages: boolean };
 }
 

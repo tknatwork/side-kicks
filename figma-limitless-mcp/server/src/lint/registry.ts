@@ -440,6 +440,7 @@ export const RULES: RuleMeta[] = [
     title: "Flag frames that duplicate a component's structure",
     category: "components",
     severity: "info",
+    defaultOn: false, // inherently heuristic/noisy — opt-in
     skillUri: "skill://design-system/component-variant-structure-for-codegen",
     fixHint: "Replace the duplicated frame with an instance of the component, or confirm it is intentionally bespoke.",
   },

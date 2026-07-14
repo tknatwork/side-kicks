@@ -280,6 +280,56 @@ const defaultVariantIsBaseTuple: Detector = (snap) => {
   return out;
 };
 
+// Wave 11b (needs the instance/frame gather). Both degrade to silent on an old
+// plugin. Only restyled instances are emitted, so the array IS the finding set;
+// scan truncation causes false negatives only, never a false positive.
+const noInstanceRestyleOverride: Detector = (snap) => {
+  if (!Array.isArray(snap.instances)) return [];
+  const out: PartialFinding[] = [];
+  for (const inst of snap.instances) {
+    if (inst.styleOverrideFields.length > 0) {
+      out.push({
+        rule_id: "no-instance-restyle-override",
+        nodeId: inst.id,
+        message: `Instance '${inst.name}' carries style overrides (${inst.styleOverrideFields.join(", ")}); move the styling into the source component (a variant/token) and reset the override so it stays in sync.`,
+      });
+    }
+  }
+  return out;
+};
+
+const normName = (s: string): string => s.trim().toLowerCase();
+// Opt-in (defaultOn:false), info: a FRAME that shares BOTH a component's
+// normalized name AND its exact direct-child type sequence is likely a
+// detached/hand-rebuilt copy. Both fingerprints must be COMPLETE (childCount ===
+// childTypeSeq.length) so a capped sequence never yields a partial-prefix match.
+const detachedComponentFrameSignal: Detector = (snap) => {
+  if (!snap.frameDupCandidates || snap.frameDupCandidates.length === 0) return [];
+  const byName = new Map<string, Array<{ name: string; seq: string[]; count: number }>>();
+  for (const c of snap.components ?? []) {
+    if (c.type !== "COMPONENT" || c.isVariant) continue;
+    if (!Array.isArray(c.childTypeSeq) || typeof c.childCount !== "number") continue;
+    if (c.childCount !== c.childTypeSeq.length) continue; // truncated fingerprint — skip
+    const key = normName(c.name);
+    (byName.get(key) ?? byName.set(key, []).get(key)!).push({ name: c.name, seq: c.childTypeSeq, count: c.childCount });
+  }
+  const out: PartialFinding[] = [];
+  for (const f of snap.frameDupCandidates) {
+    if (f.childCount !== f.childTypeSeq.length) continue; // frame fingerprint truncated — skip
+    for (const c of byName.get(normName(f.name)) ?? []) {
+      if (c.count === f.childCount && c.seq.every((t, i) => t === f.childTypeSeq[i])) {
+        out.push({
+          rule_id: "detached-component-frame-signal",
+          nodeId: f.id,
+          message: `Frame '${f.name}' has the same name and direct-child structure as component '${c.name}'; it looks like a detached/hand-rebuilt copy — replace it with an instance, or confirm it's intentionally bespoke.`,
+        });
+        break;
+      }
+    }
+  }
+  return out;
+};
+
 export const componentDetectors: Record<string, Detector> = {
   "property-name-convention-unique": propertyNameConventionUnique,
   "boolean-vocab-variant-should-be-boolean": booleanVocabVariantShouldBeBoolean,
@@ -291,4 +341,6 @@ export const componentDetectors: Record<string, Detector> = {
   "no-dead-component-property": noDeadComponentProperty,
   "variant-matrix-complete": variantMatrixComplete,
   "default-variant-is-base-tuple": defaultVariantIsBaseTuple,
+  "no-instance-restyle-override": noInstanceRestyleOverride,
+  "detached-component-frame-signal": detachedComponentFrameSignal,
 };

@@ -142,6 +142,29 @@ const textLayerUsesStyleOrBoundType: Detector = (snap) => {
   return out;
 };
 
+// Wave 11b (needs the per-set getDevResourcesAsync gather). CONDITIONAL on
+// adoption: only flag missing mappings once SOME set has one — a team that
+// doesn't use Code Connect isn't spammed. Sets past the async cap carry
+// hasCodeMapping===undefined => excluded from both numerator and denominator.
+const componentSetHasCodeMapping: Detector = (snap) => {
+  const sets = (snap.components ?? []).filter(
+    (c) => c.type === "COMPONENT_SET" && typeof c.hasCodeMapping === "boolean"
+  );
+  if (sets.length === 0) return []; // old plugin / none checked
+  if (!sets.some((c) => c.hasCodeMapping === true)) return []; // not adopted — don't spam
+  const out: PartialFinding[] = [];
+  for (const c of sets) {
+    if (c.hasCodeMapping === false) {
+      out.push({
+        rule_id: "component-set-has-code-mapping",
+        nodeId: c.id,
+        message: `Component set '${c.name}' has no Code Connect / dev-resource mapping, but others do; add one via set_code_mapping so codegen resolves its props.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const codegenDetectors: Record<string, Detector> = {
   "published-variable-has-codesyntax-web": publishedVariableHasCodesyntaxWeb,
   "codesyntax-web-unique": codesyntaxWebUnique,
@@ -149,4 +172,5 @@ export const codegenDetectors: Record<string, Detector> = {
   "codesyntax-web-matches-name": codesyntaxWebMatchesName,
   "no-raw-value-on-component-node": noRawValueOnComponentNode,
   "text-layer-uses-style-or-bound-type": textLayerUsesStyleOrBoundType,
+  "component-set-has-code-mapping": componentSetHasCodeMapping,
 };

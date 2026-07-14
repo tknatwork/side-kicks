@@ -4644,6 +4644,27 @@ const handleRequest = async (
           };
         };
 
+        // Wave 11b — Rule 2 (component-set-has-code-mapping): one
+        // getDevResourcesAsync round-trip per COMPONENT_SET, batched + hard-capped
+        // (dozens of sets, but bound the async fan-out). Errors/uncapped -> undefined
+        // -> the detector skips that set (never a false flag).
+        const MAX_CHILD_TYPES = 40;
+        const MAX_CODE_MAPPING_CHECKS = 120;
+        const setsForMapping = componentNodes.filter((n) => n.type === "COMPONENT_SET");
+        const checkedSets = setsForMapping.slice(0, MAX_CODE_MAPPING_CHECKS);
+        const codeMappingScanTruncated = setsForMapping.length > checkedSets.length;
+        const mappingEntries = await Promise.all(
+          checkedSets.map(async (n): Promise<[string, boolean | undefined]> => {
+            try {
+              const res = await (n as ComponentSetNode).getDevResourcesAsync();
+              return [n.id, Array.isArray(res) && res.length > 0];
+            } catch {
+              return [n.id, undefined];
+            }
+          })
+        );
+        const mappingById = new Map<string, boolean | undefined>(mappingEntries);
+
         const snapComponents = componentNodes.map((n) => {
           // A variant COMPONENT (child of a COMPONENT_SET) throws on
           // componentPropertyDefinitions — only sets and standalone components
@@ -4664,8 +4685,19 @@ const handleRequest = async (
           } catch {
             /* leave un-enriched */
           }
+          // Wave 11b: standalone-component fingerprint (detached-frame match).
+          if (n.type === "COMPONENT") {
+            try {
+              const kids = (n as ComponentNode).children ?? [];
+              out.childCount = kids.length;
+              out.childTypeSeq = kids.slice(0, MAX_CHILD_TYPES).map((k) => k.type);
+            } catch {
+              /* no fingerprint */
+            }
+          }
           // COMPONENT_SET: realized variant tuples + default variant tuple.
           if (n.type === "COMPONENT_SET") {
+            out.hasCodeMapping = mappingById.get(n.id);
             try {
               const set = n as ComponentSetNode;
               const tuples: Array<Record<string, string>> = [];
@@ -4744,6 +4776,85 @@ const handleRequest = async (
           }
         }
 
+        // Wave 11b — Rule 1 (no-instance-restyle-override): bounded scan of the
+        // largest node population. Only TOP-LEVEL instances (no INSTANCE ancestor)
+        // are considered, so a nested instance's restyle isn't double-reported on
+        // its container. Emit ONLY restyled instances (membership == the signal).
+        const STYLE_OVERRIDE_FIELDS = new Set([
+          "fills", "strokes", "effects", "fillStyleId", "strokeStyleId", "effectStyleId",
+        ]);
+        const INSTANCE_SCAN_BUDGET = 20000;
+        const MAX_RESTYLED_INSTANCES = 300;
+        const MAX_OVERRIDE_FIELDS = 6;
+        const hasInstanceAncestor = (node: BaseNode & { parent?: BaseNode | null }): boolean => {
+          let p = node.parent;
+          while (p) {
+            if (p.type === "INSTANCE") return true;
+            p = (p as { parent?: BaseNode | null }).parent ?? null;
+          }
+          return false;
+        };
+        const instances: Array<{ id: string; name: string; styleOverrideFields: string[] }> = [];
+        let instanceScanTruncated = false;
+        let instBudget = INSTANCE_SCAN_BUDGET;
+        for (const inst of figma.root.findAllWithCriteria({ types: ["INSTANCE"] })) {
+          if (instBudget <= 0 || instances.length >= MAX_RESTYLED_INSTANCES) {
+            instanceScanTruncated = true;
+            break;
+          }
+          instBudget--;
+          try {
+            if (hasInstanceAncestor(inst)) continue; // nested — its restyle belongs to the top-level instance
+            const fields = new Set<string>();
+            for (const o of (inst as InstanceNode).overrides ?? []) {
+              for (const f of o.overriddenFields ?? []) {
+                if (STYLE_OVERRIDE_FIELDS.has(f as string)) fields.add(f as string);
+                if (fields.size >= MAX_OVERRIDE_FIELDS) break;
+              }
+              if (fields.size >= MAX_OVERRIDE_FIELDS) break;
+            }
+            if (fields.size > 0) instances.push({ id: inst.id, name: inst.name, styleOverrideFields: [...fields] });
+          } catch {
+            /* skip unreadable instance */
+          }
+        }
+
+        // Wave 11b — Rule 3 (detached-component-frame-signal): name-prefilter the
+        // FRAME population by collision with a standalone-component name (O(1) per
+        // frame), then fingerprint only the colliders.
+        const componentNameSet = new Set<string>();
+        for (const c of snapComponents) {
+          if (c.type === "COMPONENT" && !c.isVariant && typeof c.name === "string") {
+            componentNameSet.add(c.name.trim().toLowerCase());
+          }
+        }
+        const FRAME_DUP_BUDGET = 20000;
+        const MAX_FRAME_DUPS = 300;
+        const frameDupCandidates: Array<{ id: string; name: string; childTypeSeq: string[]; childCount: number }> = [];
+        let frameDupScanTruncated = false;
+        if (componentNameSet.size > 0) {
+          let frameBudget = FRAME_DUP_BUDGET;
+          for (const fr of figma.root.findAllWithCriteria({ types: ["FRAME"] })) {
+            if (frameBudget <= 0 || frameDupCandidates.length >= MAX_FRAME_DUPS) {
+              frameDupScanTruncated = true;
+              break;
+            }
+            frameBudget--;
+            if (!componentNameSet.has(fr.name.trim().toLowerCase())) continue;
+            try {
+              const kids = (fr as FrameNode).children ?? [];
+              frameDupCandidates.push({
+                id: fr.id,
+                name: fr.name,
+                childCount: kids.length,
+                childTypeSeq: kids.slice(0, MAX_CHILD_TYPES).map((k) => k.type),
+              });
+            } catch {
+              /* skip */
+            }
+          }
+        }
+
         return {
           type: request.type,
           requestId: request.requestId,
@@ -4755,6 +4866,11 @@ const handleRequest = async (
             nodeBindings,
             bindingsTruncated,
             componentScanTruncated,
+            instances,
+            instanceScanTruncated,
+            frameDupCandidates,
+            frameDupScanTruncated,
+            codeMappingScanTruncated,
             meta: {
               pageCount: figma.root.children.length,
               scannedAllPages: true,
