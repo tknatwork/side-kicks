@@ -49,10 +49,15 @@ export function roleSegment(name: string): string {
 }
 
 function nameHint(name: string): Tier {
+  // Deliberately narrow: only unambiguous tier words. "token"/"role"/"theme"
+  // were dropped — they match collections like "Motion Tokens" that hold a
+  // granular scale, not the semantic tier.
   const n = name.toLowerCase();
-  if (/(component|comp)\b/.test(n)) return "component";
-  if (/(semantic|alias|role|theme|token)/.test(n)) return "semantic";
-  if (/(primitive|core|base|global|palette|ramp|scale)/.test(n)) return "primitive";
+  if (/\bcomponent/.test(n)) return "component";
+  if (/\bsemantic/.test(n)) return "semantic";
+  if (/(\bprimitive|\bcore\b|\bbase\b|\bglobal\b|\bpalette|\bramp\b)/.test(n)) {
+    return "primitive";
+  }
   return "unknown";
 }
 

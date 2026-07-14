@@ -53,17 +53,23 @@ const semanticAliasInEveryMode: Detector = (snap) => {
   for (const v of a.variables) {
     if (v.tier !== "semantic") continue;
     const modes = a.modesByCollection.get(v.collectionId) ?? Object.keys(v.valuesByMode);
+    let aliasModes = 0;
+    let rawModes = 0;
     for (const mode of modes) {
       const val = v.valuesByMode[mode];
       if (val === undefined) continue;
-      if (!aliasTarget(val)) {
-        out.push({
-          rule_id: "semantic-alias-in-every-mode",
-          variableId: v.id,
-          message: `Semantic token '${v.name}' has a raw value in mode ${mode}; semantic tokens must alias a primitive in EVERY mode (that's what makes theming a one-variable swap).`,
-        });
-        break;
-      }
+      if (aliasTarget(val)) aliasModes++;
+      else rawModes++;
+    }
+    // Only flag INCONSISTENCY — aliases in some modes, raw in others (a theme
+    // switch wouldn't flip it uniformly). A token that's raw in every mode may
+    // be a legitimate granular value, so we leave it alone.
+    if (aliasModes > 0 && rawModes > 0) {
+      out.push({
+        rule_id: "semantic-alias-in-every-mode",
+        variableId: v.id,
+        message: `Semantic token '${v.name}' aliases in ${aliasModes} mode(s) but is a raw value in ${rawModes}; alias it in every mode so a theme switch flips it uniformly.`,
+      });
     }
   }
   return out;
@@ -108,11 +114,14 @@ const aliasOneTierDown: Detector = (snap) => {
       if (!t) continue;
       const target = a.byId.get(t);
       if (!target || TIER_RANK[target.tier] < 0) continue;
+      // Intra-collection aliases are a team's granular in-tier controls, not a
+      // tier violation — only check aliases that cross tier collections.
+      if (target.collectionId === v.collectionId) continue;
       if (TIER_RANK[v.tier] - TIER_RANK[target.tier] !== 1) {
         out.push({
           rule_id: "alias-one-tier-down",
           variableId: v.id,
-          message: `'${v.name}' (${v.tier}) aliases '${target.name}' (${target.tier}) in mode ${mode}; aliases must point EXACTLY one tier down (component->semantic->primitive).`,
+          message: `'${v.name}' (${v.tier}) aliases '${target.name}' (${target.tier}) across collections in mode ${mode}; cross-tier aliases must point EXACTLY one tier down (component->semantic->primitive).`,
         });
         break;
       }

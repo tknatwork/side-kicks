@@ -471,5 +471,21 @@ export const RULES: RuleMeta[] = [
   },
 ];
 
+// Severity calibration. A design system's exact structure is a CHOICE, so the
+// linter advises rather than dictates: only objectively-broken defects (a
+// reference that resolves nowhere, a scope Figma rejects for the type) stay
+// errors. Every opinionated structural rule becomes a warning — real guidance
+// toward the canonical code-gen-optimal shape, but not a failure if a team's
+// 3-tier system uses granular in-tier controls. Run lint_design_system with
+// severity:'error' for "is anything actually broken?", severity:'all' for the
+// full structural review.
+const OBJECTIVE_ERRORS = new Set<string>([
+  "alias-target-resolves", // dangling alias — a broken reference
+  "scope-legal-for-resolved-type", // a scope Figma rejects for the resolvedType
+]);
+for (const r of RULES) {
+  if (r.severity === "error" && !OBJECTIVE_ERRORS.has(r.id)) r.severity = "warn";
+}
+
 export const RULE_BY_ID: Map<string, RuleMeta> = new Map(RULES.map((r) => [r.id, r]));
 export const CATEGORIES = [...new Set(RULES.map((r) => r.category))];
