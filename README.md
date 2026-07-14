@@ -1,6 +1,6 @@
 # Side-Kicks
 
-> **Home of [Figma Limitless MCP](figma-limitless-mcp/)** — a local Figma MCP server + Desktop plugin that gives AI assistants full, unthrottled Figma access *and* a built-in design-system knowledge layer + 57-rule structure linter.
+> **Home of [Limitless MCP for Figma](figma-limitless-mcp/)** — a local Figma MCP server + Desktop plugin that gives AI assistants full, unthrottled Figma access *and* a built-in design-system knowledge layer + 57-rule structure linter.
 
 ![MCP](https://img.shields.io/badge/MCP-compatible-5865F2)
 ![Network](https://img.shields.io/badge/network-none%20(local--only)-2ea44f)
@@ -14,11 +14,13 @@
 
 ---
 
-## 🚀 Flagship — Figma Limitless MCP
+## 🚀 Flagship — Limitless MCP for Figma
 
-**[`figma-limitless-mcp/`](figma-limitless-mcp/)** — everything the official/remote Figma MCP can't reach, running entirely on your machine: your locally-installed fonts, variable/component/prototype authoring, the FigJam/Slides/Buzz surfaces, a crash-safe journal/checkpoint session layer, and a **build → lint → fix** design-system loop (bundled skills + a 57-rule structure linter). No REST calls, no rate limits, no plan-tier locks. **98 tools.**
+**[`figma-limitless-mcp/`](figma-limitless-mcp/)** — everything the official/remote Figma MCP can't reach, running entirely on your machine: your locally-installed fonts, variable/component/prototype authoring, the FigJam/Slides/Buzz surfaces, a crash-safe journal/checkpoint session layer, and a **build → lint → fix** design-system loop (bundled skills + a 57-rule structure linter). No REST calls, no REST rate limits (it uses the local Plugin API), no plan-tier tooling locks. **98 tools.**
 
 → **[Read the full docs & quick start](figma-limitless-mcp/README.md).**
+
+*Independent project — not affiliated with, endorsed, or sponsored by Figma. "Figma" is used descriptively (a tool "for Figma"). It's a local/private developer tool and is not distributed via Figma Community.*
 
 ## Also in this repo
 
@@ -163,4 +165,4 @@ Then update:
 
 ---
 
-*Last updated: 2026-07-15 (repositioned MCP-first — Figma Limitless MCP is the flagship, 98 tools + 57-rule design-system linter)*
+*Last updated: 2026-07-15 (repositioned MCP-first — Limitless MCP for Figma is the flagship, 98 tools + 57-rule design-system linter)*

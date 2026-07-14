@@ -1,5 +1,5 @@
 {
-  "name": "Figma Limitless MCP",
+  "name": "Limitless MCP for Figma",
   "id": "figma-limitless-mcp",
   "api": "1.0.0",
   "main": "dist/code.js",

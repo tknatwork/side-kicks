@@ -66,5 +66,5 @@ served entirely over the local plugin bridge — no network, no design-tool AI c
 ### Added
 
 - Initial project: a local Figma MCP server + Dev-Mode plugin bridged over `ws://localhost:1994`,
-  using the Figma Plugin API only (no REST, no token, no rate limits). Registered as a user-scope
+  using the Figma Plugin API only (no REST, no token — the Plugin API has no REST-style rate limits). Registered as a user-scope
   MCP server; dev plugin imported into Figma Desktop.

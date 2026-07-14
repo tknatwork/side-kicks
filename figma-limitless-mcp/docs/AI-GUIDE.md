@@ -118,7 +118,7 @@ next run.
 
 | Error | Meaning | Action |
 |---|---|---|
-| "No plugin connected" | Plugin not running in Figma | Ask the user to run Plugins → Development → Figma Limitless MCP |
+| "No plugin connected" | Plugin not running in Figma | Ask the user to run Plugins → Development → Limitless MCP for Figma |
 | "Multiple files connected…" | Ambiguous target | `list_files`, pass `fileKey` |
 | "Cannot write to node with unloaded font" | Font not loaded (execute_code path) | `load_fonts` with exact strings first |
 | "…requires the design editor (Dev Mode is read-only)" | Figma is in Dev Mode | Ask the user to switch modes |

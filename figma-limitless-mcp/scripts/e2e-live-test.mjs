@@ -2,7 +2,7 @@
 /**
  * Live end-to-end test of figma-limitless-mcp against a REAL Figma file.
  *
- * Prereqs: Figma Desktop open with the Figma Limitless MCP plugin running in
+ * Prereqs: Figma Desktop open with the Limitless MCP for Figma plugin running in
  * some file. Everything is created inside a dedicated test page and removed
  * afterwards — the file is left exactly as found (undo history aside).
  *

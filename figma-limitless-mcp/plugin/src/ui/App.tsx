@@ -195,7 +195,7 @@ export default function App() {
           <span className="badge-text">{statusLabel}</span>
         </div>
         <span className="served-counter">
-          {served > 0 ? `${served} request${served === 1 ? "" : "s"} served` : "Figma Limitless MCP"}
+          {served > 0 ? `${served} request${served === 1 ? "" : "s"} served` : "Limitless MCP for Figma"}
         </span>
       </div>
     </div>
