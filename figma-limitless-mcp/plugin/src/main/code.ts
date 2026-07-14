@@ -4519,12 +4519,22 @@ const handleRequest = async (
         const componentNodes = figma.root.findAllWithCriteria({
           types: ["COMPONENT", "COMPONENT_SET"],
         });
-        const snapComponents = componentNodes.map((n) => ({
-          id: n.id,
-          name: n.name,
-          type: n.type,
-          propertyDefinitions: n.componentPropertyDefinitions,
-        }));
+        const snapComponents = componentNodes.map((n) => {
+          // A variant COMPONENT (child of a COMPONENT_SET) throws on
+          // componentPropertyDefinitions — only sets and standalone components
+          // expose it. Guard so the whole scan doesn't abort on one variant.
+          const isVariant =
+            n.type === "COMPONENT" && n.parent?.type === "COMPONENT_SET";
+          return {
+            id: n.id,
+            name: n.name,
+            type: n.type,
+            isVariant,
+            propertyDefinitions: isVariant
+              ? undefined
+              : n.componentPropertyDefinitions,
+          };
+        });
 
         return {
           type: request.type,
