@@ -1120,6 +1120,70 @@ export const createGifInput = z.object({
   fileKey: fileKeyField,
 });
 
+// --- Figma Slides authoring (editorType: slides) ---
+
+export const createSlideInput = z.object({
+  row: z.number().int().min(0).optional().describe("Grid row to place the new slide"),
+  col: z.number().int().min(0).optional().describe("Grid column (used with row)"),
+  backgroundHex: createHexColorSchema().optional().describe("Slide background color"),
+  fileKey: fileKeyField,
+});
+
+export const createSlideRowInput = z.object({
+  row: z.number().int().min(0).optional().describe("Index at which to insert the new slide row"),
+  fileKey: fileKeyField,
+});
+
+export const setSlideTransitionInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The SLIDE node"),
+  style: z
+    .enum([
+      "NONE", "DISSOLVE", "SLIDE_FROM_LEFT", "SLIDE_FROM_RIGHT", "SLIDE_FROM_BOTTOM",
+      "SLIDE_FROM_TOP", "PUSH_FROM_LEFT", "PUSH_FROM_RIGHT", "PUSH_FROM_BOTTOM",
+      "PUSH_FROM_TOP", "MOVE_FROM_LEFT", "MOVE_FROM_RIGHT", "MOVE_FROM_TOP",
+      "MOVE_FROM_BOTTOM", "SLIDE_OUT_TO_LEFT", "SLIDE_OUT_TO_RIGHT", "SLIDE_OUT_TO_TOP",
+      "SLIDE_OUT_TO_BOTTOM", "MOVE_OUT_TO_LEFT", "MOVE_OUT_TO_RIGHT", "MOVE_OUT_TO_TOP",
+      "MOVE_OUT_TO_BOTTOM", "SMART_ANIMATE",
+    ])
+    .optional()
+    .describe("Transition style (unchanged if omitted)"),
+  duration: z.number().min(0).optional().describe("Duration in seconds"),
+  curve: z
+    .enum(["EASE_IN", "EASE_OUT", "EASE_IN_AND_OUT", "LINEAR", "GENTLE", "QUICK", "BOUNCY", "SLOW"])
+    .optional()
+    .describe("Easing curve"),
+  timingType: z
+    .enum(["ON_CLICK", "AFTER_DELAY"])
+    .optional()
+    .describe("Advance on click or automatically after a delay"),
+  delay: z.number().min(0).optional().describe("Delay in seconds (for AFTER_DELAY)"),
+  fileKey: fileKeyField,
+});
+
+export const setSlideSkipInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The SLIDE node"),
+  skip: z.boolean().describe("Whether to skip this slide during presentation"),
+  fileKey: fileKeyField,
+});
+
+export const focusSlideInput = z.object({
+  nodeId: createFigmaNodeIdSchema().describe("The SLIDE node to focus in the editor"),
+  fileKey: fileKeyField,
+});
+
+export const getSlideGridInput = z.object({
+  fileKey: fileKeyField,
+});
+
+export const setSlideGridInput = z.object({
+  grid: z
+    .array(z.array(createFigmaNodeIdSchema()))
+    .describe(
+      "2D array of slide ids in the new row/column order. IMPORTANT: must contain EVERY slide currently in the grid — call get_slide_grid first, reorder, and pass all of them back."
+    ),
+  fileKey: fileKeyField,
+});
+
 export const devResourcesShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("Target node"),
   action: z.enum(["get", "add", "edit", "delete"]),
@@ -1784,6 +1848,20 @@ export const toolInputSchemas = {
 
   create_gif: createGifInput,
 
+  create_slide: createSlideInput,
+
+  create_slide_row: createSlideRowInput,
+
+  set_slide_transition: setSlideTransitionInput,
+
+  set_slide_skip: setSlideSkipInput,
+
+  focus_slide: focusSlideInput,
+
+  get_slide_grid: getSlideGridInput,
+
+  set_slide_grid: setSlideGridInput,
+
   dev_resources: devResourcesInput,
 
   set_code_mapping: setCodeMappingInput,
@@ -1904,6 +1982,13 @@ const rpcToArgs: Record<
   create_table: (_nodeIds, params) => ({ ...params }),
   create_code_block: (_nodeIds, params) => ({ ...params }),
   create_gif: (_nodeIds, params) => ({ ...params }),
+  create_slide: (_nodeIds, params) => ({ ...params }),
+  create_slide_row: (_nodeIds, params) => ({ ...params }),
+  set_slide_transition: (_nodeIds, params) => ({ ...params }),
+  set_slide_skip: (_nodeIds, params) => ({ ...params }),
+  focus_slide: (_nodeIds, params) => ({ ...params }),
+  get_slide_grid: (_nodeIds, params) => ({ ...params }),
+  set_slide_grid: (_nodeIds, params) => ({ ...params }),
   dev_resources: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   set_code_mapping: (_nodeIds, params) => ({ ...params }),
   get_code_mappings: (_nodeIds, params) => ({ ...params }),

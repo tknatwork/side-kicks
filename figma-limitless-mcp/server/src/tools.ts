@@ -79,6 +79,13 @@ import {
   createTableInput,
   createCodeBlockInput,
   createGifInput,
+  createSlideInput,
+  createSlideRowInput,
+  setSlideTransitionInput,
+  setSlideSkipInput,
+  focusSlideInput,
+  getSlideGridInput,
+  setSlideGridInput,
   devResourcesShape,
   devResourcesInput,
   setCodeMappingShape,
@@ -1209,6 +1216,83 @@ export function registerTools(
     async ({ fileKey, ...params }): Promise<ToolResult> => {
       return renderResponse(() =>
         node.sendWithParams("create_gif", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_slide",
+    "Figma Slides: create a new 1920×1080 slide (optionally at a grid row/col) with an optional background color. Slides only.",
+    createSlideInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_slide", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_slide_row",
+    "Figma Slides: create a new slide row (optionally at an index). Slides only.",
+    createSlideRowInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_slide_row", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_slide_transition",
+    "Figma Slides: set a slide's transition — style, duration, easing curve, and on-click/after-delay timing. Only the fields you pass change. Slides only.",
+    setSlideTransitionInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_slide_transition", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_slide_skip",
+    "Figma Slides: skip or unskip a slide during presentation. Slides only.",
+    setSlideSkipInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_slide_skip", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "focus_slide",
+    "Figma Slides: focus a slide in the editor (sets currentPage.focusedSlide). Slides only.",
+    focusSlideInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("focus_slide", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "get_slide_grid",
+    "Figma Slides: read the slide grid as a 2D array of slide ids/names (row-major presentation order). Read-only. Slides only.",
+    getSlideGridInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("get_slide_grid", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "set_slide_grid",
+    "Figma Slides: reorder the deck by passing the full 2D grid of slide ids in the desired order. Must include EVERY current slide (get_slide_grid first). Slides only.",
+    setSlideGridInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("set_slide_grid", undefined, params, fileKey)
       );
     }
   );

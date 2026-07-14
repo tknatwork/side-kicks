@@ -72,6 +72,13 @@ type RequestType =
   | "create_table"
   | "create_code_block"
   | "create_gif"
+  | "create_slide"
+  | "create_slide_row"
+  | "set_slide_transition"
+  | "set_slide_skip"
+  | "focus_slide"
+  | "get_slide_grid"
+  | "set_slide_grid"
   | "dev_resources";
 
 type ServerRequestParams = Record<string, unknown> & {
@@ -935,6 +942,24 @@ const requireFigJam = (toolName: RequestType): void => {
   }
 };
 
+const SLIDES_REQUEST_TYPES = new Set<RequestType>([
+  "create_slide",
+  "create_slide_row",
+  "set_slide_transition",
+  "set_slide_skip",
+  "focus_slide",
+  "get_slide_grid",
+  "set_slide_grid",
+]);
+
+const requireSlides = (toolName: RequestType): void => {
+  if (figma.editorType !== "slides") {
+    throw new Error(
+      `${toolName} is a Figma Slides tool and only runs in a Slides file (current editor: ${figma.editorType}). Open a Slides file and re-run.`
+    );
+  }
+};
+
 const solidPaintFromHex = (hex: string): SolidPaint => ({
   type: "SOLID",
   color: parseHexColor(hex),
@@ -964,6 +989,9 @@ const handleRequest = async (
     }
     if (FIGJAM_REQUEST_TYPES.has(request.type)) {
       requireFigJam(request.type);
+    }
+    if (SLIDES_REQUEST_TYPES.has(request.type)) {
+      requireSlides(request.type);
     }
     switch (request.type) {
       case "get_document":
@@ -4153,6 +4181,150 @@ const handleRequest = async (
           data: { nodeId: gif.id },
         };
       }
+      case "create_slide": {
+        const params = request.params ?? {};
+        const row = typeof params.row === "number" ? params.row : undefined;
+        const col = typeof params.col === "number" ? params.col : undefined;
+        const slide =
+          row !== undefined && col !== undefined
+            ? figma.createSlide(row, col)
+            : row !== undefined
+              ? figma.createSlide(row)
+              : figma.createSlide();
+        if (typeof params.backgroundHex === "string") {
+          slide.fills = [solidPaintFromHex(params.backgroundHex)];
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: slide.id, nodeName: slide.name },
+        };
+      }
+      case "create_slide_row": {
+        const params = request.params ?? {};
+        const row = typeof params.row === "number" ? params.row : undefined;
+        const slideRow =
+          row !== undefined ? figma.createSlideRow(row) : figma.createSlideRow();
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: slideRow.id },
+        };
+      }
+      case "set_slide_transition": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("set_slide_transition needs a slide nodeId");
+        }
+        const node = await figma.getNodeByIdAsync(params.nodeId);
+        if (!node || node.type !== "SLIDE") {
+          throw new Error(
+            `set_slide_transition needs a SLIDE node, got ${node?.type ?? "missing"}`
+          );
+        }
+        const current = node.getSlideTransition();
+        const transition: SlideTransition = {
+          style: (typeof params.style === "string"
+            ? params.style
+            : current.style) as SlideTransition["style"],
+          duration:
+            typeof params.duration === "number" ? params.duration : current.duration,
+          curve: (typeof params.curve === "string"
+            ? params.curve
+            : current.curve) as SlideTransition["curve"],
+          timing: {
+            type: (typeof params.timingType === "string"
+              ? params.timingType
+              : current.timing.type) as "ON_CLICK" | "AFTER_DELAY",
+            delay:
+              typeof params.delay === "number" ? params.delay : current.timing.delay,
+          },
+        };
+        node.setSlideTransition(transition);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, transition },
+        };
+      }
+      case "set_slide_skip": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("set_slide_skip needs a slide nodeId");
+        }
+        const node = await figma.getNodeByIdAsync(params.nodeId);
+        if (!node || node.type !== "SLIDE") {
+          throw new Error(
+            `set_slide_skip needs a SLIDE node, got ${node?.type ?? "missing"}`
+          );
+        }
+        node.isSkippedSlide = params.skip === true;
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { nodeId: node.id, isSkippedSlide: node.isSkippedSlide },
+        };
+      }
+      case "focus_slide": {
+        const params = request.params ?? {};
+        if (typeof params.nodeId !== "string") {
+          throw new Error("focus_slide needs a slide nodeId");
+        }
+        const node = await figma.getNodeByIdAsync(params.nodeId);
+        if (!node || node.type !== "SLIDE") {
+          throw new Error(
+            `focus_slide needs a SLIDE node, got ${node?.type ?? "missing"}`
+          );
+        }
+        figma.currentPage.focusedSlide = node;
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { focusedSlideId: node.id },
+        };
+      }
+      case "get_slide_grid": {
+        const grid = figma.getSlideGrid();
+        const idGrid = grid.map((rowArr) =>
+          rowArr.map((s) => ({ id: s.id, name: s.name }))
+        );
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { grid: idGrid, rows: idGrid.length },
+        };
+      }
+      case "set_slide_grid": {
+        const params = request.params ?? {};
+        if (!Array.isArray(params.grid)) {
+          throw new Error("set_slide_grid needs grid (a 2D array of slide ids)");
+        }
+        const inputRows = params.grid as unknown[];
+        const slideGrid: SlideNode[][] = [];
+        for (const row of inputRows) {
+          if (!Array.isArray(row)) {
+            throw new Error("set_slide_grid: grid must be a 2D array");
+          }
+          const slideRow: SlideNode[] = [];
+          for (const id of row) {
+            if (typeof id !== "string") {
+              throw new Error("set_slide_grid: each cell must be a slide id string");
+            }
+            const n = await figma.getNodeByIdAsync(id);
+            if (!n || n.type !== "SLIDE") {
+              throw new Error(`set_slide_grid: not a SLIDE node: ${id}`);
+            }
+            slideRow.push(n);
+          }
+          slideGrid.push(slideRow);
+        }
+        figma.setSlideGrid(slideGrid);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { rows: slideGrid.length },
+        };
+      }
       case "dev_resources": {
         const nodeId = request.nodeIds && request.nodeIds[0];
         if (!nodeId) throw new Error("nodeIds is required for dev_resources");
@@ -4353,6 +4525,7 @@ figma.ui.onmessage = async (message) => {
     if (
       EDIT_REQUEST_TYPES.has(request.type) ||
       FIGJAM_REQUEST_TYPES.has(request.type) ||
+      SLIDES_REQUEST_TYPES.has(request.type) ||
       request.type === "execute_code"
     ) {
       mutationChain = mutationChain.then(run, run);

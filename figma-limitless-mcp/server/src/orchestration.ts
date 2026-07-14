@@ -117,6 +117,11 @@ export const JOURNALED_TOOLS = new Set([
   "create_table",
   "create_code_block",
   "create_gif",
+  "create_slide",
+  "create_slide_row",
+  "set_slide_transition",
+  "set_slide_skip",
+  "set_slide_grid",
   "dev_resources",
 ]);
 
