@@ -45,6 +45,30 @@ function resolveColor(
   return null;
 }
 
+/** Resolve to the raw alpha of a COLOR variable in a mode (1 if opaque/absent). */
+function resolveAlpha(
+  a: ReturnType<typeof analyze>,
+  varId: string,
+  mode: string,
+  depth = 0
+): number | null {
+  if (depth > 16) return null;
+  const v = a.byId.get(varId);
+  if (!v || v.resolvedType !== "COLOR") return null;
+  const val = mode in v.valuesByMode ? v.valuesByMode[mode] : Object.values(v.valuesByMode)[0];
+  const target = aliasTarget(val);
+  if (target) {
+    const tv = a.byId.get(target);
+    const tMode = tv && mode in tv.valuesByMode ? mode : tv ? Object.keys(tv.valuesByMode)[0] : mode;
+    return resolveAlpha(a, target, tMode, depth + 1);
+  }
+  if (val && typeof val === "object" && "r" in (val as object)) {
+    const o = val as { a?: number };
+    return typeof o.a === "number" ? o.a : 1;
+  }
+  return null;
+}
+
 const luminance = ({ r, g, b }: RGB): number => {
   const lin = (c: number): number =>
     c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
@@ -188,8 +212,37 @@ const minFontSize: Detector = (snap, config) => {
   return out;
 };
 
+// A semantic fg/bg/line token that resolves to a TRANSLUCENT paint (alpha < 1):
+// the alias-resolved RGB contrast can't be trusted (it composites over whatever
+// backdrop it's placed on), so the fg-bg-pair/graphical-contrast numbers are
+// unreliable for it — pixel-sample the rendered result instead. info; pure over
+// the existing colour values (alpha is already in the snapshot).
+const A11Y_ROLE = /^(fg|foreground|text|ink|content|icon|label|bg|background|surface|fill|border|stroke|outline|divider|separator|ring)$/;
+const contrastFallbackExportSampling: Detector = (snap) => {
+  const a = analyze(snap);
+  const out: PartialFinding[] = [];
+  for (const v of a.variables) {
+    if (v.tier !== "semantic" || v.resolvedType !== "COLOR") continue;
+    if (!A11Y_ROLE.test(v.name.toLowerCase().split("/")[0])) continue;
+    const modes = a.modesByCollection.get(v.collectionId) ?? Object.keys(v.valuesByMode);
+    for (const mode of modes) {
+      const alpha = resolveAlpha(a, v.id, mode);
+      if (alpha !== null && alpha < 0.999) {
+        out.push({
+          rule_id: "contrast-fallback-export-sampling",
+          variableId: v.id,
+          message: `'${v.name}' resolves to a translucent colour (alpha ${alpha.toFixed(2)}) in mode ${mode}; alias-resolved contrast can't be trusted for it — verify with pixel sampling over the real backdrop.`,
+        });
+        break;
+      }
+    }
+  }
+  return out;
+};
+
 export const a11yDetectors: Record<string, Detector> = {
   "fg-bg-pair-contrast": fgBgPairContrast,
   "border-icon-graphical-contrast": borderIconGraphicalContrast,
   "min-font-size": minFontSize,
+  "contrast-fallback-export-sampling": contrastFallbackExportSampling,
 };

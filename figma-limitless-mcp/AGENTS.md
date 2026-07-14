@@ -47,7 +47,7 @@ structure right?" — no network, no Figma AI credits.
   `server/src/skills.ts`: `list_skills` (catalog), `read_skill(slug)` (full doc,
   whitelisted slug — no path traversal), `get_build_recipe(step?)` (the canonical
   Primitive→Semantic→Component order + the step's **actionable lint gate**).
-- **Linter** — `lint_design_system` runs 51/57 detectors over a `LintSnapshot`. The
+- **Linter** — `lint_design_system` runs all 57/57 catalog detectors over a `LintSnapshot`. The
   plugin's `lint_run` gathers the snapshot (variable graph + styles + components +
   node bindings, after `loadAllPagesAsync()`) — plus **per-component enrichment**
   from one bounded DFS (20k-node budget + `componentScanTruncated`): TEXT-style
@@ -59,8 +59,10 @@ structure right?" — no network, no Figma AI credits.
   `(snap, config?) => PartialFinding[]` in `server/src/lint/detectors/<tier>.ts`,
   registered into the `DETECTORS` map via the `detectors/register.ts` side-effect
   that `lint/index.ts` imports. Enrichment-driven detectors degrade to silent when
-  their fields are absent (old plugin build). Remaining 6 rules are deferred
-  (instance-override / frame-fingerprint / exportAsync / Code-Connect data).
+  their fields are absent (old plugin build). The catalog is now fully
+  implemented — the last wave added instance-restyle / dev-resource /
+  detached-frame gathers and reframed contrast-fallback as an offline
+  translucency check. Opinionated/house-style rules ship `defaultOn:false`.
 
 **The closed loop:** `get_build_recipe(step)` → build that tier → run the gate's
 `run` call (`lint_design_system {only:[…]}`) → fix `severity:error` findings →

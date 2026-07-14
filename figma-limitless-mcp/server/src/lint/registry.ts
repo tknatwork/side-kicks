@@ -232,11 +232,12 @@ export const RULES: RuleMeta[] = [
   },
   {
     id: "component-set-has-code-mapping",
-    title: "Component sets should have a Code Connect mapping matching their props",
+    title: "Component sets should link to their code (a Dev Mode dev resource)",
     category: "code-output",
     severity: "warn",
+    defaultOn: false, // dev-resource presence is a weak proxy (not Code Connect) — opt-in
     skillUri: "skill://design-system/design-to-code-correctness",
-    fixHint: "Create/update the Code Connect mapping via set_code_mapping so its props match componentPropertyDefinitions exactly.",
+    fixHint: "Attach a Dev Mode dev resource linking the set to its implementation (code/story/docs) so it's discoverable. (This checks dev-resource presence, not Code Connect specifically.)",
   },
   {
     id: "primitive-component-single-mode",
@@ -291,6 +292,7 @@ export const RULES: RuleMeta[] = [
     title: "Multi-brand tokens must alias through the brand layer",
     category: "theming",
     severity: "warn",
+    defaultOn: false, // only meaningful for multi-brand DSs — opt-in + configured
     skillUri: "skill://design-system/theming-with-modes",
     fixHint: "Route accent/action semantics through a brand/* token so re-branding is a single-layer swap.",
   },
@@ -439,6 +441,7 @@ export const RULES: RuleMeta[] = [
     title: "Flag frames that duplicate a component's structure",
     category: "components",
     severity: "info",
+    defaultOn: false, // inherently heuristic/noisy — opt-in
     skillUri: "skill://design-system/component-variant-structure-for-codegen",
     fixHint: "Replace the duplicated frame with an instance of the component, or confirm it is intentionally bespoke.",
   },
@@ -447,6 +450,7 @@ export const RULES: RuleMeta[] = [
     title: "Default variant must be the neutral base tuple",
     category: "components",
     severity: "warn",
+    defaultOn: false, // "base" per axis is a house convention — opt-in
     skillUri: "skill://design-system/component-variant-structure-for-codegen",
     fixHint: "Reorder/assign the default variant so each axis sits at its documented base value.",
   },

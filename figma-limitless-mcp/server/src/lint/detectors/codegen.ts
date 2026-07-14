@@ -142,6 +142,31 @@ const textLayerUsesStyleOrBoundType: Detector = (snap) => {
   return out;
 };
 
+// Wave 11b — opt-in (defaultOn:false). hasCodeMapping is sourced from the
+// plugin's getDevResourcesAsync, which returns ANY Dev Mode dev resource (a
+// Storybook/Jira/docs link), NOT Code Connect specifically — so this is a weak
+// "is this set linked to its code?" proxy, kept off by default and honestly
+// worded. CONDITIONAL on adoption: only flag once SOME set carries a dev
+// resource. Sets past the async cap are undefined and excluded from both sides.
+const componentSetHasCodeMapping: Detector = (snap) => {
+  const sets = (snap.components ?? []).filter(
+    (c) => c.type === "COMPONENT_SET" && typeof c.hasCodeMapping === "boolean"
+  );
+  if (sets.length === 0) return []; // old plugin / none checked
+  if (!sets.some((c) => c.hasCodeMapping === true)) return []; // none linked — nothing to compare against
+  const out: PartialFinding[] = [];
+  for (const c of sets) {
+    if (c.hasCodeMapping === false) {
+      out.push({
+        rule_id: "component-set-has-code-mapping",
+        nodeId: c.id,
+        message: `Component set '${c.name}' has no Dev Mode dev resource (code/story/docs link), but other sets do; attach one so its implementation is discoverable. (Checks dev-resource presence, not Code Connect specifically.)`,
+      });
+    }
+  }
+  return out;
+};
+
 export const codegenDetectors: Record<string, Detector> = {
   "published-variable-has-codesyntax-web": publishedVariableHasCodesyntaxWeb,
   "codesyntax-web-unique": codesyntaxWebUnique,
@@ -149,4 +174,5 @@ export const codegenDetectors: Record<string, Detector> = {
   "codesyntax-web-matches-name": codesyntaxWebMatchesName,
   "no-raw-value-on-component-node": noRawValueOnComponentNode,
   "text-layer-uses-style-or-bound-type": textLayerUsesStyleOrBoundType,
+  "component-set-has-code-mapping": componentSetHasCodeMapping,
 };

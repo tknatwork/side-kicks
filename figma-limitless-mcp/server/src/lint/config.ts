@@ -90,6 +90,21 @@ export const RULE_CONFIG: Record<string, RuleConfigMeta> = {
       };
     },
   },
+  "multi-brand-alias-discipline": {
+    configShape: "{ brandPrefix: string (required, e.g. 'brand'), roles?: string[] (default ['accent','action','brand','primary']) }",
+    defaults: null, // config REQUIRED — the brand layer must be declared
+    resolve: (raw) => {
+      if (!isObj(raw)) throw new LintConfigError("multi-brand-alias-discipline", "needs config { brandPrefix: string }");
+      if (typeof raw.brandPrefix !== "string" || raw.brandPrefix.length === 0) {
+        throw new LintConfigError("multi-brand-alias-discipline", "'brandPrefix' must be a non-empty string");
+      }
+      const roles =
+        raw.roles == null
+          ? ["accent", "action", "brand", "primary"]
+          : asStringArray(raw.roles, "multi-brand-alias-discipline", "roles");
+      return { brandPrefix: raw.brandPrefix, roles };
+    },
+  },
   "semantic-role-allowlist": {
     configShape: "{ allowlist: string[] (required, non-empty), resolvedType?: 'COLOR'|'FLOAT'|'STRING'|'BOOLEAN' (default COLOR) }",
     defaults: null, // config REQUIRED — no universal role vocabulary
