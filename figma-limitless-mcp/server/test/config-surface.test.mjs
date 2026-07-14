@@ -6,7 +6,7 @@
 // Runs against compiled dist/ (pnpm test builds first).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { runLint, ruleInventory } from "../dist/lint/index.js";
+import { runLint, ruleInventory, DETECTORS } from "../dist/lint/index.js";
 
 const C = (r, g, b) => ({ r, g, b, a: 1 });
 const mkVar = (id, name, coll, valuesByMode, opts = {}) => ({
@@ -138,4 +138,34 @@ test("ruleInventory now reports defaultOn per rule", () => {
   const inv = ruleInventory();
   assert.equal(inv.find((r) => r.id === "numeric-scale-zero-padded").defaultOn, false);
   assert.equal(inv.find((r) => r.id === "alias-target-resolves").defaultOn, true);
+});
+
+test("rule_failures: a throwing detector is isolated and NOT counted as passed", () => {
+  const orig = DETECTORS["duplicate-primitive-value"];
+  DETECTORS["duplicate-primitive-value"] = () => {
+    throw new Error("boom");
+  };
+  try {
+    const rep = runLint(snap());
+    assert.ok(
+      rep.rule_failures.some((e) => e.rule_id === "duplicate-primitive-value" && /boom/.test(e.message)),
+      "the throw must surface under rule_failures"
+    );
+    // Invariant: passed + rules-with-findings + failures == rules_run (the
+    // crashed rule must not be double-counted as passed).
+    const withFindings = new Set(rep.findings.map((f) => f.rule_id)).size;
+    assert.equal(rep.summary.passed + withFindings + rep.rule_failures.length, rep.summary.rules_run);
+  } finally {
+    DETECTORS["duplicate-primitive-value"] = orig;
+  }
+});
+
+test("codesyntax-web-matches-name does NOT flag camelCase codeSyntax derived from the name", () => {
+  const s = snap();
+  s.variables.push(
+    mkVar("s_cc", "button/background", "S", { m: { alias: "p_g500" } }, { codeSyntax: { WEB: "buttonBackground" } })
+  );
+  const rep = runLint(s, { enable: ["codesyntax-web-matches-name"] });
+  assert.ok(!forVar(rep, "codesyntax-web-matches-name", "s_cc")); // buttonBackground -> {button, background}
+  assert.ok(forVar(rep, "codesyntax-web-matches-name", "s_web")); // still flags the genuinely-unrelated one
 });

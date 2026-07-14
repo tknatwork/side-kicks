@@ -236,7 +236,10 @@ export function runLint(snap: LintSnapshot, opts: LintOptions = {}): LintReport 
       errors: filtered.filter((f) => f.severity === "error").length,
       warnings: filtered.filter((f) => f.severity === "warn").length,
       infos: filtered.filter((f) => f.severity === "info").length,
-      passed: rulesRun - rulesWithFindings.size,
+      // A crashed detector was invoked (counted in rules_run) but neither passed
+      // nor produced findings — exclude it so passed + withFindings + failures
+      // reconciles to rules_run.
+      passed: rulesRun - rulesWithFindings.size - ruleFailures.length,
       rules_total: wanted.length,
       rules_run: rulesRun,
       rules_pending: pending.length,

@@ -76,7 +76,14 @@ const publishedVariableHasDescription: Detector = (snap) => {
 // the variable name (a strong signal the codeSyntax was copy-pasted / left stale).
 const segTokens = (s: string): Set<string> => {
   const set = new Set<string>();
-  for (const t of s.toLowerCase().split(/[^a-z0-9]+/)) if (t) set.add(t);
+  // Split camelCase/PascalCase too, else a faithfully-derived JS identifier like
+  // 'buttonBackground' or 'theme.spacingMd' collapses to one blob and looks
+  // "unrelated" to a slash-grouped name — a false positive on a mainstream
+  // codeSyntax convention.
+  const boundaried = s
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2") // lower/digit -> Upper
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2"); // ACRONYMWord -> ACRONYM Word
+  for (const t of boundaried.toLowerCase().split(/[^a-z0-9]+/)) if (t) set.add(t);
   return set;
 };
 
