@@ -600,6 +600,29 @@ export const getBuildRecipeInput = z.object({
     ),
 });
 
+export const lintDesignSystemInput = z.object({
+  only: z.array(z.string()).optional().describe("Run only these rule_ids"),
+  categories: z
+    .array(
+      z.enum([
+        "tokens",
+        "scopes",
+        "theming",
+        "components",
+        "code-output",
+        "naming",
+        "a11y",
+      ])
+    )
+    .optional()
+    .describe("Run only these rule categories"),
+  severity: z
+    .enum(["error", "warn", "all"])
+    .optional()
+    .describe("Filter findings: 'error' only, 'warn' (error+warn), or 'all' (default)"),
+  fileKey: fileKeyField,
+});
+
 const variableAction = z.object({
   action: z
     .enum([

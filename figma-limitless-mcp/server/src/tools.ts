@@ -6,6 +6,7 @@ import path from "node:path";
 import type { z } from "zod";
 import type { Node } from "./node.js";
 import { listSkills, readSkill, getBuildRecipe } from "./skills.js";
+import { runLint, type LintSnapshot } from "./lint/runner.js";
 import {
   createFrameInput,
   createImageInput,
@@ -95,6 +96,7 @@ import {
   listSkillsInput,
   readSkillInput,
   getBuildRecipeInput,
+  lintDesignSystemInput,
   devResourcesShape,
   devResourcesInput,
   setCodeMappingShape,
@@ -731,6 +733,24 @@ export function registerTools(
     "Return the canonical design-system build order (Primitive -> Semantic -> Component, lint-gated) plus the lint rule_ids to run after a given step. Follow it top-to-bottom: build a tier, lint it, fix, descend. Default step 'all' returns the whole build order. Local, offline.",
     getBuildRecipeInput.shape,
     async ({ step }): Promise<ToolResult> => renderLocal(() => getBuildRecipe(step))
+  );
+
+  server.tool(
+    "lint_design_system",
+    "Structure-lint the design system in the current file against the 57-rule canonical catalog. Gathers the variable graph, styles, and components (loads all pages) and reports structural defects — color token on ALL_SCOPES, node bound to a primitive, dangling alias, missing codeSyntax, low-contrast token pairs, etc. — each with a fix hint linked to the skill that explains it. Run after every build step: build -> lint -> fix. Detectors roll out tier-by-tier; not-yet-implemented rules are listed under not_yet_implemented.",
+    lintDesignSystemInput.shape,
+    async ({ only, categories, severity, fileKey }): Promise<ToolResult> =>
+      renderLocal(async () => {
+        const resp = await node.sendWithParams(
+          "lint_run",
+          undefined,
+          undefined,
+          fileKey,
+          { timeoutMs: 120_000 }
+        );
+        if (resp.error) throw new Error(resp.error);
+        return runLint(resp.data as LintSnapshot, { only, categories, severity });
+      })
   );
 
   server.tool(

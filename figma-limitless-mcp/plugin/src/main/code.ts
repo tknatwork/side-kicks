@@ -84,6 +84,7 @@ type RequestType =
   | "get_buzz_content"
   | "set_buzz_text"
   | "buzz_smart_resize"
+  | "lint_run"
   | "dev_resources";
 
 type ServerRequestParams = Record<string, unknown> & {
@@ -4458,6 +4459,86 @@ const handleRequest = async (
           type: request.type,
           requestId: request.requestId,
           data: { nodeId: node.id, width: params.width, height: params.height },
+        };
+      }
+      case "lint_run": {
+        // Gather a serializable snapshot of the design system for the server-side
+        // linter. loadAllPagesAsync() first: the manifest is dynamic-page, so a
+        // whole-file component scan otherwise sees only the current page.
+        await figma.loadAllPagesAsync();
+        const [collections, variables, paintStyles, textStyles, effectStyles] =
+          await Promise.all([
+            figma.variables.getLocalVariableCollectionsAsync(),
+            figma.variables.getLocalVariablesAsync(),
+            figma.getLocalPaintStylesAsync(),
+            figma.getLocalTextStylesAsync(),
+            figma.getLocalEffectStylesAsync(),
+          ]);
+
+        const serializeValue = (val: unknown): unknown => {
+          if (
+            val &&
+            typeof val === "object" &&
+            (val as { type?: string }).type === "VARIABLE_ALIAS"
+          ) {
+            return { alias: (val as { id: string }).id };
+          }
+          return val;
+        };
+
+        const snapVariables = variables.map((vr) => ({
+          id: vr.id,
+          name: vr.name,
+          collectionId: vr.variableCollectionId,
+          resolvedType: vr.resolvedType,
+          scopes: vr.scopes,
+          hiddenFromPublishing: vr.hiddenFromPublishing,
+          codeSyntax: vr.codeSyntax,
+          description: vr.description,
+          valuesByMode: Object.fromEntries(
+            Object.entries(vr.valuesByMode).map(([modeId, val]) => [
+              modeId,
+              serializeValue(val),
+            ])
+          ),
+        }));
+
+        const snapCollections = collections.map((c) => ({
+          id: c.id,
+          name: c.name,
+          defaultModeId: c.defaultModeId,
+          modes: c.modes.map((m) => ({ modeId: m.modeId, name: m.name })),
+        }));
+
+        const snapStyles = [
+          ...paintStyles.map((s) => ({ id: s.id, name: s.name, styleType: "PAINT" })),
+          ...textStyles.map((s) => ({ id: s.id, name: s.name, styleType: "TEXT" })),
+          ...effectStyles.map((s) => ({ id: s.id, name: s.name, styleType: "EFFECT" })),
+        ];
+
+        const componentNodes = figma.root.findAllWithCriteria({
+          types: ["COMPONENT", "COMPONENT_SET"],
+        });
+        const snapComponents = componentNodes.map((n) => ({
+          id: n.id,
+          name: n.name,
+          type: n.type,
+          propertyDefinitions: n.componentPropertyDefinitions,
+        }));
+
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            collections: snapCollections,
+            variables: snapVariables,
+            styles: snapStyles,
+            components: snapComponents,
+            meta: {
+              pageCount: figma.root.children.length,
+              scannedAllPages: true,
+            },
+          },
         };
       }
       case "dev_resources": {
