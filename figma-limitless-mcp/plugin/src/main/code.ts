@@ -894,11 +894,18 @@ const EDIT_REQUEST_TYPES = new Set<RequestType>([
 ]);
 
 const requireEditorMode = (toolName: RequestType): void => {
-  // Dev Mode is read-only — every figma.create*/setter throws at runtime there,
-  // and the resulting errors are confusing. Reject up front with a clear hint.
-  if (figma.editorType === "dev") {
+  // The plugin runs across multiple editors (figma/figjam/slides/buzz/dev), but
+  // design-canvas write tools only apply to the design-style surfaces. Reject up
+  // front with a clear, editor-specific hint instead of a confusing runtime error.
+  const editor = figma.editorType;
+  if (editor === "dev") {
     throw new Error(
-      `${toolName} requires the plugin to be opened in Figma's design editor (Dev Mode is read-only). Switch to the design editor and re-run.`
+      `${toolName} requires an editable surface — Dev Mode is read-only. Switch to the design editor and re-run.`
+    );
+  }
+  if (editor === "figjam") {
+    throw new Error(
+      `${toolName} is a design-canvas tool and isn't available in FigJam. Use FigJam-native creation (figma.createSticky/createConnector/createSection/…) via execute_code, or run this tool in a Figma design file.`
     );
   }
 };
