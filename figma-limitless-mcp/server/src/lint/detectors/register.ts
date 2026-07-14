@@ -9,6 +9,7 @@ import { themingDetectors } from "./theming.js";
 import { namingDetectors } from "./naming.js";
 import { codegenDetectors } from "./codegen.js";
 import { componentDetectors } from "./components.js";
+import { a11yDetectors } from "./a11y.js";
 
 Object.assign(
   DETECTORS,
@@ -18,5 +19,6 @@ Object.assign(
   themingDetectors,
   namingDetectors,
   codegenDetectors,
-  componentDetectors
+  componentDetectors,
+  a11yDetectors
 );
