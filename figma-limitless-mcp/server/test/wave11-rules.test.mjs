@@ -62,3 +62,25 @@ test("multi-brand-alias-discipline: off by default; missing config -> config_err
   assert.ok(rep.config_errors.some((e) => e.rule_id === "multi-brand-alias-discipline"));
   assert.ok(!has(rep, "multi-brand-alias-discipline"));
 });
+
+// ---- contrast-fallback-export-sampling (offline: alpha detection) ---------
+const RGBA = (r, g, b, a) => ({ r, g, b, a });
+test("contrast-fallback-export-sampling: flags translucent semantic colour tokens", () => {
+  const snap = base({
+    collections: [
+      { id: "P", name: "Primitives", defaultModeId: "p", modes: [{ modeId: "p", name: "V" }] },
+      { id: "S", name: "Semantic", defaultModeId: "s", modes: [{ modeId: "s", name: "V" }] },
+    ],
+    variables: [
+      { ...V("p_scrim", "black/50", "P", { p: RGBA(0, 0, 0, 0.5) }), hiddenFromPublishing: true },
+      { ...V("p_solid", "black", "P", { p: RGBA(0, 0, 0, 1) }), hiddenFromPublishing: true },
+      V("s_overlay", "background/overlay", "S", { s: A("p_scrim") }), // translucent -> fires
+      V("s_fg", "foreground/default", "S", { s: A("p_solid") }),       // opaque -> silent
+      V("s_accent", "accent/default", "S", { s: A("p_scrim") }),       // role not fg/bg/line -> silent
+    ],
+  });
+  const rep = runLint(snap);
+  assert.ok(rep.findings.some((f) => f.rule_id === "contrast-fallback-export-sampling" && f.variableId === "s_overlay"));
+  assert.ok(!rep.findings.some((f) => f.rule_id === "contrast-fallback-export-sampling" && f.variableId === "s_fg"));
+  assert.ok(!rep.findings.some((f) => f.rule_id === "contrast-fallback-export-sampling" && f.variableId === "s_accent"));
+});
