@@ -5,5 +5,14 @@ import { DETECTORS } from "../runner.js";
 import { tokenDetectors } from "./tokens.js";
 import { scopeDetectors } from "./scopes.js";
 import { bindingDetectors } from "./bindings.js";
+import { themingDetectors } from "./theming.js";
+import { namingDetectors } from "./naming.js";
 
-Object.assign(DETECTORS, tokenDetectors, scopeDetectors, bindingDetectors);
+Object.assign(
+  DETECTORS,
+  tokenDetectors,
+  scopeDetectors,
+  bindingDetectors,
+  themingDetectors,
+  namingDetectors
+);
