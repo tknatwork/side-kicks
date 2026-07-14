@@ -7,6 +7,7 @@ import { scopeDetectors } from "./scopes.js";
 import { bindingDetectors } from "./bindings.js";
 import { themingDetectors } from "./theming.js";
 import { namingDetectors } from "./naming.js";
+import { codegenDetectors } from "./codegen.js";
 
 Object.assign(
   DETECTORS,
@@ -14,5 +15,6 @@ Object.assign(
   scopeDetectors,
   bindingDetectors,
   themingDetectors,
-  namingDetectors
+  namingDetectors,
+  codegenDetectors
 );
