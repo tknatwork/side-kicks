@@ -4512,28 +4512,163 @@ const handleRequest = async (
 
         const snapStyles = [
           ...paintStyles.map((s) => ({ id: s.id, name: s.name, styleType: "PAINT" })),
-          ...textStyles.map((s) => ({ id: s.id, name: s.name, styleType: "TEXT" })),
+          ...textStyles.map((s) => ({
+            id: s.id,
+            name: s.name,
+            styleType: "TEXT",
+            fontSize: typeof s.fontSize === "number" ? s.fontSize : undefined,
+            fontFamily: s.fontName && typeof s.fontName === "object" ? s.fontName.family : undefined,
+          })),
           ...effectStyles.map((s) => ({ id: s.id, name: s.name, styleType: "EFFECT" })),
         ];
 
         const componentNodes = figma.root.findAllWithCriteria({
           types: ["COMPONENT", "COMPONENT_SET"],
         });
+
+        // Component-subtree enrichment (Wave 10b). One bounded DFS per non-variant
+        // root (sets + standalone components; variant children are covered by their
+        // set's walk). We emit AGGREGATES (booleans/counts/min/key-union), never raw
+        // node trees, so the payload stays small. A shared node budget caps total
+        // work; a component only gets `enriched:true` if its walk finished within
+        // budget — server detectors treat enriched!==true as "no data".
+        const COMPONENT_NODE_BUDGET = 20000;
+        const MAX_VARIANT_TUPLES = 400;
+        const RAW_PAINT_TYPES = new Set([
+          "FRAME", "RECTANGLE", "ELLIPSE", "COMPONENT", "INSTANCE", "COMPONENT_SET",
+        ]);
+        let componentBudget = COMPONENT_NODE_BUDGET;
+        let componentScanTruncated = false;
+
+        const isRawPaintArray = (paints: unknown, styleId: unknown, bound: unknown): boolean => {
+          if (styleId || bound) return false; // styled or bound -> not raw
+          if (!Array.isArray(paints)) return false; // undefined / figma.mixed
+          return paints.some(
+            (p) =>
+              p &&
+              (p as { visible?: boolean }).visible !== false &&
+              typeof (p as { type?: string }).type === "string" &&
+              ((p as { type: string }).type === "SOLID" ||
+                (p as { type: string }).type.startsWith("GRADIENT"))
+          );
+        };
+
+        interface Enrichment {
+          enriched: boolean;
+          hasRawPaintLayer: boolean;
+          rawPaintSample?: string;
+          textLayersMissingType: number;
+          textLayerSample?: string;
+          minTextFontSize?: number;
+          referencedPropKeys: string[];
+        }
+
+        const walkComponent = (root: SceneNode): Enrichment => {
+          const refKeys = new Set<string>();
+          let hasRaw = false;
+          let rawSample: string | undefined;
+          let textMissing = 0;
+          let textSample: string | undefined;
+          let minFont: number | undefined;
+          let truncated = false;
+          const stack: SceneNode[] = [root];
+          while (stack.length > 0) {
+            if (componentBudget <= 0) {
+              truncated = true;
+              componentScanTruncated = true;
+              break;
+            }
+            componentBudget--;
+            const node = stack.pop() as SceneNode & Record<string, unknown>;
+            try {
+              // Raw (unbound + unstyled) paint on a container-ish layer.
+              if (!hasRaw && RAW_PAINT_TYPES.has(node.type)) {
+                const bv = (node.boundVariables ?? {}) as Record<string, unknown>;
+                if (
+                  isRawPaintArray(node.fills, node.fillStyleId, bv.fills) ||
+                  isRawPaintArray(node.strokes, node.strokeStyleId, bv.strokes)
+                ) {
+                  hasRaw = true;
+                  rawSample = node.name;
+                }
+              }
+              // Untyped TEXT (no text style, no bound type) + min font size.
+              if (node.type === "TEXT") {
+                const bv = (node.boundVariables ?? {}) as Record<string, unknown>;
+                const styled = !!node.textStyleId; // "" -> false, mixed(symbol) -> true
+                const boundType = !!bv.fontSize || !!bv.lineHeight;
+                if (!styled && !boundType) {
+                  textMissing++;
+                  if (!textSample) textSample = node.name;
+                }
+                const fs = node.fontSize;
+                if (typeof fs === "number") minFont = minFont === undefined ? fs : Math.min(minFont, fs);
+              }
+              // Property references this layer wires (for dead-property detection).
+              const refs = node.componentPropertyReferences as Record<string, unknown> | null;
+              if (refs) {
+                for (const v of Object.values(refs)) if (typeof v === "string") refKeys.add(v);
+              }
+              const kids = (node as { children?: readonly SceneNode[] }).children;
+              if (kids) for (const ch of kids) stack.push(ch);
+            } catch {
+              // A single unreadable node must not abort the walk.
+            }
+          }
+          return {
+            enriched: !truncated,
+            hasRawPaintLayer: hasRaw,
+            rawPaintSample: rawSample,
+            textLayersMissingType: textMissing,
+            textLayerSample: textSample,
+            minTextFontSize: minFont,
+            referencedPropKeys: [...refKeys],
+          };
+        };
+
         const snapComponents = componentNodes.map((n) => {
           // A variant COMPONENT (child of a COMPONENT_SET) throws on
           // componentPropertyDefinitions — only sets and standalone components
           // expose it. Guard so the whole scan doesn't abort on one variant.
           const isVariant =
             n.type === "COMPONENT" && n.parent?.type === "COMPONENT_SET";
-          return {
+          const out: Record<string, unknown> = {
             id: n.id,
             name: n.name,
             type: n.type,
             isVariant,
-            propertyDefinitions: isVariant
-              ? undefined
-              : n.componentPropertyDefinitions,
+            propertyDefinitions: isVariant ? undefined : n.componentPropertyDefinitions,
           };
+          if (isVariant) return out; // covered by its set's walk
+          try {
+            const e = walkComponent(n);
+            Object.assign(out, e);
+          } catch {
+            /* leave un-enriched */
+          }
+          // COMPONENT_SET: realized variant tuples + default variant tuple.
+          if (n.type === "COMPONENT_SET") {
+            try {
+              const set = n as ComponentSetNode;
+              const tuples: Array<Record<string, string>> = [];
+              let tuplesTruncated = false;
+              for (const child of set.children) {
+                if (child.type !== "COMPONENT") continue;
+                if (tuples.length >= MAX_VARIANT_TUPLES) {
+                  tuplesTruncated = true;
+                  break;
+                }
+                tuples.push({ ...(child.variantProperties ?? {}) });
+              }
+              out.variantTuples = tuples;
+              out.variantTuplesTruncated = tuplesTruncated;
+              const dv = set.defaultVariant;
+              out.defaultVariantTuple = dv ? { ...(dv.variantProperties ?? {}) } : undefined;
+            } catch {
+              /* no variant data */
+            }
+          }
+          return out;
         });
 
         // Node -> variable bindings (for no-node-binds-primitive etc.). Recurse
@@ -4601,6 +4736,7 @@ const handleRequest = async (
             components: snapComponents,
             nodeBindings,
             bindingsTruncated,
+            componentScanTruncated,
             meta: {
               pageCount: figma.root.children.length,
               scannedAllPages: true,

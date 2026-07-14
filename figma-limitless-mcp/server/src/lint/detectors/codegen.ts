@@ -113,9 +113,40 @@ const codesyntaxWebMatchesName: Detector = (snap, config) => {
   return out;
 };
 
+// Node-level rules driven by the component-walk enrichment. Both degrade to
+// silent when the component wasn't fully walked (enriched !== true) so partial
+// data never produces a false positive.
+const noRawValueOnComponentNode: Detector = (snap) => {
+  const out: PartialFinding[] = [];
+  for (const c of snap.components ?? []) {
+    if (c.enriched !== true || !c.hasRawPaintLayer) continue;
+    out.push({
+      rule_id: "no-raw-value-on-component-node",
+      nodeId: c.id,
+      message: `Component '${c.name}' has a hardcoded paint/scalar on layer '${c.rawPaintSample ?? "(a descendant)"}'; bind it to a semantic/component token or apply a style so code-gen emits a token, not a literal.`,
+    });
+  }
+  return out;
+};
+
+const textLayerUsesStyleOrBoundType: Detector = (snap) => {
+  const out: PartialFinding[] = [];
+  for (const c of snap.components ?? []) {
+    if (c.enriched !== true || !c.textLayersMissingType || c.textLayersMissingType <= 0) continue;
+    out.push({
+      rule_id: "text-layer-uses-style-or-bound-type",
+      nodeId: c.id,
+      message: `Component '${c.name}' has ${c.textLayersMissingType} TEXT layer(s) (e.g. '${c.textLayerSample ?? "?"}') with no text style and no bound type tokens; apply a text style or bind fontSize/lineHeight so type is tokenized.`,
+    });
+  }
+  return out;
+};
+
 export const codegenDetectors: Record<string, Detector> = {
   "published-variable-has-codesyntax-web": publishedVariableHasCodesyntaxWeb,
   "codesyntax-web-unique": codesyntaxWebUnique,
   "published-variable-has-description": publishedVariableHasDescription,
   "codesyntax-web-matches-name": codesyntaxWebMatchesName,
+  "no-raw-value-on-component-node": noRawValueOnComponentNode,
+  "text-layer-uses-style-or-bound-type": textLayerUsesStyleOrBoundType,
 };

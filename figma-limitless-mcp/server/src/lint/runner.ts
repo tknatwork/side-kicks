@@ -34,13 +34,31 @@ export interface SnapStyle {
   id: string;
   name: string;
   styleType: "PAINT" | "TEXT" | "EFFECT" | "GRID";
+  fontSize?: number; // TEXT styles only (unlocks min-font-size, style side)
+  fontFamily?: string; // TEXT styles only (for messages)
 }
 
 export interface SnapComponent {
   id: string;
   name: string;
   type: "COMPONENT" | "COMPONENT_SET";
+  isVariant?: boolean;
   propertyDefinitions?: Record<string, unknown>;
+  // --- enrichment from the bounded component-subtree walk (Wave 10b). All
+  // optional: an old plugin build omits them, so detectors degrade to silent.
+  // `enriched` is true only when the walk fully covered this component; a
+  // detector must treat enriched !== true as "no data" and stay quiet.
+  enriched?: boolean;
+  hasRawPaintLayer?: boolean; // a descendant carries a hardcoded (unbound, unstyled) paint/scalar
+  rawPaintSample?: string; // one offending layer name, for the message
+  textLayersMissingType?: number; // # of TEXT descendants with neither a text style nor bound type
+  textLayerSample?: string;
+  minTextFontSize?: number; // smallest font size among descendant TEXT layers
+  referencedPropKeys?: string[]; // union of componentPropertyReferences keys across descendants
+  // COMPONENT_SET only:
+  variantTuples?: Array<Record<string, string>>; // each child variant's property -> value (capped)
+  variantTuplesTruncated?: boolean;
+  defaultVariantTuple?: Record<string, string>;
 }
 
 /** One node->variable binding edge (a node field bound to a variable). */

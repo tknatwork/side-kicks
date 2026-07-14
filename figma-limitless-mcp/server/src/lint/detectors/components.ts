@@ -196,6 +196,60 @@ const sharedPropertyValueConsistency: Detector = (snap) => {
   return out;
 };
 
+// Enrichment-driven (component walk). A non-VARIANT property (BOOLEAN / TEXT /
+// INSTANCE_SWAP) that no descendant references is dead — VARIANT axes are
+// structural, not layer-referenced, so they're exempt. Silent unless enriched.
+const noDeadComponentProperty: Detector = (snap) => {
+  const out: PartialFinding[] = [];
+  for (const c of snap.components ?? []) {
+    if (c.enriched !== true || !c.propertyDefinitions || !Array.isArray(c.referencedPropKeys)) continue;
+    const referenced = new Set(c.referencedPropKeys.map((k) => baseName(k).toLowerCase()));
+    for (const [key, raw] of Object.entries(c.propertyDefinitions)) {
+      const def = (raw ?? {}) as PropDef;
+      if (def.type === "VARIANT") continue;
+      if (!referenced.has(baseName(key).toLowerCase())) {
+        out.push({
+          rule_id: "no-dead-component-property",
+          nodeId: c.id,
+          message: `Component '${c.name}' property '${baseName(key)}' (${def.type ?? "?"}) is never referenced by a layer; wire it via componentPropertyReferences or delete it.`,
+        });
+      }
+    }
+  }
+  return out;
+};
+
+// A COMPONENT_SET whose realized variant tuples number fewer than the product of
+// its variant options is missing combinations. Uses the actual variant children
+// (variantTuples); skips when that list was truncated (would false-flag).
+const variantMatrixComplete: Detector = (snap) => {
+  const out: PartialFinding[] = [];
+  for (const c of snap.components ?? []) {
+    if (c.type !== "COMPONENT_SET" || !Array.isArray(c.variantTuples) || c.variantTuplesTruncated) continue;
+    const defs = c.propertyDefinitions;
+    if (!defs || typeof defs !== "object") continue;
+    let expected = 1;
+    let variantProps = 0;
+    for (const raw of Object.values(defs)) {
+      const def = (raw ?? {}) as PropDef;
+      if (def.type === "VARIANT" && Array.isArray(def.variantOptions) && def.variantOptions.length > 0) {
+        expected *= def.variantOptions.length;
+        variantProps++;
+      }
+    }
+    if (variantProps === 0) continue;
+    const actual = c.variantTuples.length;
+    if (actual < expected) {
+      out.push({
+        rule_id: "variant-matrix-complete",
+        nodeId: c.id,
+        message: `Component set '${c.name}' defines ${actual} of ${expected} possible variant combinations (${expected - actual} missing); add the missing tuples or reduce an axis to BOOLEAN/INSTANCE_SWAP so the matrix is complete.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const componentDetectors: Record<string, Detector> = {
   "property-name-convention-unique": propertyNameConventionUnique,
   "boolean-vocab-variant-should-be-boolean": booleanVocabVariantShouldBeBoolean,
@@ -204,4 +258,6 @@ export const componentDetectors: Record<string, Detector> = {
   "variant-count-ceiling-60": variantCountCeiling60,
   "boolean-prop-no-sizing-intent": booleanPropNoSizingIntent,
   "shared-property-value-consistency": sharedPropertyValueConsistency,
+  "no-dead-component-property": noDeadComponentProperty,
+  "variant-matrix-complete": variantMatrixComplete,
 };

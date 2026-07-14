@@ -69,6 +69,15 @@ export const RULE_CONFIG: Record<string, RuleConfigMeta> = {
       return { width: raw.width == null ? 3 : asInt(raw.width, "numeric-scale-zero-padded", "width", 1, 6) };
     },
   },
+  "min-font-size": {
+    configShape: "{ floor?: number }  // px, int 1..32, default 12 (WCAG hard floor)",
+    defaults: { floor: 12 },
+    resolve: (raw) => {
+      if (raw == null) return { floor: 12 };
+      if (!isObj(raw)) throw new LintConfigError("min-font-size", "config must be an object");
+      return { floor: raw.floor == null ? 12 : asInt(raw.floor, "min-font-size", "floor", 1, 32) };
+    },
+  },
   "codesyntax-web-matches-name": {
     configShape: "{ minSharedSegments?: number }  // int >= 1, default 1",
     defaults: { minSharedSegments: 1 },

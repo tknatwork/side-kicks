@@ -159,7 +159,37 @@ const fgBgPairContrast: Detector = (snap) =>
 const borderIconGraphicalContrast: Detector = (snap) =>
   contrastRule(snap, "border-icon-graphical-contrast", LINE_ROLE, 3.0, "WCAG non-text (1.4.11)");
 
+// Font size below the accessibility floor (default 12px, configurable). Reads
+// the enriched snapshot: TEXT styles' fontSize and each component's smallest
+// descendant TEXT size. Silent when no font data is present (old plugin build).
+interface MinFontConfig {
+  floor: number;
+}
+const minFontSize: Detector = (snap, config) => {
+  const floor = (config as MinFontConfig | undefined)?.floor ?? 12;
+  const out: PartialFinding[] = [];
+  for (const s of snap.styles) {
+    if (s.styleType === "TEXT" && typeof s.fontSize === "number" && s.fontSize < floor) {
+      out.push({
+        rule_id: "min-font-size",
+        message: `Text style '${s.name}' is ${s.fontSize}px, below the ${floor}px minimum; raise it (or justify a caption exception via config).`,
+      });
+    }
+  }
+  for (const c of snap.components ?? []) {
+    if (typeof c.minTextFontSize === "number" && c.minTextFontSize < floor) {
+      out.push({
+        rule_id: "min-font-size",
+        nodeId: c.id,
+        message: `Component '${c.name}' has a TEXT layer at ${c.minTextFontSize}px, below the ${floor}px minimum.`,
+      });
+    }
+  }
+  return out;
+};
+
 export const a11yDetectors: Record<string, Detector> = {
   "fg-bg-pair-contrast": fgBgPairContrast,
   "border-icon-graphical-contrast": borderIconGraphicalContrast,
+  "min-font-size": minFontSize,
 };
