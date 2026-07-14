@@ -5,6 +5,7 @@ import { isIP } from "node:net";
 import path from "node:path";
 import type { z } from "zod";
 import type { Node } from "./node.js";
+import { listSkills, readSkill, getBuildRecipe } from "./skills.js";
 import {
   createFrameInput,
   createImageInput,
@@ -91,6 +92,9 @@ import {
   getBuzzContentInput,
   setBuzzTextInput,
   buzzSmartResizeInput,
+  listSkillsInput,
+  readSkillInput,
+  getBuildRecipeInput,
   devResourcesShape,
   devResourcesInput,
   setCodeMappingShape,
@@ -706,6 +710,27 @@ export function registerTools(
         node.sendWithParams("get_workspace_status", undefined, undefined)
       );
     }
+  );
+
+  server.tool(
+    "list_skills",
+    "List the bundled offline design-system skills — token architecture, scopes, theming, components, code-output, accessibility — plus the canonical build order and the 57-rule lint catalog. Read one with read_skill. Call this BEFORE building a design system so you follow the flawless structure instead of trial-and-error. Local, no network.",
+    listSkillsInput.shape,
+    async ({ query }): Promise<ToolResult> => renderLocal(() => listSkills(query))
+  );
+
+  server.tool(
+    "read_skill",
+    "Return the full Markdown of one bundled design-system skill (slug from list_skills). Slugs include the six skills plus 'canonical-structure' (the build order) and 'lint-rules' (the rule catalog). Local, offline.",
+    readSkillInput.shape,
+    async ({ slug }): Promise<ToolResult> => renderLocal(() => readSkill(slug))
+  );
+
+  server.tool(
+    "get_build_recipe",
+    "Return the canonical design-system build order (Primitive -> Semantic -> Component, lint-gated) plus the lint rule_ids to run after a given step. Follow it top-to-bottom: build a tier, lint it, fix, descend. Default step 'all' returns the whole build order. Local, offline.",
+    getBuildRecipeInput.shape,
+    async ({ step }): Promise<ToolResult> => renderLocal(() => getBuildRecipe(step))
   );
 
   server.tool(
@@ -1509,6 +1534,20 @@ async function renderResponse(
           type: "text",
           text: err instanceof Error ? err.message : String(err),
         },
+      ],
+      isError: true,
+    };
+  }
+}
+
+/** Wrap a purely-local (no-plugin, no shared-state) producer into a ToolResult. */
+async function renderLocal(fn: () => Promise<unknown>): Promise<ToolResult> {
+  try {
+    return { content: [{ type: "text", text: JSON.stringify(await fn()) }] };
+  } catch (err) {
+    return {
+      content: [
+        { type: "text", text: err instanceof Error ? err.message : String(err) },
       ],
       isError: true,
     };

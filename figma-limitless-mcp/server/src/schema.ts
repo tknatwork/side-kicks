@@ -564,6 +564,42 @@ export const getVariablesDeepInput = z.object({
   fileKey: fileKeyField,
 });
 
+// --- Design-system skills layer (server-local, offline knowledge) ---
+
+export const listSkillsInput = z.object({
+  query: z
+    .string()
+    .optional()
+    .describe("Filter skills by keyword in title/summary/slug"),
+});
+
+export const readSkillInput = z.object({
+  slug: z
+    .string()
+    .min(1)
+    .describe(
+      "Skill slug from list_skills — the six skills plus 'canonical-structure' (build order) and 'lint-rules' (rule catalog)"
+    ),
+});
+
+export const getBuildRecipeInput = z.object({
+  step: z
+    .enum([
+      "collections",
+      "primitives",
+      "semantic",
+      "component",
+      "components",
+      "codegen",
+      "a11y",
+      "all",
+    ])
+    .optional()
+    .describe(
+      "Which build step's recipe + lint gate (default 'all' = the whole canonical build order)"
+    ),
+});
+
 const variableAction = z.object({
   action: z
     .enum([
