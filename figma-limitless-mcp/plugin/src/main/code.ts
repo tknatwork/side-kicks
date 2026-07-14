@@ -4535,7 +4535,7 @@ const handleRequest = async (
         const COMPONENT_NODE_BUDGET = 20000;
         const MAX_VARIANT_TUPLES = 400;
         const RAW_PAINT_TYPES = new Set([
-          "FRAME", "RECTANGLE", "ELLIPSE", "COMPONENT", "INSTANCE", "COMPONENT_SET",
+          "FRAME", "RECTANGLE", "ELLIPSE", "COMPONENT", "COMPONENT_SET",
         ]);
         let componentBudget = COMPONENT_NODE_BUDGET;
         let componentScanTruncated = false;
@@ -4581,36 +4581,54 @@ const handleRequest = async (
             componentBudget--;
             const node = stack.pop() as SceneNode & Record<string, unknown>;
             try {
-              // Raw (unbound + unstyled) paint on a container-ish layer.
-              if (!hasRaw && RAW_PAINT_TYPES.has(node.type)) {
-                const bv = (node.boundVariables ?? {}) as Record<string, unknown>;
-                if (
-                  isRawPaintArray(node.fills, node.fillStyleId, bv.fills) ||
-                  isRawPaintArray(node.strokes, node.strokeStyleId, bv.strokes)
-                ) {
-                  hasRaw = true;
-                  rawSample = node.name;
-                }
-              }
-              // Untyped TEXT (no text style, no bound type) + min font size.
-              if (node.type === "TEXT") {
-                const bv = (node.boundVariables ?? {}) as Record<string, unknown>;
-                const styled = !!node.textStyleId; // "" -> false, mixed(symbol) -> true
-                const boundType = !!bv.fontSize || !!bv.lineHeight;
-                if (!styled && !boundType) {
-                  textMissing++;
-                  if (!textSample) textSample = node.name;
-                }
-                const fs = node.fontSize;
-                if (typeof fs === "number") minFont = minFont === undefined ? fs : Math.min(minFont, fs);
-              }
-              // Property references this layer wires (for dead-property detection).
+              // Nested instances/components/sets are their OWN roots: an
+              // instance's children are the main component's cloned layers
+              // (linted when that component is walked), and a nested standalone
+              // component/set is walked separately — so we must NOT attribute
+              // their paint/text/font to THIS component, nor descend into them
+              // (which would also double-walk and burn the shared budget). A
+              // COMPONENT_SET root's direct variant children ARE part of the set,
+              // so they aren't boundaries. We still read a boundary node's own
+              // componentPropertyReferences (it may wire an exposed property of
+              // THIS component).
+              const isBoundary =
+                node !== root &&
+                (node.type === "INSTANCE" ||
+                  ((node.type === "COMPONENT" || node.type === "COMPONENT_SET") &&
+                    !(root.type === "COMPONENT_SET" && node.parent === root)));
+
               const refs = node.componentPropertyReferences as Record<string, unknown> | null;
               if (refs) {
                 for (const v of Object.values(refs)) if (typeof v === "string") refKeys.add(v);
               }
-              const kids = (node as { children?: readonly SceneNode[] }).children;
-              if (kids) for (const ch of kids) stack.push(ch);
+
+              if (!isBoundary) {
+                // Raw (unbound + unstyled) paint on a container-ish layer.
+                if (!hasRaw && RAW_PAINT_TYPES.has(node.type)) {
+                  const bv = (node.boundVariables ?? {}) as Record<string, unknown>;
+                  if (
+                    isRawPaintArray(node.fills, node.fillStyleId, bv.fills) ||
+                    isRawPaintArray(node.strokes, node.strokeStyleId, bv.strokes)
+                  ) {
+                    hasRaw = true;
+                    rawSample = node.name;
+                  }
+                }
+                // Untyped TEXT (no text style, no bound type) + min font size.
+                if (node.type === "TEXT") {
+                  const bv = (node.boundVariables ?? {}) as Record<string, unknown>;
+                  const styled = !!node.textStyleId; // "" -> false, mixed(symbol) -> true
+                  const boundType = !!bv.fontSize || !!bv.lineHeight;
+                  if (!styled && !boundType) {
+                    textMissing++;
+                    if (!textSample) textSample = node.name;
+                  }
+                  const fs = node.fontSize;
+                  if (typeof fs === "number") minFont = minFont === undefined ? fs : Math.min(minFont, fs);
+                }
+                const kids = (node as { children?: readonly SceneNode[] }).children;
+                if (kids) for (const ch of kids) stack.push(ch);
+              }
             } catch {
               // A single unreadable node must not abort the walk.
             }

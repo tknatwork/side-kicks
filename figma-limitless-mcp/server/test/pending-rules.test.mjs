@@ -88,12 +88,31 @@ test("single-use-component-passthrough: pure pass-through used <=1 fires; respec
   const snap = (bindings, truncated = false) => base({ collections, variables, nodeBindings: bindings, bindingsTruncated: truncated });
   // used nowhere -> fires
   assert.ok(has(tokenDetectors["single-use-component-passthrough"](snap([])), "single-use-component-passthrough"));
+  // used exactly once -> still fires (the "single-use" case)
+  const once = [{ nodeId: "n1", nodeName: "A", nodeType: "FRAME", field: "fills", variableId: "c_btn" }];
+  assert.ok(has(tokenDetectors["single-use-component-passthrough"](snap(once)), "single-use-component-passthrough"));
   // used twice -> silent
   const twice = [
     { nodeId: "n1", nodeName: "A", nodeType: "FRAME", field: "fills", variableId: "c_btn" },
     { nodeId: "n2", nodeName: "B", nodeType: "FRAME", field: "fills", variableId: "c_btn" },
   ];
   assert.ok(!has(tokenDetectors["single-use-component-passthrough"](snap(twice)), "single-use-component-passthrough"));
+  // per-mode variation (aliases a DIFFERENT target per mode) -> not a pure pass-through -> silent
+  const varying = [
+    coll("P", "Primitives", [mode("p", "V")]),
+    coll("S", "Semantic", [mode("s1", "Light"), mode("s2", "Dark")]),
+    coll("K", "Component", [mode("k1", "Light"), mode("k2", "Dark")]),
+  ];
+  const varyingVars = [
+    { ...V("p_w", "white", "P", { p: { r: 1, g: 1, b: 1 } }), hiddenFromPublishing: true },
+    V("s_a", "accent/a", "S", { s1: A("p_w"), s2: A("p_w") }),
+    V("s_b", "accent/b", "S", { s1: A("p_w"), s2: A("p_w") }),
+    V("c_btn2", "button/bg", "K", { k1: A("s_a"), k2: A("s_b") }), // different target per mode
+  ];
+  assert.equal(
+    tokenDetectors["single-use-component-passthrough"](base({ collections: varying, variables: varyingVars, nodeBindings: [] })).length,
+    0
+  );
   // truncated scan -> silent (can't prove usage)
   assert.equal(tokenDetectors["single-use-component-passthrough"](snap([], true)).length, 0);
   // no scan at all -> silent

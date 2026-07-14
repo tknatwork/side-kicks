@@ -47,12 +47,20 @@ structure right?" — no network, no Figma AI credits.
   `server/src/skills.ts`: `list_skills` (catalog), `read_skill(slug)` (full doc,
   whitelisted slug — no path traversal), `get_build_recipe(step?)` (the canonical
   Primitive→Semantic→Component order + the step's **actionable lint gate**).
-- **Linter** — `lint_design_system` runs 33 detectors over a `LintSnapshot`. The
+- **Linter** — `lint_design_system` runs 51/57 detectors over a `LintSnapshot`. The
   plugin's `lint_run` gathers the snapshot (variable graph + styles + components +
-  node bindings, after `loadAllPagesAsync()`); the server runs the detectors,
-  which are **pure functions** `(snap) => PartialFinding[]` in
-  `server/src/lint/detectors/<tier>.ts`, registered into the `DETECTORS` map via
-  the `detectors/register.ts` side-effect that `lint/index.ts` imports.
+  node bindings, after `loadAllPagesAsync()`) — plus **per-component enrichment**
+  from one bounded DFS (20k-node budget + `componentScanTruncated`): TEXT-style
+  `fontSize`, and per-component AGGREGATES (raw-paint/untyped-text booleans, min
+  font size, referenced-property-key union, variant tuples) — never raw node
+  trees, so the payload stays small. The DFS treats nested instances/components as
+  boundaries (their layers belong to their own root), so defects aren't
+  mis-attributed. The server runs the detectors, which are **pure functions**
+  `(snap, config?) => PartialFinding[]` in `server/src/lint/detectors/<tier>.ts`,
+  registered into the `DETECTORS` map via the `detectors/register.ts` side-effect
+  that `lint/index.ts` imports. Enrichment-driven detectors degrade to silent when
+  their fields are absent (old plugin build). Remaining 6 rules are deferred
+  (instance-override / frame-fingerprint / exportAsync / Code-Connect data).
 
 **The closed loop:** `get_build_recipe(step)` → build that tier → run the gate's
 `run` call (`lint_design_system {only:[…]}`) → fix `severity:error` findings →
