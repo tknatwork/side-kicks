@@ -10,7 +10,7 @@
     "test": "node tests/alias-resolution.test.mjs && node tests/type-mapper.test.mjs"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "^1.130.0",
+    "@figma/plugin-typings": "^1.131.0",
     "terser": "^5.49.0",
     "typescript": "^7.0.2"
   },
