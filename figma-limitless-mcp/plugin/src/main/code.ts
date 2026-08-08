@@ -4787,7 +4787,11 @@ const handleRequest = async (
         const MAX_RESTYLED_INSTANCES = 300;
         const MAX_OVERRIDE_FIELDS = 6;
         const hasInstanceAncestor = (node: BaseNode & { parent?: BaseNode | null }): boolean => {
-          let p = node.parent;
+          // Explicitly widened: newer @figma/plugin-typings type `parent` as a
+          // distributed union of `(NodeType & ChildrenMixin) | null`, which contains
+          // impossible members (CodeBlockNode has no ChildrenMixin) — reassigning a
+          // plain BaseNode into the inferred union fails to typecheck (#44).
+          let p: BaseNode | null = node.parent ?? null;
           while (p) {
             if (p.type === "INSTANCE") return true;
             p = (p as { parent?: BaseNode | null }).parent ?? null;
