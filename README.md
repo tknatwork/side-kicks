@@ -26,6 +26,7 @@
 
 | Project | Folder | Status |
 |---------|--------|--------|
+| figma-to-indesign | [`figma-to-indesign/`](figma-to-indesign/) | v0.1 (9 Aug 2026) · MCP toolset — Figma → editable InDesign (.indd/.idml) without PDF: original bitmaps, live text, CMYK/sRGB, PDF/X-1a, verified hand-off package. macOS only; pairs with Limitless MCP. |
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.1.2 (first 17 Jan 2026) · Figma plugin — export/import Figma variables & styles as JSON (Figma · Tokens Studio · W3C). [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
 
 ---
