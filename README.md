@@ -16,7 +16,7 @@
 
 ## 🚀 Flagship — Limitless MCP for Figma
 
-**[`figma-limitless-mcp/`](figma-limitless-mcp/)** — everything the official/remote Figma MCP can't reach, running entirely on your machine: your locally-installed fonts, variable/component/prototype authoring, the FigJam/Slides/Buzz surfaces, a crash-safe journal/checkpoint session layer, and a **build → lint → fix** design-system loop (bundled skills + a 57-rule structure linter). No REST calls, no REST rate limits (it uses the local Plugin API), no plan-tier tooling locks. **98 tools.**
+**[`figma-limitless-mcp/`](figma-limitless-mcp/)** — everything the official/remote Figma MCP can't reach, running entirely on your machine: your locally-installed fonts, variable/component/prototype authoring (incl. motion `EASING`/`TIMING` variables), MP4/GIF/WEBM export of animated frames, the FigJam/Slides/Buzz surfaces, a crash-safe journal/checkpoint session layer, and a **build → lint → fix** design-system loop (bundled skills + a 57-rule structure linter). No REST calls, no REST rate limits (it uses the local Plugin API), no plan-tier tooling locks. **98 tools, v0.4.0.**
 
 → **[Read the full docs & quick start](figma-limitless-mcp/README.md).**
 
