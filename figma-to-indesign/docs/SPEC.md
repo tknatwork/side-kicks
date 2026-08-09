@@ -233,6 +233,15 @@ expensive ones and are the reason the output can be trusted.
 
 ## 6. Server logic for large files
 
+> **Status vs Limitless 0.4.0 (2026-08-09):** the recommendations below are still OPEN —
+> 0.4.0 shipped motion variables, video export and a follower-path validation fix, not the
+> large-file transfer changes. Two updates matter to this section: (a) `save_screenshots`
+> remains the write-to-disk, metadata-only model this section holds up as correct, and it
+> now also carries video with a 120 s budget — evidence the per-item timeout override
+> pattern works; (b) when this toolkit runs beside an editor-attached MCP client it is a
+> FOLLOWER, and pre-0.4.0 servers reject follower-path `save_screenshots` items with
+> non-image options ("Leader returned status 400") — pin Limitless ≥ 0.4.0.
+
 The reference extraction (408 frames, 1,251 text nodes, 837 images, 747 unique bitmaps,
 ~2.4 GB) exposed concrete limits. These are the changes that would make it fast and
 reliable rather than a chunking exercise.
