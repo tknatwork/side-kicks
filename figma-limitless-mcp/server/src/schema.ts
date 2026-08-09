@@ -2214,6 +2214,21 @@ export function validateRpc(
       : "create_image RPC missing resolved imageBase64";
   }
 
+  // save_screenshots executes on the FOLLOWER and fans out per-item WIRE
+  // requests of type get_screenshot that may carry video formats + options.
+  // The MCP-facing get_screenshot schema rejects those BY DESIGN (video base64
+  // must not enter the model's context), so re-validating the wire request
+  // against it would 400 every video item on the follower->leader path — found
+  // live, not in review. Validate that hop against the wire shape instead.
+  if (tool === "get_screenshot") {
+    const wire = toolInputSchemas.get_screenshot.extend({
+      format: createSaveExportFormatSchema().optional(),
+      ...videoExportFields,
+    });
+    const wireResult = wire.safeParse(rpcToArgs.get_screenshot(nodeIds, params));
+    return wireResult.success ? null : wireResult.error.issues[0].message;
+  }
+
   const name = tool as ToolName;
   const result = toolInputSchemas[name].safeParse(
     rpcToArgs[name](nodeIds, params)
