@@ -6,6 +6,8 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-09
+
 ### Added — Figma 2026-08 API surface (typings 1.133.0)
 
 - **Motion variables (`EASING` / `TIMING`)** across the variable tools: `write_variables`
@@ -56,6 +58,26 @@ served entirely over the local plugin bridge — no network, no design-tool AI c
   than guessing.
 - Verified against a real 1,121-variable / 48-page / 376-component design system, and covered by a
   `node:test` suite (`pnpm test`) including a golden clean-file fixture that must report zero findings.
+
+### Fixed
+
+- **Video export 400'd on the follower → leader path.** `save_screenshots` executes on the
+  follower and fans out per-item wire `get_screenshot` requests; the leader re-validated that
+  RPC against the MCP-facing `get_screenshot` schema, which rejects video *by design* — so every
+  video item failed with "Leader returned status 400" in multi-instance topologies. `validateRpc`
+  now checks that hop against a wire schema. Found by live leader/follower testing; the MCP
+  boundary is unchanged (`get_screenshot` still rejects video formats).
+- **Plugin typecheck restored** — newer `@figma/plugin-typings` type `.parent` as a distributed
+  union containing impossible members (`CodeBlockNode & ChildrenMixin`); the instance-ancestor
+  walk now widens explicitly to `BaseNode | null` (#44).
+- **Dependency security** — all open Dependabot alerts resolved: fast-uri 3.1.5, ip-address
+  10.4.0, hono 4.13.1, `@hono/node-server` 2.1.0 (via `@modelcontextprotocol/sdk` 1.30.0),
+  postcss 8.5.26. Within-semver, test-gated.
+
+### Changed (housekeeping)
+
+- `@figma/plugin-typings` pinned **1.130.0 → 1.133.0** (video export settings, motion variables,
+  `playheadPosition`).
 
 ## [0.3.0] — 2026-07-13
 

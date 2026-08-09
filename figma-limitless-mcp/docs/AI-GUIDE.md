@@ -17,7 +17,7 @@ most Figma failures are ordering failures.
 |---|---|---|
 | Heavy-read cap | `get_document` / `get_node` / `get_selection` / `get_design_context` error if the response exceeds ~1.5MB | Use `get_file_digest`, lower `depth`, or target a smaller subtree |
 | Write serialization | Mutations (incl. `execute_code`) run one-at-a-time in the plugin; reads run in parallel | Send reads freely; don't parallelize writes — they queue anyway |
-| Request timeout | Default 30s; `execute_code` accepts `timeoutMs` up to 300s | On timeout: the op may still have landed — READ before retrying |
+| Request timeout | Default 30s; `execute_code` accepts `timeoutMs` up to 300s; `save_screenshots` video items get 120s | On timeout: the op may still have landed — READ before retrying |
 | Dev Mode | All write tools rejected with a clear error | Switch Figma to the design editor |
 | Delete gate | `delete_nodes` requires `confirm: true` | Confirm deliberately, never by default |
 | Result cap | `execute_code` returns ≤1MB JSON | Return narrow slices, never nodes |

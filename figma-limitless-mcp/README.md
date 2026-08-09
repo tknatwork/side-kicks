@@ -121,7 +121,7 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 | 🎨 Create & style | `create_frame` · `create_text` · `create_shape` · `create_image` · `set_solid_fill` · `set_gradient_fill` · `set_effects` · `set_stroke_properties` · `apply_style` · `create_paint_style` · `create_effect_style` |
 | ✍️ Text | `set_text_content` · `set_text_properties` · `create_text_style` · `update_text_style` · `apply_text_style` · `load_fonts` |
 | 📐 Layout & structure | `set_auto_layout` · `set_grid_layout` · `set_node_properties` · `set_node_visibility` · `duplicate_nodes` · `reparent_nodes` · `group_nodes` · `ungroup_node` · `delete_nodes` (confirm-gated) |
-| 🔧 Variables | `write_variables` (batched authoring with `$N.field` refs) |
+| 🔧 Variables | `write_variables` (batched authoring with `$N.field` refs; COLOR/FLOAT/STRING/BOOLEAN + motion EASING/TIMING) |
 | 🧩 Components & instances | `create_component_from_node` · `combine_as_variants` · `add_component_property` · `create_slot` · `append_to_slot` · `reset_slot` · `get_slots` · `instantiate_component` · `set_instance_properties` · `swap_instance` |
 | 🔀 Prototyping | `set_reactions` · `set_flow_starting_point` |
 | 🎞️ Motion / shaders (beta) | `apply_animation_style` · `apply_shader` |
