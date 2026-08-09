@@ -19,7 +19,7 @@ digests). AI operating rules: `docs/AI-GUIDE.md`.
 ## Architecture (2 packages)
 
 - `server/` — stdio MCP server (`node dist/index.js`), TypeScript → `tsc`. Leader binds HTTP+WS on **:1994** (`/ws` plugin, `/ping` health, `/rpc` followers); extra clients become followers and proxy via `/rpc`. Multi-file registry keyed by `fileKey`.
-- `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.130.0** (Motion/Shaders/Slots/Grid APIs).
+- `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.133.0** (Motion/Shaders/Slots/Grid APIs, video export, motion variables).
 
 ## Orchestration layer (server/src/orchestration.ts)
 

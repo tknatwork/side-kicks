@@ -131,7 +131,7 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 | 🔍 Design-system skills & linter | `list_skills` · `read_skill` · `get_build_recipe` · `lint_design_system` |
 | 🤝 Handoff | `set_annotation` · `dev_resources` · `set_code_mapping` · `get_code_mappings` |
 | 📚 Library | `import_library_asset` |
-| 👁️ Viewport & media | `set_selection` · `scroll_and_zoom_into_view` · `get_screenshot` · `save_screenshots` |
+| 👁️ Viewport & media | `set_selection` · `scroll_and_zoom_into_view` · `get_screenshot` · `save_screenshots` (images + MP4/GIF/WEBM video of animated frames) |
 | 💾 Sessions | `save_checkpoint` · `load_checkpoint` · `get_journal` · `acquire_lock` · `release_lock` |
 | 🧨 Escape hatch | `execute_code` (Plugin-API JS, top-level await, `timeoutMs` ≤ 300s) |
 

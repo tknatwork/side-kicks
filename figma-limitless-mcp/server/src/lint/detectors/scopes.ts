@@ -19,6 +19,11 @@ const LEGAL_SCOPES: Record<string, Set<string>> = {
   ]),
   STRING: new Set(["ALL_SCOPES", "TEXT_CONTENT", "FONT_FAMILY", "FONT_STYLE"]),
   BOOLEAN: new Set(["ALL_SCOPES"]),
+  // Motion variables (Figma typings 1.131+). Measured: they are created with
+  // ALL_SCOPES and Figma rejects set_scopes on them entirely ("Cannot set
+  // scopes on this variable type") — so ALL_SCOPES is the only legal state.
+  EASING: new Set(["ALL_SCOPES"]),
+  TIMING: new Set(["ALL_SCOPES"]),
 };
 
 // Clear color roles -> acceptable scope(s). Ambiguous roles (brand/accent/...)

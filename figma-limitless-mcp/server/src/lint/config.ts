@@ -48,7 +48,7 @@ function asStringArray(v: unknown, ruleId: string, field: string): string[] {
   return v as string[];
 }
 
-const RESOLVED_TYPES = new Set(["COLOR", "FLOAT", "STRING", "BOOLEAN"]);
+const RESOLVED_TYPES = new Set(["COLOR", "FLOAT", "STRING", "BOOLEAN", "EASING", "TIMING"]);
 
 export const RULE_CONFIG: Record<string, RuleConfigMeta> = {
   "variant-count-ceiling-60": {
@@ -106,7 +106,7 @@ export const RULE_CONFIG: Record<string, RuleConfigMeta> = {
     },
   },
   "semantic-role-allowlist": {
-    configShape: "{ allowlist: string[] (required, non-empty), resolvedType?: 'COLOR'|'FLOAT'|'STRING'|'BOOLEAN' (default COLOR) }",
+    configShape: "{ allowlist: string[] (required, non-empty), resolvedType?: 'COLOR'|'FLOAT'|'STRING'|'BOOLEAN'|'EASING'|'TIMING' (default COLOR) }",
     defaults: null, // config REQUIRED — no universal role vocabulary
     resolve: (raw) => {
       if (!isObj(raw)) throw new LintConfigError("semantic-role-allowlist", "needs config { allowlist: string[] }");
@@ -114,7 +114,7 @@ export const RULE_CONFIG: Record<string, RuleConfigMeta> = {
       if (allowlist.length === 0) throw new LintConfigError("semantic-role-allowlist", "'allowlist' must be non-empty");
       const resolvedType = raw.resolvedType == null ? "COLOR" : raw.resolvedType;
       if (typeof resolvedType !== "string" || !RESOLVED_TYPES.has(resolvedType)) {
-        throw new LintConfigError("semantic-role-allowlist", "'resolvedType' must be COLOR | FLOAT | STRING | BOOLEAN");
+        throw new LintConfigError("semantic-role-allowlist", "'resolvedType' must be COLOR | FLOAT | STRING | BOOLEAN | EASING | TIMING");
       }
       return { allowlist: allowlist.map((s) => s.toLowerCase()), resolvedType };
     },
