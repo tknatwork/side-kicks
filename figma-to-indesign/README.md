@@ -12,6 +12,9 @@ fonts.
 ![Status](https://img.shields.io/badge/status-v0.1%20extracted%20from%20a%20real%20conversion-orange)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
+**Pairs with [Limitless MCP for Figma ≥ 0.4.0](../figma-limitless-mcp/)** — the extraction
+and render channels this toolkit drives (`execute_code`, `save_screenshots`) are its tools.
+
 📖 **AI builders:** read [AGENTS.md](AGENTS.md) before driving this pipeline.
 📐 **Architecture & rationale:** [docs/SPEC.md](docs/SPEC.md) — every design decision is
 tied to a defect from the reference conversion.
@@ -33,6 +36,22 @@ This pipeline instead:
 - places real vector nodes as **SVG**, which InDesign takes as first-class vector art;
 - drives InDesign and Photoshop over the classic scripting bridge for the booklet,
   overset, CMYK, preflight, packaging and export steps.
+
+## What the 0.4.0 companion adds (and what it means here)
+
+Limitless 0.4.0 (2026-08-09) brings the current Figma API surface into the pairing:
+
+- **`save_screenshots` now also exports MP4/GIF/WEBM** of animated frames. Irrelevant to a
+  print deliverable, but know the failure mode: video formats hard-fail on non-animated
+  nodes with Figma's *"Cannot export node as video"*, reported per item — the image/SVG
+  paths this pipeline uses are unchanged.
+- **Motion variables (`EASING`/`TIMING`)** round-trip through the variable tools. A source
+  file using them no longer breaks reads; for this pipeline they are simply out of scope
+  (nothing in an editorial page layout consumes them).
+- **Multi-instance topology is now exercised** — 0.4.0 fixed a bug where `save_screenshots`
+  items were rejected on the follower → leader path. Relevant here because this toolkit
+  typically runs as a *second* MCP client beside an editor-attached one, i.e. exactly that
+  topology. Pin ≥ 0.4.0.
 
 ## Provenance — read this before trusting it
 
