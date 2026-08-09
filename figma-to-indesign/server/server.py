@@ -26,7 +26,11 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PIPELINE = os.path.join(os.path.dirname(HERE), "pipeline")
+# Pipeline scripts live in ../pipeline in this repo; a project that vendors the
+# server next to its own scripts (the reference Akanksha project does) keeps
+# them beside this file instead. Support both layouts.
+_repo_pipeline = os.path.join(os.path.dirname(HERE), "pipeline")
+PIPELINE = _repo_pipeline if os.path.isdir(_repo_pipeline) else HERE
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "figma-to-indesign", "version": "0.1.0"}
 LIMITLESS_WS_PORT = 1994          # the figma-limitless plugin's local bridge
