@@ -6,6 +6,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added — Figma 2026-08 API surface (typings 1.133.0)
+
+- **Motion variables (`EASING` / `TIMING`)** across the variable tools: `write_variables`
+  accepts the new resolved types (EASING values are `{ type, easingFunctionCubicBezier?,
+  easingFunctionSpring? }`, TIMING values are milliseconds), reads emit a stable plain-copy
+  wire shape, and the lint scope rule knows both types are fixed to `ALL_SCOPES`
+  (measured: Figma rejects `set_scopes` on motion variables entirely).
+- **Video export in `save_screenshots`** — `MP4` / `GIF` / `WEBM` with `fps`, `quality`,
+  `loopCount` (GIF) and `videoConstraint` (SCALE 0.5–4 / WIDTH / HEIGHT); `.mp4/.gif/.webm`
+  extensions infer their format. Video items get a 120 s bridge budget. Deliberately not
+  offered on `get_screenshot`, which returns base64 into the model's context. Measured:
+  Figma rejects video export of non-animated nodes with "Cannot export node as video";
+  the error is reported per item.
+
 ### Added — design-system knowledge & linting layer
 
 An offline, closed-loop layer for building and checking design systems ("build → lint → fix"),

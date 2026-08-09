@@ -268,21 +268,33 @@ export class Leader {
             sendWithParams: (
               requestType: string,
               nodeIds?: string[],
-              sendParams?: Record<string, unknown>
+              sendParams?: Record<string, unknown>,
+              opts?: { timeoutMs?: number }
             ) =>
               this.bridge.sendWithParams(
                 requestType,
                 nodeIds,
                 sendParams,
-                fileKey
+                fileKey,
+                opts?.timeoutMs
               ),
           };
+          // NOTE: any new top-level save_screenshots field must be threaded here
+          // too, or it is silently dropped on the follower->leader path.
           const result = await executeSaveScreenshots(
             sender,
             params.items as Parameters<typeof executeSaveScreenshots>[1],
             params.format as ExportFormat | undefined,
             params.scale as number | undefined,
-            params.clip as boolean | undefined
+            params.clip as boolean | undefined,
+            {
+              fps: params.fps as number | undefined,
+              quality: params.quality as "LOW" | "MEDIUM" | "HIGH" | undefined,
+              loopCount: params.loopCount as number | undefined,
+              videoConstraint: params.videoConstraint as
+                | { type: "SCALE" | "WIDTH" | "HEIGHT"; value: number }
+                | undefined,
+            }
           );
           this.sendJSON(res, 200, { data: result });
           return;

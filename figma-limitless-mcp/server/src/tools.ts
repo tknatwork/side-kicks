@@ -116,13 +116,31 @@ type ToolResult = {
   isError?: boolean;
 };
 
-export type ExportFormat = "PNG" | "SVG" | "JPG" | "PDF";
+export type ExportFormat =
+  | "PNG" | "SVG" | "JPG" | "PDF"
+  | "MP4" | "GIF" | "WEBM";
+
+const VIDEO_FORMATS: ReadonlySet<ExportFormat> = new Set(["MP4", "GIF", "WEBM"]);
+
+/** Video encodes routinely exceed the 30s bridge default; give them the same
+ * budget as the other heavy plugin calls. */
+const VIDEO_EXPORT_TIMEOUT_MS = 120_000;
+
+/** Video-only export options (validated plugin-side, where errors can list the
+ * format-specific allowed values). */
+interface VideoExportOptions {
+  fps?: number;
+  quality?: "LOW" | "MEDIUM" | "HIGH";
+  loopCount?: number;
+  videoConstraint?: { type: "SCALE" | "WIDTH" | "HEIGHT"; value: number };
+}
 
 export interface ScreenshotSender {
   sendWithParams(
     requestType: string,
     nodeIds?: string[],
-    params?: Record<string, unknown>
+    params?: Record<string, unknown>,
+    opts?: { timeoutMs?: number }
   ): Promise<BridgeResponse>;
 }
 
@@ -135,7 +153,7 @@ interface ScreenshotExport {
   height: number;
 }
 
-interface SaveScreenshotItemInput {
+interface SaveScreenshotItemInput extends VideoExportOptions {
   nodeId: string;
   outputPath: string;
   format?: ExportFormat;
@@ -274,7 +292,7 @@ export function registerTools(
 
   server.tool(
     "get_variable_defs",
-    "Get all local variable definitions including variable collections, modes, and variable values. Variables are Figma's system for design tokens (colors, numbers, strings, booleans). When multiple files are connected, specify fileKey.",
+    "Get all local variable definitions including variable collections, modes, and variable values. Variables are Figma's system for design tokens (colors, numbers, strings, booleans, easings, timings). When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_variable_defs.shape,
     async ({ fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
@@ -1454,19 +1472,22 @@ export function registerTools(
     "save_screenshots",
     "Export screenshots for multiple nodes and save them directly to the local filesystem. Returns metadata only (no base64). When multiple files are connected, specify fileKey.",
     toolInputSchemas.save_screenshots.shape,
-    async ({ items, format, scale, clip, fileKey }): Promise<ToolResult> => {
+    async ({
+      items, format, scale, clip, fps, quality, loopCount, videoConstraint, fileKey,
+    }): Promise<ToolResult> => {
       try {
         // Create a sender bound to the specific fileKey
         const sender: ScreenshotSender = {
-          sendWithParams: (requestType, nodeIds, params) =>
-            node.sendWithParams(requestType, nodeIds, params, fileKey),
+          sendWithParams: (requestType, nodeIds, params, opts) =>
+            node.sendWithParams(requestType, nodeIds, params, fileKey, opts),
         };
         const result = await executeSaveScreenshots(
           sender,
           items,
           format,
           scale,
-          clip
+          clip,
+          { fps, quality, loopCount, videoConstraint }
         );
         return {
           content: [{ type: "text", text: JSON.stringify(result) }],
@@ -1500,7 +1521,8 @@ export async function executeSaveScreenshots(
   items: SaveScreenshotItemInput[],
   format?: ExportFormat,
   scale?: number,
-  clip?: boolean
+  clip?: boolean,
+  videoDefaults?: VideoExportOptions
 ): Promise<{
   total: number;
   succeeded: number;
@@ -1518,7 +1540,8 @@ export async function executeSaveScreenshots(
       process.cwd(),
       format,
       scale,
-      clip
+      clip,
+      videoDefaults
     );
     results.push(result);
   }
@@ -1858,6 +1881,12 @@ function inferFormatFromPath(outputPath: string): ExportFormat | null {
       return "JPG";
     case ".pdf":
       return "PDF";
+    case ".mp4":
+      return "MP4";
+    case ".gif":
+      return "GIF";
+    case ".webm":
+      return "WEBM";
     default:
       return null;
   }
@@ -1931,7 +1960,8 @@ async function saveScreenshotItemToFile(
   workspaceRoot: string,
   defaultFormat?: ExportFormat,
   defaultScale?: number,
-  defaultClip?: boolean
+  defaultClip?: boolean,
+  videoDefaults?: VideoExportOptions
 ): Promise<SaveScreenshotItemResult> {
   let resolvedOutputPath = item.outputPath;
 
@@ -1955,11 +1985,23 @@ async function saveScreenshotItemToFile(
     if (resolvedClip !== undefined) {
       params.clip = resolvedClip;
     }
+    const isVideo = VIDEO_FORMATS.has(resolvedFormat);
+    if (isVideo) {
+      const fps = item.fps ?? videoDefaults?.fps;
+      const quality = item.quality ?? videoDefaults?.quality;
+      const loopCount = item.loopCount ?? videoDefaults?.loopCount;
+      const videoConstraint = item.videoConstraint ?? videoDefaults?.videoConstraint;
+      if (fps !== undefined) params.fps = fps;
+      if (quality !== undefined) params.quality = quality;
+      if (loopCount !== undefined) params.loopCount = loopCount;
+      if (videoConstraint !== undefined) params.videoConstraint = videoConstraint;
+    }
 
     const resp = await sender.sendWithParams(
       "get_screenshot",
       [item.nodeId],
-      params
+      params,
+      isVideo ? { timeoutMs: VIDEO_EXPORT_TIMEOUT_MS } : undefined
     );
     if (resp.error) {
       throw new Error(resp.error);

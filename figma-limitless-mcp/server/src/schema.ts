@@ -28,6 +28,49 @@ const createFigmaNodeIdSchema = () =>
 const createExportFormatSchema = () => z.enum(["PNG", "SVG", "JPG", "PDF"]);
 
 /**
+ * Formats accepted by save_screenshots: images plus video (MP4/GIF/WEBM).
+ * Video is deliberately NOT offered on get_screenshot — that tool returns
+ * base64 into the model's context, and a video payload does not belong there;
+ * save_screenshots writes to disk and returns metadata only.
+ * Measured: Figma rejects video export of non-animated nodes with
+ * "Cannot export node as video" — that error is reported per item.
+ */
+const createSaveExportFormatSchema = () =>
+  z.enum(["PNG", "SVG", "JPG", "PDF", "MP4", "GIF", "WEBM"]);
+
+/** Video-only export options shared by the save_screenshots batch level and its
+ * per-item overrides. Validation of format-specific fps sets and the SCALE
+ * literal set happens plugin-side, where the error can list allowed values. */
+const videoExportFields = {
+  fps: z
+    .number()
+    .int()
+    .optional()
+    .describe(
+      "Video only. Frames per second — MP4/WEBM allow 12/24/30/60, GIF allows 8/12/15/24/30"
+    ),
+  quality: z
+    .enum(["LOW", "MEDIUM", "HIGH"])
+    .optional()
+    .describe("Video only (MP4/WEBM). Encode quality"),
+  loopCount: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe("GIF only. 0 = loop forever"),
+  videoConstraint: z
+    .object({
+      type: z.enum(["SCALE", "WIDTH", "HEIGHT"]),
+      value: z.number(),
+    })
+    .optional()
+    .describe(
+      "Video only. Size constraint; SCALE accepts only 0.5/0.75/1/1.5/2/3/4, WIDTH/HEIGHT take pixels"
+    ),
+};
+
+/**
  * Creates a Zod schema that validates a CSS-style hex color string.
  * @returns A Zod string schema for hex colors.
  */
@@ -677,9 +720,15 @@ const variableAction = z.object({
     .describe("Target variable id — may reference an earlier step as '$2.variableId'"),
   modeId: z.string().optional().describe("Target mode id — '$N.modeId'/'$N.defaultModeId' refs work"),
   resolvedType: z
-    .enum(["COLOR", "FLOAT", "STRING", "BOOLEAN"])
+    .enum(["COLOR", "FLOAT", "STRING", "BOOLEAN", "EASING", "TIMING"])
     .optional()
-    .describe("create_variable: the variable type"),
+    .describe(
+      "create_variable: the variable type. Motion variables: EASING values are " +
+      "{ type, easingFunctionCubicBezier?, easingFunctionSpring? } (type e.g. " +
+      "EASE_IN_AND_OUT, CUSTOM_CUBIC_BEZIER, GENTLE, HOLD); TIMING values are " +
+      "plain numbers in ms. Motion variables are fixed to ALL_SCOPES — Figma " +
+      "rejects setting scopes on them."
+    ),
   scopes: z
     .array(z.string())
     .optional()
@@ -1841,9 +1890,11 @@ export const toolInputSchemas = {
             .describe(
               "Output file path (relative paths resolve from the MCP server current working directory)"
             ),
-          format: createExportFormatSchema()
+          format: createSaveExportFormatSchema()
             .optional()
-            .describe("Per-item export format override: PNG, SVG, JPG, or PDF"),
+            .describe(
+              "Per-item export format override: PNG, SVG, JPG, PDF, or video MP4/GIF/WEBM (video requires an animated top-level frame; static nodes fail per item with Figma's 'Cannot export node as video')"
+            ),
           scale: z
             .number()
             .optional()
@@ -1852,15 +1903,18 @@ export const toolInputSchemas = {
             .boolean()
             .optional()
             .describe(
-              "Per-item clipping override. When true, PNGs are clipped to the node's logical bounds using Figma's absolute node bounds."
+              "Per-item clipping override. When true, PNGs are clipped to the node's logical bounds using Figma's absolute node bounds. Not applicable to video formats."
             ),
+          ...videoExportFields,
         })
       )
       .min(1)
       .describe("List of screenshot save operations to execute in batch"),
-    format: createExportFormatSchema()
+    format: createSaveExportFormatSchema()
       .optional()
-      .describe("Default export format: PNG (default) or SVG or JPG or PDF"),
+      .describe(
+        "Default export format: PNG (default), SVG, JPG, PDF, or video MP4/GIF/WEBM (video requires animated content — see per-item format notes)"
+      ),
     scale: z
       .number()
       .optional()
@@ -1869,8 +1923,9 @@ export const toolInputSchemas = {
       .boolean()
       .optional()
       .describe(
-        "Default clipping behavior for saved screenshots. When true, PNGs are clipped to the node's logical bounds using Figma's absolute node bounds."
+        "Default clipping behavior for saved screenshots. When true, PNGs are clipped to the node's logical bounds using Figma's absolute node bounds. Not applicable to video formats."
       ),
+    ...videoExportFields,
     fileKey: fileKeyField,
   }),
 

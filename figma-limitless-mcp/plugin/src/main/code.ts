@@ -88,8 +88,16 @@ type RequestType =
   | "dev_resources";
 
 type ServerRequestParams = Record<string, unknown> & {
-  format?: "PNG" | "SVG" | "JPG" | "PDF";
+  format?: "PNG" | "SVG" | "JPG" | "PDF" | "MP4" | "GIF" | "WEBM";
   scale?: number;
+  /** Video-only (MP4/GIF/WEBM): allowed values are format-specific literal sets. */
+  fps?: number;
+  /** Video-only (MP4/WEBM): encode quality. */
+  quality?: "LOW" | "MEDIUM" | "HIGH";
+  /** Video-only (GIF): 0 = loop forever. */
+  loopCount?: number;
+  /** Video-only: size constraint; SCALE accepts 0.5/0.75/1/1.5/2/3/4. */
+  videoConstraint?: { type: "SCALE" | "WIDTH" | "HEIGHT"; value: number };
   /**
    * When true, export the node using its absolute bounds (the same behavior
    * exposed by Figma REST image export via `use_absolute_bounds`). This clips
@@ -221,10 +229,37 @@ const sendStatus = () => {
   });
 };
 
+/** MotionEasing.type values (typings 1.133.0). Kept as data so the write-side
+ * validator and its error message stay in lockstep with serialization. */
+const MOTION_EASING_TYPES = [
+  "EASE_IN", "EASE_OUT", "EASE_IN_AND_OUT", "LINEAR",
+  "EASE_IN_BACK", "EASE_OUT_BACK", "EASE_IN_AND_OUT_BACK",
+  "CUSTOM_CUBIC_BEZIER", "GENTLE", "QUICK", "BOUNCY", "SLOW",
+  "CUSTOM_SPRING", "HOLD",
+] as const;
+
+const isMotionEasingType = (t: unknown): t is MotionEasing["type"] =>
+  typeof t === "string" && (MOTION_EASING_TYPES as readonly string[]).indexOf(t) !== -1;
+
 const serializeVariableValue = (value: VariableValue): unknown => {
   if (typeof value === "object" && value !== null) {
     if ("type" in value && value.type === "VARIABLE_ALIAS") {
       return { type: "VARIABLE_ALIAS", id: value.id };
+    }
+    if ("type" in value && isMotionEasingType(value.type)) {
+      // EASING variable value (MotionEasing). Defensive plain copy so the wire
+      // shape stays stable regardless of what Figma hangs off the live object.
+      const e = value as MotionEasing;
+      const out: Record<string, unknown> = { type: e.type };
+      if (e.easingFunctionCubicBezier) {
+        const b = e.easingFunctionCubicBezier;
+        out.easingFunctionCubicBezier = { x1: b.x1, y1: b.y1, x2: b.x2, y2: b.y2 };
+      }
+      if (e.easingFunctionSpring) {
+        // NormalizedSpring carries only a 0..1 bounce (typings 1.133.0).
+        out.easingFunctionSpring = { bounce: e.easingFunctionSpring.bounce };
+      }
+      return out;
     }
     if ("r" in value && "g" in value && "b" in value) {
       // It's an RGB or RGBA color
@@ -239,6 +274,76 @@ const serializeVariableValue = (value: VariableValue): unknown => {
     }
   }
   return value;
+};
+
+/** Allowed fps per video format (typings 1.133.0 literal unions). */
+const VIDEO_FPS: Record<"MP4" | "WEBM" | "GIF", readonly number[]> = {
+  MP4: [12, 24, 30, 60],
+  WEBM: [12, 24, 30, 60],
+  GIF: [8, 12, 15, 24, 30],
+};
+const VIDEO_SCALES = [0.5, 0.75, 1, 1.5, 2, 3, 4] as const;
+
+/** Builds validated video export settings. Fail-closed with the allowed values
+ * in the message — Figma's own validation errors arrive truncated. */
+const buildVideoExportSettings = (
+  format: "MP4" | "GIF" | "WEBM",
+  params: Record<string, unknown> | undefined
+): ExportSettingsMP4 | ExportSettingsGIF | ExportSettingsWEBM => {
+  const out: Record<string, unknown> = { format };
+  const fps = params?.fps;
+  if (fps !== undefined) {
+    if (typeof fps !== "number" || VIDEO_FPS[format].indexOf(fps) === -1) {
+      throw new Error(
+        `fps ${JSON.stringify(fps)} is not valid for ${format}; allowed: ${VIDEO_FPS[format].join(", ")}`
+      );
+    }
+    out.fps = fps;
+  }
+  const quality = params?.quality;
+  if (quality !== undefined) {
+    if (quality !== "LOW" && quality !== "MEDIUM" && quality !== "HIGH") {
+      throw new Error(`quality must be LOW, MEDIUM or HIGH (got ${JSON.stringify(quality)})`);
+    }
+    if (format === "GIF") {
+      throw new Error("quality applies to MP4/WEBM only; GIF has no quality setting");
+    }
+    out.quality = quality;
+  }
+  const loopCount = params?.loopCount;
+  if (loopCount !== undefined) {
+    if (format !== "GIF") {
+      throw new Error("loopCount applies to GIF only");
+    }
+    if (typeof loopCount !== "number" || !isFinite(loopCount) || loopCount < 0 ||
+        Math.floor(loopCount) !== loopCount) {
+      throw new Error("loopCount must be a non-negative integer (0 = loop forever)");
+    }
+    out.loopCount = loopCount;
+  }
+  const constraint = params?.videoConstraint as
+    | { type?: unknown; value?: unknown }
+    | undefined;
+  if (constraint !== undefined) {
+    const t = constraint.type;
+    const v = constraint.value;
+    if (t === "SCALE") {
+      if (typeof v !== "number" || (VIDEO_SCALES as readonly number[]).indexOf(v) === -1) {
+        throw new Error(
+          `videoConstraint SCALE value must be one of ${VIDEO_SCALES.join(", ")} (got ${JSON.stringify(v)})`
+        );
+      }
+      out.constraint = { type: "SCALE", value: v };
+    } else if (t === "WIDTH" || t === "HEIGHT") {
+      if (typeof v !== "number" || !isFinite(v) || v <= 0) {
+        throw new Error(`videoConstraint ${t} value must be a positive number`);
+      }
+      out.constraint = { type: t, value: v };
+    } else {
+      throw new Error("videoConstraint.type must be SCALE, WIDTH or HEIGHT");
+    }
+  }
+  return out as unknown as ExportSettingsMP4 | ExportSettingsGIF | ExportSettingsWEBM;
 };
 
 const isSceneNode = (node: BaseNode | null): node is SceneNode =>
@@ -685,6 +790,33 @@ const parseVariableValue = (
   if (resolvedType === "FLOAT" && typeof value === "number") return value;
   if (resolvedType === "STRING" && typeof value === "string") return value;
   if (resolvedType === "BOOLEAN" && typeof value === "boolean") return value;
+  if (resolvedType === "TIMING") {
+    // Measured: TIMING values are plain numbers (milliseconds).
+    if (typeof value === "number" && isFinite(value) && value >= 0) return value;
+    throw new Error("TIMING value must be a non-negative number (milliseconds)");
+  }
+  if (resolvedType === "EASING") {
+    // Measured: setValueForMode accepts {type} with optional bezier/spring params
+    // and rejects unknown type strings with a validation error. Validate here so
+    // the caller gets the allowed list instead of Figma's truncated message.
+    if (value && typeof value === "object" && "type" in value) {
+      const e = value as {
+        type: unknown;
+        easingFunctionCubicBezier?: { x1: number; y1: number; x2: number; y2: number };
+        easingFunctionSpring?: { bounce: number };
+      };
+      if (isMotionEasingType(e.type)) {
+        const out: Record<string, unknown> = { type: e.type };
+        if (e.easingFunctionCubicBezier) out.easingFunctionCubicBezier = e.easingFunctionCubicBezier;
+        if (e.easingFunctionSpring) out.easingFunctionSpring = e.easingFunctionSpring;
+        return out as unknown as VariableValue;
+      }
+    }
+    throw new Error(
+      `EASING value must be { type, easingFunctionCubicBezier?, easingFunctionSpring? } ` +
+      `with type one of: ${MOTION_EASING_TYPES.join(", ")}`
+    );
+  }
   throw new Error(
     `Value ${JSON.stringify(value)} does not match resolvedType ${resolvedType}`
   );
@@ -1217,12 +1349,16 @@ const handleRequest = async (
           request.params?.format === "SVG" ||
           request.params?.format === "PDF" ||
           request.params?.format === "JPG" ||
-          request.params?.format === "PNG"
+          request.params?.format === "PNG" ||
+          request.params?.format === "MP4" ||
+          request.params?.format === "GIF" ||
+          request.params?.format === "WEBM"
             ? request.params.format
             : "PNG";
         const scale =
           typeof request.params?.scale === "number" ? request.params.scale : 2;
         const clip = request.params?.clip === true;
+        const isVideo = format === "MP4" || format === "GIF" || format === "WEBM";
 
         // Determine which node(s) to export
         let targetNodes: SceneNode[];
@@ -1246,27 +1382,38 @@ const handleRequest = async (
 
         const exports = await Promise.all(
           targetNodes.map(async (node) => {
-            const commonSettings = clip
-              ? { contentsOnly: true, useAbsoluteBounds: true }
-              : {};
-            const settings: ExportSettings =
-              format === "SVG"
-                ? { format: "SVG", ...commonSettings }
-                : format === "PDF"
-                  ? { format: "PDF", ...commonSettings }
-                  : format === "JPG"
-                    ? {
-                        format: "JPG",
-                        constraint: { type: "SCALE", value: scale },
-                        ...commonSettings,
-                      }
-                    : {
-                        format: "PNG",
-                        constraint: { type: "SCALE", value: scale },
-                        ...commonSettings,
-                      };
-
-            const bytes = await node.exportAsync(settings);
+            let bytes: Uint8Array;
+            if (isVideo) {
+              // Video export goes through exportAsync's dedicated overload — the
+              // ExportSettings union does not include the video settings types.
+              // Measured behaviour: Figma rejects non-animated nodes with
+              // "Cannot export node as video"; that error is passed through
+              // per node rather than masked. `clip` does not apply to video.
+              bytes = await node.exportAsync(
+                buildVideoExportSettings(format, request.params)
+              );
+            } else {
+              const commonSettings = clip
+                ? { contentsOnly: true, useAbsoluteBounds: true }
+                : {};
+              const settings: ExportSettings =
+                format === "SVG"
+                  ? { format: "SVG", ...commonSettings }
+                  : format === "PDF"
+                    ? { format: "PDF", ...commonSettings }
+                    : format === "JPG"
+                      ? {
+                          format: "JPG",
+                          constraint: { type: "SCALE", value: scale },
+                          ...commonSettings,
+                        }
+                      : {
+                          format: "PNG",
+                          constraint: { type: "SCALE", value: scale },
+                          ...commonSettings,
+                        };
+              bytes = await node.exportAsync(settings);
+            }
             const base64 = figma.base64Encode(bytes);
             return {
               nodeId: node.id,
