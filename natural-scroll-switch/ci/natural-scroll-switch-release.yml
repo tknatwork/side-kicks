@@ -1,0 +1,76 @@
+# Copy to the repository root as .github/workflows/natural-scroll-switch-release.yml
+#
+# Builds the universal app, packages .zip + .dmg with checksums, and publishes a GitHub Release.
+# Tag format: natural-scroll-switch-v1.0.0
+name: natural-scroll-switch — release
+
+on:
+  push:
+    tags:
+      - 'natural-scroll-switch-v*'
+  # Manual runs build and verify the artifacts but publish nothing (the publish step is tag-gated).
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: natural-scroll-switch
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Show toolchain
+        run: swift --version && xcodebuild -version
+
+      - name: Check the tag matches VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          FILE_VERSION="$(tr -d ' \n' < VERSION)"
+          TAG_VERSION="${GITHUB_REF_NAME#natural-scroll-switch-v}"
+          if [ "$FILE_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::tag $TAG_VERSION does not match VERSION file ($FILE_VERSION)"
+            exit 1
+          fi
+
+      - name: Build, sign and package
+        run: ./scripts/build-app.sh
+
+      - name: Smoke-test the built binary
+        run: |
+          "dist/Natural Scroll Switch.app/Contents/Resources/natural-scroll-switch" help
+          "dist/Natural Scroll Switch.app/Contents/Resources/natural-scroll-switch" status || true
+          codesign --verify --deep --strict --verbose=2 "dist/Natural Scroll Switch.app"
+          lipo -info "dist/Natural Scroll Switch.app/Contents/Resources/natural-scroll-switch"
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(tr -d ' \n' < VERSION)"
+          gh release create "$GITHUB_REF_NAME" \
+            dist/NaturalScrollSwitch-"$VERSION".dmg \
+            dist/NaturalScrollSwitch-"$VERSION".zip \
+            dist/SHA256SUMS.txt \
+            --title "Natural Scroll Switch $VERSION" \
+            --notes-file - <<NOTES
+          Natural scrolling that follows the device in your hand — OFF for a third-party mouse, ON for
+          trackpads and Apple Magic devices.
+
+          **Install:** download the \`.dmg\`, drag the app to Applications, double-click it.
+
+          These builds are ad-hoc signed but **not notarized** (no paid Apple Developer account), so the
+          first launch needs one approval in **System Settings → Privacy & Security → Open Anyway**.
+          Building from source avoids that entirely — see the project README.
+          NOTES
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: natural-scroll-switch-dist
+          path: natural-scroll-switch/dist/*

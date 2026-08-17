@@ -1,0 +1,58 @@
+# Copy to the repository root as .github/workflows/natural-scroll-switch-ci.yml
+#
+# Build + smoke test on every change to the project. Never installs anything.
+name: natural-scroll-switch — CI
+
+on:
+  push:
+    paths: ['natural-scroll-switch/**', '.github/workflows/natural-scroll-switch-*.yml']
+  pull_request:
+    paths: ['natural-scroll-switch/**', '.github/workflows/natural-scroll-switch-*.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: natural-scroll-switch
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The files under natural-scroll-switch/ci/ are the source of truth for the workflows that GitHub
+      # actually runs from .github/workflows/. Fail loudly if someone edits one copy and not the other.
+      - name: Workflow copies must not drift
+        run: |
+          drift=0
+          for f in natural-scroll-switch-ci.yml natural-scroll-switch-release.yml; do
+            if ! diff -u "../.github/workflows/$f" "ci/$f"; then
+              echo "::error file=natural-scroll-switch/ci/$f::has drifted from .github/workflows/$f"
+              drift=1
+            fi
+          done
+          exit $drift
+
+      - name: Build (debug + release)
+        run: |
+          swift build
+          swift build -c release
+
+      - name: Read-only smoke test
+        run: |
+          ./.build/release/natural-scroll-switch help
+          ./.build/release/natural-scroll-switch agent-state
+          # `status` touches IOKit; a CI runner has no pointing device, which must not crash it.
+          ./.build/release/natural-scroll-switch status
+
+      - name: Package (verifies the universal build, icon and signing path)
+        run: ./scripts/build-app.sh --no-package
+
+      - name: Verify the bundle
+        run: |
+          codesign --verify --deep --strict --verbose=2 "dist/Natural Scroll Switch.app"
+          lipo -info "dist/Natural Scroll Switch.app/Contents/MacOS/NaturalScrollSwitchApp"
+          plutil -lint "dist/Natural Scroll Switch.app/Contents/Info.plist"

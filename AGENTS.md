@@ -24,6 +24,7 @@ A workspace for Figma plugins and design tooling, led by **Limitless MCP for Fig
 |---------|--------|--------|
 | **Limitless MCP for Figma** (flagship) | [`figma-limitless-mcp/`](figma-limitless-mcp/) | Active (v0.3.0) — local Figma MCP server + Desktop plugin giving AI full, unthrottled Figma access across Design/Dev/FigJam/Slides/Buzz: local fonts, variable/component/prototype authoring, crash-safe orchestration, and a bundled **design-system knowledge layer + 57-rule structure linter** (build → lint → fix). **98 tools.** |
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published on Figma Community ([1584331992332668732](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)) |
+| Natural Scroll Switch | [`natural-scroll-switch/`](natural-scroll-switch/) | Active (v1.0.0) — macOS launchd utility + one-click app that switches natural scrolling by pointing device. Swift/SwiftPM, universal binary, no permissions, no network. |
 
 Local working copies may contain extra untracked folders (references,
 retired experiments). They are not part of the repo — ignore them.
