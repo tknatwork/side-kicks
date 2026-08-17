@@ -58,6 +58,7 @@ banned without explicit user permission.
 | You're editing | You may also touch | You must NOT touch |
 |----------------|--------------------|--------------------|
 | `variables-styles-extractor/**` | Root `README.md`, `.github/` if it's a security/CI change you've been asked for | — |
+| `natural-scroll-switch/**` | Root `README.md`; `.github/workflows/natural-scroll-switch-*.yml` (they are copies of `natural-scroll-switch/ci/*` — edit the project copy and copy up, or CI fails on drift) | Other projects' source |
 | Workspace root files (this file, README, `.gcc/`) | The project's README if cross-cutting | Per-project source unless explicitly asked |
 
 If a future change spans more than one project folder (e.g. extracting

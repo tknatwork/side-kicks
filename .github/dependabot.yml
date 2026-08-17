@@ -5,9 +5,11 @@
 # Branch protection still requires owner approval before merge — Dependabot
 # cannot self-merge unless explicitly granted, which is not configured here.
 #
-# The repository contains a single active project (variables-styles-extractor);
-# the former Design System Builder and nectar-design-toolkit projects were
-# removed, so their ecosystems are no longer configured here.
+# Only projects with real dependency manifests are configured here. The former
+# Design System Builder and nectar-design-toolkit projects were removed, so their
+# ecosystems are gone. natural-scroll-switch is SwiftPM with ZERO dependencies, so
+# it needs no package ecosystem; its GitHub Actions are SHA-pinned and are already
+# covered by the `github-actions` entry at `/` below.
 
 version: 2
 updates:

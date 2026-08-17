@@ -47,7 +47,9 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── ISSUE_TEMPLATE/             ← Bug + feature templates
 │   ├── copilot-instructions.md
 │   └── workflows/
-│       └── codeql.yml              ← Security scanning (only workflow at workspace level)
+│       ├── codeql.yml              ← Security scanning (JS/TS only)
+│       ├── natural-scroll-switch-ci.yml       ← copies of natural-scroll-switch/ci/*
+│       └── natural-scroll-switch-release.yml  ← (that folder is the source of truth)
 ├── .gcc/                           ← Workspace session memory + build log
 │   ├── session-memory.md
 │   ├── commit.md
@@ -71,16 +73,28 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── assets/                     ← Plugin logo (SVG) + icon
 │   ├── .github/copilot-instructions.md
 │   └── docs/                       ← CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
-└── figma-limitless-mcp/            ← Project: local Figma MCP (server + plugin)
+├── figma-limitless-mcp/            ← Project: local Figma MCP (server + plugin)
+│   ├── AGENTS.md                   ← Project AI rules (canonical)
+│   ├── CLAUDE.md                   ← Pointer to project AGENTS.md
+│   ├── README.md                   ← Public-facing docs (install, AI usage, tools)
+│   ├── LICENSE.md                  ← MIT
+│   ├── server/                     ← MCP server (TypeScript → dist/, built locally)
+│   ├── plugin/                     ← Figma Desktop plugin (TypeScript/React → dist/)
+│   ├── scripts/e2e-live-test.mjs   ← Live end-to-end tool suite
+│   ├── docs/                       ← AI-GUIDE (operating rules for AI sessions)
+│   └── .gcc/                       ← Project session memory + build log
+└── natural-scroll-switch/          ← Project: macOS natural-scrolling switcher (Swift)
     ├── AGENTS.md                   ← Project AI rules (canonical)
     ├── CLAUDE.md                   ← Pointer to project AGENTS.md
-    ├── README.md                   ← Public-facing docs (install, AI usage, tools)
+    ├── README.md                   ← Public-facing docs (install, config, limits)
     ├── LICENSE.md                  ← MIT
-    ├── server/                     ← MCP server (TypeScript → dist/, built locally)
-    ├── plugin/                     ← Figma Desktop plugin (TypeScript/React → dist/)
-    ├── scripts/e2e-live-test.mjs   ← Live end-to-end tool suite
-    ├── docs/                       ← AI-GUIDE (operating rules for AI sessions)
-    └── .gcc/                       ← Project session memory + build log
+    ├── CHANGELOG.md                ← Keep a Changelog
+    ├── VERSION                     ← Single source of truth for the version
+    ├── Package.swift               ← SwiftPM: CLI/daemon + installer app products
+    ├── Sources/                    ← NaturalScrollSwitch (daemon) + …App (AppKit front end)
+    ├── scripts/                    ← build-app.sh (universal .app + dmg), make-icon.swift
+    ├── ci/                         ← Source of truth for the two root workflows
+    └── docs/HOW-IT-WORKS.md        ← Mechanism + the approaches that do not work
 ```
 
 ---
