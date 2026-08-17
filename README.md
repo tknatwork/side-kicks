@@ -29,6 +29,7 @@
 |---------|--------|--------|
 | figma-to-indesign | [`figma-to-indesign/`](figma-to-indesign/) | v0.1 (9 Aug 2026) · MCP toolset — Figma → editable InDesign (.indd/.idml) without PDF: original bitmaps, live text, CMYK/sRGB, PDF/X-1a, verified hand-off package. macOS only; pairs with Limitless MCP **≥ 0.4.0**. |
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.1.2 (first 17 Jan 2026) · Figma plugin — export/import Figma variables & styles as JSON (Figma · Tokens Studio · W3C). [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
+| Natural Scroll Switch | [`natural-scroll-switch/`](natural-scroll-switch/) | v1.0.0 (17 Aug 2026) · macOS utility — natural scrolling follows the device in your hand: OFF for a third-party mouse, ON for trackpads and Apple Magic devices. One-click app, universal binary (arm64 + x86_64), no permissions, no network. macOS 12+. |
 
 ---
 
@@ -46,7 +47,9 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── ISSUE_TEMPLATE/             ← Bug + feature templates
 │   ├── copilot-instructions.md
 │   └── workflows/
-│       └── codeql.yml              ← Security scanning (only workflow at workspace level)
+│       ├── codeql.yml              ← Security scanning (JS/TS only)
+│       ├── natural-scroll-switch-ci.yml       ← copies of natural-scroll-switch/ci/*
+│       └── natural-scroll-switch-release.yml  ← (that folder is the source of truth)
 ├── .gcc/                           ← Workspace session memory + build log
 │   ├── session-memory.md
 │   ├── commit.md
@@ -70,16 +73,28 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── assets/                     ← Plugin logo (SVG) + icon
 │   ├── .github/copilot-instructions.md
 │   └── docs/                       ← CHANGELOG, CODING_STANDARDS, FIGMA_PLUGIN_DEVELOPMENT, etc.
-└── figma-limitless-mcp/            ← Project: local Figma MCP (server + plugin)
+├── figma-limitless-mcp/            ← Project: local Figma MCP (server + plugin)
+│   ├── AGENTS.md                   ← Project AI rules (canonical)
+│   ├── CLAUDE.md                   ← Pointer to project AGENTS.md
+│   ├── README.md                   ← Public-facing docs (install, AI usage, tools)
+│   ├── LICENSE.md                  ← MIT
+│   ├── server/                     ← MCP server (TypeScript → dist/, built locally)
+│   ├── plugin/                     ← Figma Desktop plugin (TypeScript/React → dist/)
+│   ├── scripts/e2e-live-test.mjs   ← Live end-to-end tool suite
+│   ├── docs/                       ← AI-GUIDE (operating rules for AI sessions)
+│   └── .gcc/                       ← Project session memory + build log
+└── natural-scroll-switch/          ← Project: macOS natural-scrolling switcher (Swift)
     ├── AGENTS.md                   ← Project AI rules (canonical)
     ├── CLAUDE.md                   ← Pointer to project AGENTS.md
-    ├── README.md                   ← Public-facing docs (install, AI usage, tools)
+    ├── README.md                   ← Public-facing docs (install, config, limits)
     ├── LICENSE.md                  ← MIT
-    ├── server/                     ← MCP server (TypeScript → dist/, built locally)
-    ├── plugin/                     ← Figma Desktop plugin (TypeScript/React → dist/)
-    ├── scripts/e2e-live-test.mjs   ← Live end-to-end tool suite
-    ├── docs/                       ← AI-GUIDE (operating rules for AI sessions)
-    └── .gcc/                       ← Project session memory + build log
+    ├── CHANGELOG.md                ← Keep a Changelog
+    ├── VERSION                     ← Single source of truth for the version
+    ├── Package.swift               ← SwiftPM: CLI/daemon + installer app products
+    ├── Sources/                    ← NaturalScrollSwitch (daemon) + …App (AppKit front end)
+    ├── scripts/                    ← build-app.sh (universal .app + dmg), make-icon.swift
+    ├── ci/                         ← Source of truth for the two root workflows
+    └── docs/HOW-IT-WORKS.md        ← Mechanism + the approaches that do not work
 ```
 
 ---
