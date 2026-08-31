@@ -1,7 +1,7 @@
 {
   "name": "figma-limitless-mcp-plugin",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "1.133.0",
+    "@figma/plugin-typings": "1.137.0",
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",

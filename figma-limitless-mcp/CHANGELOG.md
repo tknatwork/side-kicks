@@ -6,6 +6,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-01
+
+### Changed
+
+- **`@figma/plugin-typings` 1.133.0 → 1.137.0** — the Figma API surface moved four typings
+  releases past the 0.4.0 pin. The refresh compiles clean with **no code changes required**:
+  nothing this codebase touches was broken or renamed. No new 1.134–1.137 API surface is
+  ADOPTED in this release — this is the pin catching up so the next capability work starts
+  from current typings, not a five-week-old view of the API. (`AGENTS.md`'s documented pin
+  updated to match — the doc said 1.133.0 and would have kept saying so.)
+- Version 0.4.1 on both halves (server + plugin), so `get_workspace_status` reports the
+  refreshed build once the plugin is rebuilt and restarted.
+
+### Note for the operator
+
+- `dist/` is untracked on both halves: after merging, rebuild before restarting —
+  `pnpm --dir figma-limitless-mcp/plugin build && pnpm --dir figma-limitless-mcp/server build`.
+
 ## [0.4.0] — 2026-08-09
 
 ### Added — Figma 2026-08 API surface (typings 1.133.0)
