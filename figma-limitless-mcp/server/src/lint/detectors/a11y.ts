@@ -40,8 +40,7 @@ function resolveOpacityPct(
   const v = a.byId.get(target);
   if (!v || v.resolvedType !== "FLOAT") return null;
   const m = targetMode(a, target, mode);
-  const val = m in v.valuesByMode ? v.valuesByMode[m] : Object.values(v.valuesByMode)[0];
-  return resolveOpacityPct(a, val, m, depth + 1);
+  return resolveOpacityPct(a, v.valuesByMode[m], m, depth + 1);
 }
 
 /** A raw {r,g,b,a?} colour value's RGB / alpha, or null when it isn't one. */
@@ -62,8 +61,9 @@ function rawAlpha(val: unknown): number | null {
 
 /** Resolve a COLOR variable's value in a mode down to concrete RGB (follows
  *  aliases; a target's mode falls back to its own first mode when absent). A
- *  composed colour resolves only when provably opaque: a translucent one
- *  composites over its backdrop, so its RGB contrast proves nothing. */
+ *  composed colour resolves only when provably opaque — 100% opacity over an
+ *  opaque colour side: a translucent one composites over its backdrop, so its
+ *  RGB contrast proves nothing. */
 function resolveColor(
   a: ReturnType<typeof analyze>,
   varId: string,
@@ -83,9 +83,15 @@ function resolveColor(
     const pct = resolveOpacityPct(a, composed.opacity, mode);
     if (pct === null || pct < 99.9) return null;
     const colorRef = nestedAliasId(composed.color);
-    return colorRef
-      ? resolveColor(a, colorRef, targetMode(a, colorRef, mode), depth + 1)
-      : rawRGB(composed.color);
+    if (!colorRef) {
+      const alpha = rawAlpha(composed.color);
+      return alpha !== null && alpha >= 0.999 ? rawRGB(composed.color) : null;
+    }
+    const colorMode = targetMode(a, colorRef, mode);
+    const alpha = resolveAlpha(a, colorRef, colorMode, depth + 1);
+    return alpha !== null && alpha >= 0.999
+      ? resolveColor(a, colorRef, colorMode, depth + 1)
+      : null;
   }
   return rawRGB(val);
 }
@@ -107,18 +113,17 @@ function resolveAlpha(
   }
   const composed = composedColor(val);
   if (composed) {
-    // Whether a translucent colour side compounds with the opacity is
-    // unverified, so report only what both readings agree on: below 100% the
-    // result is translucent (alpha <= opacity); at 100% it is opaque only when
-    // the colour side is.
+    // Below 100% the result is translucent (alpha <= opacity). At 100% the
+    // colour side's own alpha is reported, so a translucent colour side is
+    // flagged for pixel sampling like a plain alias to it (resolveColor
+    // skips it either way).
     const pct = resolveOpacityPct(a, composed.opacity, mode);
     if (pct === null) return null;
     if (pct < 99.9) return pct / 100;
     const colorRef = nestedAliasId(composed.color);
-    const colorAlpha = colorRef
+    return colorRef
       ? resolveAlpha(a, colorRef, targetMode(a, colorRef, mode), depth + 1)
       : rawAlpha(composed.color);
-    return colorAlpha !== null && colorAlpha >= 0.999 ? colorAlpha : null;
   }
   return rawAlpha(val);
 }

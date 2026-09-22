@@ -1,12 +1,16 @@
-// Local stand-ins for Figma Plugin API Update 139: composed color variable
-// values (VariableComposedColor) and the COLOR_OPACITY scope. Both are
-// documented but missing from every published @figma/plugin-typings (1.138.0
-// is the latest). VariableValue and VariableScope are global type ALIASES, so
-// they can't be declaration-merged; the names here are distinct on purpose and
+// Figma Plugin API Update 139 composed color variable values
+// (VariableComposedColor), which no published @figma/plugin-typings declares
+// yet (1.138.0 is the latest). VariableValue is a global type ALIAS, so it
+// can't be declaration-merged; the names here are distinct on purpose and
 // shadow nothing once the real types land.
 //
-// Delete this file (and switch its imports to the real types) when
-// @figma/plugin-typings >= 1.139 ships these types.
+// Only ComposedColorValue is a typings stand-in: when @figma/plugin-typings
+// >= 1.139 ships VariableComposedColor, replace it with the real type (and
+// drop the VariableValue cast in code.ts's parseVariableValueAsync). The
+// runtime guards and write_variables input helpers below are this plugin's
+// own code and stay.
+// The COLOR_OPACITY scope needs no stand-in: code.ts casts scope strings to
+// VariableScope, which carries the new value through until the typings list it.
 
 /** A COLOR variable value made of a color plus a separate opacity PERCENTAGE
  *  (60 = 60%). Figma requires the color and/or the opacity to be an alias. */

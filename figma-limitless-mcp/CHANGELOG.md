@@ -17,15 +17,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   older Figma a write fails with a capability error before anything changes.
 - **`set_auto_layout` `primaryAxisAlignItems`: `SPACE_EVENLY` / `SPACE_AROUND` (Update 137)** —
   CSS `justify-content: space-evenly / space-around`. The schema enum and the plugin whitelist
-  widen together (the plugin skipped unknown values silently), and the whitelist now fails the
-  build if a typings update adds a value it lacks. Reads pass Figma's value through, so consumers
-  that switch on MIN/MAX/CENTER/SPACE_BETWEEN should handle the new two. `counterAxisAlignItems`
-  is unchanged.
+  widen together (the plugin skipped unknown values silently), and the whitelist now fails
+  `pnpm typecheck` if a typings update adds a value it lacks — and so the plugin build, which now
+  type-checks before bundling (vite/esbuild strip types without checking them). Reads pass
+  Figma's value through, so consumers that switch on MIN/MAX/CENTER/SPACE_BETWEEN should handle
+  the new two. `counterAxisAlignItems` is unchanged.
 - **Variable fonts (Update 138)**:
   - `variationSettings` (e.g. `{wght: 550}`) on the same four text write tools, validated up
     front: a static family, an axis tag the family doesn't define (the error lists the valid
     ones) or a Figma without the API fails before anything changes. With the family and style
-    unchanged the axes merge over the current ones; the style is inferred only when the family
+    unchanged the axes merge over the current ones (range by range on text whose ranges differ
+    only in axes), and repeating the current family/style without axes keeps custom axes instead
+    of resetting them to the named instance; the style is inferred only when the family
     changes with axes and no style, or `create_text` gets axes and no style. Text styles always
     keep an explicit style.
   - `load_fonts` accepts `{family}` with no style to load every style of the family.
@@ -40,13 +43,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   sides); `get_variable_defs` / `get_variables_deep` read it as `{type:'COMPOSED_COLOR', color,
   opacity}`, nested aliases resolved. `COLOR_OPACITY` (a color's opacity channel, FLOAT) is
   distinct from `OPACITY` (layer opacity). No published `@figma/plugin-typings` has Update 139 yet
-  (1.138.0 is the latest), so it runs on a local shim, `plugin/src/main/figma-139-shim.ts`, plus
-  runtime shape detection — delete the shim when typings ≥ 1.139 ship these types.
+  (1.138.0 is the latest), so composed values run on a local stand-in type plus runtime shape
+  detection in `plugin/src/main/figma-139-shim.ts` — swap the stand-in for the real
+  `VariableComposedColor` when typings ≥ 1.139 ship it (the runtime guards and input helpers
+  stay). `COLOR_OPACITY` needs no shim: scope strings are already cast to `VariableScope`.
 
 ### Changed
 
 - **`@figma/plugin-typings` 1.137.0 → 1.138.0** (exact pin + lockfile).
 - Version 0.5.0 on both halves (server + plugin).
+- The plugin `build` script type-checks (`tsc --noEmit`) before bundling, so a type error — such
+  as a typings value missing from a whitelist — now fails the build instead of shipping.
 - `update_text_style` validates and loads the new font and axes before any patch, so a bad font,
   family or axis now applies nothing (property patches used to land first).
 
@@ -62,10 +69,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `no-text-content-scope-on-token`, like a STRING.
 - `dimension-role-scope-match` accepts `opacity/*` scoped `[COLOR_OPACITY]` as well as `[OPACITY]`.
 - **Composed references in the alias graph** — a composed color's color/opacity aliases count as
-  alias edges for tier classification, alias-in-every-mode, component → semantic, one-tier-down,
-  cycles and depth, orphan usage (`unused-variable-orphan`) and multi-brand routing, and a
-  dangling reference inside a composed color is an `alias-target-resolves` ERROR.
-  `primitive-raw-values-only` still allows a same-collection alpha variant.
+  alias edges for alias-in-every-mode, component → semantic, one-tier-down, cycles and depth,
+  orphan usage (`unused-variable-orphan`) and multi-brand routing, and a dangling reference inside
+  a composed color is an `alias-target-resolves` ERROR. Tier classification counts only the color
+  side (a COLOR drawing its opacity from a FLOAT collection doesn't re-tier its palette).
+  `primitive-raw-values-only` still allows a same-collection alpha variant, which adds no hop to
+  the alias depth; a composed color at 100% opacity is contrast-checked only when its color side
+  is opaque too.
 - **Text whose ranges differ only in axes** — since Update 138 `fontName` reads `mixed` for it.
   Such nodes now report their family/style plus `fontVariationSettings: 'mixed'` instead of
   `'mixed'` fonts, `set_text_properties` can change their family or style again, and FigJam

@@ -98,6 +98,43 @@ test("variables referenced only through a composed colour are not orphans", () =
   assert.deepEqual(orphans, ["p_unused"], "only the genuinely unused primitive is an orphan");
 });
 
+test("a composed colour's opacity side does not re-tier a palette collection", () => {
+  // Per-type primitive collections with no tier words, and a themed collection
+  // over them. The palette's alpha variant draws its opacity from the Opacity
+  // collection; that COLOR -> FLOAT edge must not make the palette semantic
+  // (and the theme component).
+  const rep = run({
+    collections: [
+      { id: "cColor", name: "Color", defaultModeId: "m", modes: [{ modeId: "m", name: "Value" }] },
+      { id: "cOpacity", name: "Opacity", defaultModeId: "o", modes: [{ modeId: "o", name: "Value" }] },
+      { id: "cSpace", name: "Spacing", defaultModeId: "sp", modes: [{ modeId: "sp", name: "Value" }] },
+      { id: "cTheme", name: "Theme", defaultModeId: "L", modes: [{ modeId: "L", name: "Light" }, { modeId: "D", name: "Dark" }] },
+    ],
+    variables: [
+      mkVar("black", "gray/1000", "cColor", { m: C(0, 0, 0) }, { hidden: true }),
+      mkVar("white", "gray/0", "cColor", { m: C(1, 1, 1) }, { hidden: true }),
+      mkVar("black_a40", "gray/1000-a40", "cColor", { m: K(A("black"), A("op40")) }, { hidden: true }),
+      mkVar("op40", "opacity/40", "cOpacity", { o: 40 }, { type: "FLOAT", scopes: ["COLOR_OPACITY"], hidden: true }),
+      mkVar("sp4", "space/4", "cSpace", { sp: 16 }, { type: "FLOAT", scopes: ["GAP"], hidden: true }),
+      mkVar("t_bg", "surface/default", "cTheme", { L: A("white"), D: A("black") }, { scopes: ["FRAME_FILL"] }),
+      mkVar("t_gap", "space/md", "cTheme", { L: A("sp4"), D: A("sp4") }, { type: "FLOAT", scopes: ["GAP"] }),
+    ],
+    styles: [], components: [], meta: { pageCount: 1, scannedAllPages: true },
+  });
+  for (const id of [
+    "no-all-scopes-on-typed-token",
+    "component-token-must-alias-semantic",
+    "primitive-component-single-mode",
+    "primitive-hidden-from-publishing",
+  ]) {
+    assert.deepEqual(hits(rep, id), [], id);
+  }
+  // The theme still aliases exactly one tier down; the palette's alpha variant
+  // reaching across collections stays alias-one-tier-down's concern.
+  assert.deepEqual(hits(rep, "alias-one-tier-down").map((f) => f.variableId), ["black_a40"]);
+  noFailures(rep);
+});
+
 test("a collection of composed colours over another collection is classified semantic", () => {
   // No tier words in either name, so the classifier must read the references.
   const rep = run({
@@ -194,6 +231,23 @@ test("alias-graph-acyclic follows composed references", () => {
   noFailures(rep);
 });
 
+test("a primitive's composed alpha variant adds no hop to the alias depth", () => {
+  const rep = run(snap([
+    ...prims(),
+    // component -> semantic -> primitive alpha variant (-> its base, same collection)
+    mkVar("p_ink_a40", "gray/900-a40", P, { [pm]: K(A("p_g900"), 40) }, { hidden: true }),
+    mkVar("s_scrim", "overlay/scrim", S, { [sL]: A("p_ink_a40"), [sD]: A("p_ink_a40") }, { scopes: ["FRAME_FILL"] }),
+    mkVar("k_scrim", "dialog/scrim", CO, { [km]: A("s_scrim") }, { scopes: ["FRAME_FILL"] }),
+    // ...but the walk still goes through a primitive's composed colour for cycles
+    mkVar("p_loop", "gray/loop-a40", P, { [pm]: K(A("p_loop"), 40) }, { hidden: true }),
+    mkVar("s_loop", "overlay/loop", S, { [sL]: A("p_loop"), [sD]: A("p_loop") }, { scopes: ["FRAME_FILL"] }),
+  ]));
+  const acyclic = hits(rep, "alias-graph-acyclic-max-depth-2");
+  assert.deepEqual(acyclic.map((f) => f.variableId).sort(), ["p_loop", "s_loop"]);
+  for (const f of acyclic) assert.match(f.message, /cyclic/);
+  noFailures(rep);
+});
+
 test("multi-brand discipline follows a composed colour through the brand layer", () => {
   const rep = run(snap([
     ...prims(),
@@ -243,6 +297,27 @@ test("a translucent composed foreground is never contrast-checked as a raw colou
     assert.equal(info.length, 1, JSON.stringify(fg));
     assert.equal(info[0].severity, "info");
     assert.match(info[0].message, /alpha 0\.40/);
+    noFailures(rep);
+  }
+});
+
+test("a composed colour at 100% over a translucent colour side is not contrast-checked as opaque", () => {
+  // black at 5% alpha, composed at 100% opacity: whether the two compound is
+  // unverified, so it is not provably opaque — no RGB contrast, and the
+  // translucency info fires as it does for a plain alias to the same colour.
+  const translucentFg = (fgValue) => snap([
+    ...prims(),
+    mkVar("p_black_a05", "black/a05", P, { [pm]: C(0, 0, 0, 0.05) }, { hidden: true }),
+    mkVar("p_op100", "opacity/100", P, { [pm]: 100 }, { type: "FLOAT", scopes: ["COLOR_OPACITY"], hidden: true }),
+    mkVar("s_surface", "surface/primary", S, { [sL]: A("p_white"), [sD]: A("p_white") }, { scopes: ["FRAME_FILL"] }),
+    mkVar("s_fg", "foreground/on-primary", S, { [sL]: fgValue, [sD]: fgValue }, { scopes: ["TEXT_FILL"] }),
+  ]);
+  for (const fg of [K(A("p_black_a05"), 100), K(A("p_black_a05"), A("p_op100")), K(C(0, 0, 0, 0.05), A("p_op100"))]) {
+    const rep = run(translucentFg(fg));
+    assert.equal(forVar(rep, "fg-bg-pair-contrast", "s_fg"), false, JSON.stringify(fg));
+    const info = hits(rep, "contrast-fallback-export-sampling").filter((f) => f.variableId === "s_fg");
+    assert.equal(info.length, 1, JSON.stringify(fg));
+    assert.match(info[0].message, /alpha 0\.05/);
     noFailures(rep);
   }
 });

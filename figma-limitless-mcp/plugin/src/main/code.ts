@@ -278,10 +278,7 @@ const serializeVariableValue = (value: VariableValue): unknown => {
       return {
         type: "COMPOSED_COLOR",
         color: serializeVariableValue(value.color),
-        opacity:
-          typeof value.opacity === "number"
-            ? value.opacity
-            : serializeVariableValue(value.opacity),
+        opacity: serializeVariableValue(value.opacity),
       };
     }
     if ("r" in value && "g" in value && "b" in value) {
@@ -1269,7 +1266,8 @@ const requireMotionApi = (): MotionAPI => {
 
 /** primaryAxisAlignItems values (typings 1.138.0; SPACE_EVENLY/SPACE_AROUND are
  * Plugin API Update 137). set_auto_layout skips values missing from this list,
- * so the type assertion below fails the build when the typings add one. */
+ * so the type assertion below fails `pnpm typecheck` — and `pnpm build`, which
+ * type-checks first — when the typings add one. */
 const PRIMARY_AXIS_ALIGN_ITEMS = [
   "MIN", "MAX", "CENTER", "SPACE_BETWEEN", "SPACE_EVENLY", "SPACE_AROUND",
 ] as const satisfies readonly FrameNode["primaryAxisAlignItems"][];
@@ -1817,24 +1815,46 @@ const handleRequest = async (
               : familyChanges && variationSettings
                 ? undefined
                 : current?.style;
-          // Same family and style: the given axes patch the current ones.
-          const nextAxes =
-            variationSettings &&
-            !familyChanges &&
-            !styleChanges &&
-            current &&
-            !current.axesMixed
-              ? { ...current.variationSettings, ...variationSettings }
-              : variationSettings;
+          const sameFont = current !== null && !familyChanges && !styleChanges;
 
-          if (!nextFamily || (nextStyle === undefined && !nextAxes)) {
-            throw new Error(
-              "fontFamily and fontStyle must resolve to a concrete font for set_text_properties"
-            );
+          if (sameFont && !variationSettings) {
+            // Repeating the node's own family/style changes nothing: skip the
+            // write, which would reset custom (or per-range) axes to the
+            // named instance.
+          } else if (current && sameFont && current.axesMixed) {
+            // Ranges differ only in axes: patch each range's own axes, since a
+            // node-wide write would reset the axes it omits on every range.
+            await ensureFont(current.family, current.style, variationSettings);
+            for (const segment of node.getStyledTextSegments(["fontName"])) {
+              node.setRangeFontName(segment.start, segment.end, {
+                family: current.family,
+                style: current.style,
+                variationSettings: {
+                  ...segment.fontName.variationSettings,
+                  ...variationSettings,
+                },
+              });
+            }
+            applied.fontName =
+              typeof node.fontName === "symbol"
+                ? { family: current.family, style: current.style, variationSettings: "mixed" }
+                : node.fontName;
+          } else {
+            // Same family and style: the given axes patch the current ones.
+            const nextAxes =
+              variationSettings && current && sameFont
+                ? { ...current.variationSettings, ...variationSettings }
+                : variationSettings;
+
+            if (!nextFamily || (nextStyle === undefined && !nextAxes)) {
+              throw new Error(
+                "fontFamily and fontStyle must resolve to a concrete font for set_text_properties"
+              );
+            }
+
+            assignNodeFontName(node, await ensureNodeFont(nextFamily, nextStyle, nextAxes));
+            applied.fontName = node.fontName;
           }
-
-          assignNodeFontName(node, await ensureNodeFont(nextFamily, nextStyle, nextAxes));
-          applied.fontName = node.fontName;
         }
 
         if (typeof params.fontSize === "number") {
@@ -2931,14 +2951,18 @@ const handleRequest = async (
             typeof params.fontStyle === "string"
               ? params.fontStyle
               : current.style;
-          // Same family and style: the given axes patch the current ones.
-          const nextAxes =
-            variationSettings &&
-            nextFamily === current.family &&
-            nextStyle === current.style
-              ? { ...current.variationSettings, ...variationSettings }
-              : variationSettings;
-          nextFont = await ensureFont(nextFamily, nextStyle, nextAxes);
+          const sameFont =
+            nextFamily === current.family && nextStyle === current.style;
+          // Repeating the style's own family/style without axes changes
+          // nothing, so no font is written and its custom axes survive.
+          if (!sameFont || variationSettings) {
+            // Same family and style: the given axes patch the current ones.
+            const nextAxes =
+              variationSettings && sameFont
+                ? { ...current.variationSettings, ...variationSettings }
+                : variationSettings;
+            nextFont = await ensureFont(nextFamily, nextStyle, nextAxes);
+          }
         }
 
         try {
@@ -3108,10 +3132,7 @@ const handleRequest = async (
             return {
               type: "COMPOSED_COLOR",
               color: await serializeValue(value.color),
-              opacity:
-                typeof value.opacity === "number"
-                  ? value.opacity
-                  : await serializeValue(value.opacity),
+              opacity: await serializeValue(value.opacity),
             };
           }
           if (
@@ -5019,7 +5040,7 @@ const handleRequest = async (
             // aliases as {alias: id}, so the server's alias graph sees them.
             return {
               color: serializeValue(val.color),
-              opacity: typeof val.opacity === "number" ? val.opacity : serializeValue(val.opacity),
+              opacity: serializeValue(val.opacity),
             };
           }
           return val;

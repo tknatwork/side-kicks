@@ -345,7 +345,7 @@ export function registerTools(
 
   server.tool(
     "set_text_properties",
-    "Patch common text properties such as font family/style, variable-font axes (variationSettings, e.g. {wght: 550} — tags from list_fonts variationAxes; they merge over the node's current axes unless the family/style changes), size, alignment, auto-resize, text wrap style (AUTO/BALANCE/PRETTY), line height, letter spacing, fill color, and bounds. The font and axes are validated and loaded before anything on the node changes. When multiple files are connected, specify fileKey.",
+    "Patch common text properties such as font family/style, variable-font axes (variationSettings, e.g. {wght: 550} — tags from list_fonts variationAxes; they merge over the node's current axes, range by range when ranges differ only in axes, unless the family/style changes; repeating the current family/style without axes leaves the font untouched), size, alignment, auto-resize, text wrap style (AUTO/BALANCE/PRETTY), line height, letter spacing, fill color, and bounds. The font and axes are validated and loaded before anything on the node changes. When multiple files are connected, specify fileKey.",
     setTextPropertiesShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(setTextPropertiesInput, args);

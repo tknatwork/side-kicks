@@ -448,7 +448,7 @@ export const updateTextStyleShape = z.object({
     .min(1)
     .optional()
     .describe(
-      "New font style string (defaults to the style's current one when only fontFamily changes). A new family/style resets custom axes to that named instance unless variationSettings is also given."
+      "New font style string (defaults to the style's current one when only fontFamily changes). A new family/style resets custom axes to that named instance unless variationSettings is also given; repeating the current family/style keeps them."
     ),
   variationSettings: fontVariationSettingsInput
     .optional()
@@ -1579,12 +1579,12 @@ export const setTextPropertiesShape = z.object({
     .string()
     .optional()
     .describe(
-      "Optional font style. When omitted it is kept from the node — except when fontFamily changes together with variationSettings, where Figma picks the new family's named instance closest to the axes."
+      "Optional font style. When omitted it is kept from the node — except when fontFamily changes together with variationSettings, where Figma picks the new family's named instance closest to the axes. Repeating the node's current family/style without variationSettings leaves its font (custom axes included) untouched."
     ),
   variationSettings: fontVariationSettingsInput
     .optional()
     .describe(
-      "Optional variable-font axes, e.g. {wght: 550} (tags from list_fonts `variationAxes`). With the family and style unchanged they merge over the node's current axes; with a new family/style they apply as given (omitted axes keep the named instance's defaults)."
+      "Optional variable-font axes, e.g. {wght: 550} (tags from list_fonts `variationAxes`). With the family and style unchanged they merge over the node's current axes (range by range when its ranges differ only in axes); with a new family/style they apply as given (omitted axes keep the named instance's defaults)."
     ),
   fontSize: z.number().positive().optional().describe("Optional font size"),
   textAlignHorizontal: textAlignHorizontal

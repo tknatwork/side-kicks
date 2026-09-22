@@ -31,7 +31,7 @@ most Figma failures are ordering failures.
 - Fonts load automatically before any text mutation in the dedicated tools. In `execute_code`, load them yourself first.
 - `lineHeight` / `letterSpacing` are `{unit, value}` objects. Bare numbers are rejected.
 - Variable fonts (Update 138+): `list_fonts` reports `variationAxes` per family (e.g. `['slnt','wght']`; `null` = static). Pass `variationSettings: {wght: 550}` to `create_text` / `set_text_properties` / `create_text_style` / `update_text_style` — only tags from `variationAxes`, never invented ones.
-- While the family and style stay the same, axes merge over the current ones. Omitting `fontStyle` lets Figma pick the closest named instance (`create_text` with axes, or a new family with axes); text styles always need `fontStyle`.
+- While the family and style stay the same, axes merge over the current ones (range by range when a node's ranges differ only in axes), and passing the current family/style again without axes keeps them. Omitting `fontStyle` lets Figma pick the closest named instance (`create_text` with axes, or a new family with axes); text styles always need `fontStyle`.
 - `load_fonts` takes `{family}` with no style to load the whole family (heavier). In `execute_code`, `figma.loadFontAsync({family})` does the same.
 - Text reads carry `fontVariationSettings` (variable fonts only) and `textWrapStyle`. `'mixed'` axes with a concrete `fontFamily`/`fontStyle` means the ranges differ only in axis values, not in fonts.
 - `textWrapStyle` is `AUTO | BALANCE | PRETTY` (Update 134+): BALANCE for headings, PRETTY for body. Set it on the text style, not per layer; it only shows when the text wraps.

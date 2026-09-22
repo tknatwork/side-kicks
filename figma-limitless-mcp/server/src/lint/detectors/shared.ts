@@ -89,6 +89,20 @@ export function referenceTargets(val: unknown): string[] {
   return out;
 }
 
+/**
+ * The references that say which tier a value's collection sits in: a plain
+ * alias target, or the colour side of a composed colour. The opacity side is
+ * left out — a COLOR drawing its opacity from a FLOAT collection (a type edge
+ * no plain alias can form) says nothing about the colour collection's tier.
+ */
+export function tierReferenceTargets(val: unknown): string[] {
+  const t = aliasTarget(val);
+  if (t !== null) return [t];
+  const c = composedColor(val);
+  const colorRef = c ? nestedAliasId(c.color) : null;
+  return colorRef !== null ? [colorRef] : [];
+}
+
 /** First path segment of a slash-structured name, lowercased (e.g. "bg/default" -> "bg"). */
 export function roleSegment(name: string): string {
   return name.split("/")[0]?.toLowerCase().trim() ?? "";
@@ -114,7 +128,8 @@ function nameHint(name: string): Tier {
  *   - aliases into a non-primitive collection        -> component
  * Empty/ambiguous collections fall back to a name hint. A cyclic graph
  * classifies both ends as component (the acyclic rule flags the cycle). A
- * composed colour whose colour and/or opacity is an alias counts as an alias.
+ * composed colour whose colour side is an alias counts as an alias; its
+ * opacity side does not (see tierReferenceTargets).
  */
 // analyze() is called independently by ~30 detectors; recomputing the alias-DAG
 // classification per detector over a 1,121-variable / 48-page file is wasteful.
@@ -137,12 +152,12 @@ function computeAnalysis(snap: LintSnapshot): Analysis {
     snap.collections.map((c) => [c.id, c.modes.map((m) => m.modeId)])
   );
 
-  // Cross-collection alias targets per collection (composed-colour references
-  // included).
+  // Cross-collection alias targets per collection (a composed colour's colour
+  // side included, its opacity side not).
   const outColls = new Map<string, Set<string>>();
   for (const v of snap.variables) {
     for (const val of Object.values(v.valuesByMode)) {
-      for (const t of referenceTargets(val)) {
+      for (const t of tierReferenceTargets(val)) {
         const target = varById.get(t);
         if (target && target.collectionId !== v.collectionId) {
           (outColls.get(v.collectionId) ?? outColls.set(v.collectionId, new Set()).get(v.collectionId)!).add(
@@ -204,7 +219,9 @@ function computeAnalysis(snap: LintSnapshot): Analysis {
  * Resolve an alias chain from a variable's mode value. Returns the hop count to
  * a raw value, or a cycle/dangling marker. A composed colour branches into its
  * aliased sides (a bounded DFS; hops is the deepest branch); a plain alias
- * chain resolves exactly as a linear walk would. Bounded by MAX to survive
+ * chain resolves exactly as a linear walk would. A primitive's composed colour
+ * (the allowed derived alpha variant) adds no hops: the walk goes on through it
+ * only to find cycles and dangling references. Bounded by MAX to survive
  * cycles, and stops at the first cycle or dangling reference.
  */
 export function resolveChain(
@@ -216,14 +233,14 @@ export function resolveChain(
   let cyclic = false;
   let dangling = false;
   const path = new Set<string>();
-  const walk = (val: unknown, depth: number): void => {
+  const walk = (val: unknown, depth: number, counting: boolean): void => {
     for (const target of referenceTargets(val)) {
       if (cyclic || dangling) return;
       if (path.has(target) || depth + 1 > 16) {
         cyclic = true;
         return;
       }
-      hops = Math.max(hops, depth + 1);
+      if (counting) hops = Math.max(hops, depth + 1);
       const v = a.byId.get(target);
       if (!v) {
         dangling = true;
@@ -234,11 +251,12 @@ export function resolveChain(
         modeId in v.valuesByMode
           ? v.valuesByMode[modeId]
           : Object.values(v.valuesByMode)[0];
+      const alphaVariant = v.tier === "primitive" && composedColor(next) !== null;
       path.add(target);
-      walk(next, depth + 1);
+      walk(next, depth + 1, counting && !alphaVariant);
       path.delete(target);
     }
   };
-  walk(startValue, 0);
+  walk(startValue, 0, true);
   return { hops, cyclic, dangling };
 }

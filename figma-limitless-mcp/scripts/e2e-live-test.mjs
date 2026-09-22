@@ -223,6 +223,17 @@ async function main() {
     const n = await call("get_node", { nodeId: t.data.nodeId });
     const st = n.data?.styles ?? {};
     expect(!n.err && st.fontFamily === family && st.fontStyle === patched.style && st.fontVariationSettings === "mixed", n.err ?? "axes-only mixed read: " + JSON.stringify([st.fontFamily, st.fontStyle, st.fontVariationSettings]));
+    // An axes-only patch on that node merges range by range: re-asserting
+    // another axis at its current value keeps each range's own wght.
+    const other = axes.find((tag) => tag !== "wght");
+    if (other !== undefined && typeof created[other] === "number") {
+      const ap = await call("set_text_properties", { nodeId: t.data.nodeId, variationSettings: { [other]: created[other] } });
+      expect(!ap.err, ap.err);
+      const rw = await call("execute_code", {
+        code: `var n = await figma.getNodeByIdAsync('${t.data.nodeId}'); return [n.getRangeFontName(0, 1).variationSettings.wght, n.getRangeFontName(3, 4).variationSettings.wght];`,
+      });
+      expect(!rw.err && rw.data.result[0] === 400 && rw.data.result[1] === 650, rw.err ?? "per-range wght after an axes-only patch: " + JSON.stringify(rw.data.result));
+    }
     const restyle = await call("set_text_properties", { nodeId: t.data.nodeId, fontStyle: style });
     expect(!restyle.err, "style change on an axes-only mixed node: " + restyle.err);
 
@@ -231,6 +242,9 @@ async function main() {
     expect(!cs.err && cs.data.style.fontName.variationSettings?.wght === 550, cs.err ?? "style: " + JSON.stringify(cs.data.style.fontName));
     const us = await call("update_text_style", { styleId: cs.data.style.id, variationSettings: { wght: 650 } });
     expect(!us.err && us.data.style.fontName.style === style && us.data.style.fontName.variationSettings?.wght === 650, us.err ?? "style update: " + JSON.stringify(us.data.style.fontName));
+    // Repeating the style's own family without axes keeps its custom axes.
+    const rs = await call("update_text_style", { styleId: cs.data.style.id, fontFamily: family, fontSize: 18 });
+    expect(!rs.err && rs.data.style.fontName.variationSettings?.wght === 650, rs.err ?? "axes reset by a same-family update: " + JSON.stringify(rs.data.style.fontName));
     return `${family} axes ${axes.join(",")}; created as ${t.data.fontName.style}`;
   });
 

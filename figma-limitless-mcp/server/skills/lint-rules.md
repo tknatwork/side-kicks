@@ -8,7 +8,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** For each surface/on-* (bg/fg) pair, in every theme mode, resolved-RGB WCAG contrast >=4.5:1 for normal text and >=3:1 for large text (fontSize>=24px, or >=18.66px with weight>=700) (A11Y-01).
 - **Detect:** When resolving an alias into a primitive, read the primitive in ITS collection's mode (single-mode → defaultModeId), not the semantic modeId. Pairing fg/bg is name-convention (surface/on-*) but RGB+contrast is fully local.
 - **Fix:** Re-point the fg or bg alias to a primitive that clears the ratio in every mode; verify Light and Dark independently.
-- **Composed colors:** only a composed color at 100% opacity is contrast-checked (through its color side); a translucent one composites over its backdrop and is left to contrast-fallback-export-sampling.
+- **Composed colors:** only a provably opaque composed color (100% opacity over an opaque color side) is contrast-checked, through its color side; any other composites over its backdrop and is left to contrast-fallback-export-sampling.
 
 ### `border-icon-graphical-contrast` — WARN
 - **Checks:** border/* and icon/* semantic tokens must meet >=3:1 against their paired surface in every theme mode (SC 1.4.11) (A11Y-03).
@@ -24,7 +24,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** When a paint has color.a<1, paint.opacity<1, type!=='SOLID', or the node has effects/blend modes, the raw-RGB WCAG shortcut is invalid - contrast must come from exportAsync pixel sampling (A11Y-05). Methodology guard for the contrast rules.
 - **Detect:** Inspect paint.color.a, paint.opacity, paint.type, and node.effects/blendMode; when any trip, switch the contrast computation to node.exportAsync({format:'PNG'}) and sample the rendered pixels instead of resolved token RGB.
 - **Fix:** Run the contrast check via exportAsync sampling for these nodes; do not trust the alias-resolved RGB when alpha/effects are present.
-- **Composed colors:** a semantic token that resolves to a composed color below 100% opacity is flagged the same way as an RGBA with alpha < 1.
+- **Composed colors:** a semantic token that resolves to a composed color below 100% opacity, or at 100% over a translucent color side, is flagged the same way as an RGBA with alpha < 1.
 
 ## code-output
 
@@ -247,7 +247,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** A Primitives, a Semantic, and (optionally) a Component collection must exist and be identifiable; every local variable belongs to exactly one tier.
 - **Detect:** figma.variables.getLocalVariableCollectionsAsync() -> classify each collection by name/convention into Primitive|Semantic|Component; getLocalVariablesAsync() then group by variableCollectionId and assert each variable maps to exactly one classified tier. Error if <2 tiers resolvable or any variable's collection is unclassifiable.
 - **Fix:** Create the missing collection(s) via write_variables and move stray variables into the correct tier; ensure collection names follow the Primitives/Semantic/Component convention the classifier keys on.
-- **Composed colors:** when a collection's tier is inferred from its references, the aliased sides of its composed colors count as alias edges.
+- **Composed colors:** when a collection's tier is inferred from its references, the aliased color side of a composed color counts as an alias edge; the opacity side (a COLOR drawing on a FLOAT) does not, so a palette whose alpha variants take their opacity from a separate opacity collection stays primitive.
 
 ### `no-node-binds-primitive` — ERROR
 - **Checks:** No node property or paint binds a variable whose collection is the Primitives tier - nodes bind Semantic/Component only.
@@ -288,7 +288,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** Following aliases from any variable must terminate at a raw primitive value within <=2 hops (Component->Semantic->raw) and must contain no cycles.
 - **Detect:** When following an alias into the target variable, evaluate the target's value in the target collection's own mode (single-mode primitive → its defaultModeId), not the source modeId, so cross-collection chains resolve correctly.
 - **Fix:** Flatten the extra indirection so the chain is at most Component->Semantic->Primitive; break any cycle by re-pointing one alias to a literal-backed primitive.
-- **Composed colors:** the walk follows both aliased sides of a composed color; the depth is the deepest side.
+- **Composed colors:** the walk follows both aliased sides of a composed color; the depth is the deepest side. A primitive's composed alpha variant adds no hop (component -> semantic -> alpha variant is 2 hops); the walk still goes through it to find cycles.
 
 ### `primitive-hidden-from-publishing` — ERROR
 - **Checks:** Every Primitive variable hiddenFromPublishing===true; every Semantic and Component variable hiddenFromPublishing===false.

@@ -19,7 +19,7 @@ digests). AI operating rules: `docs/AI-GUIDE.md`.
 ## Architecture (2 packages)
 
 - `server/` — stdio MCP server (`node dist/index.js`), TypeScript → `tsc`. Leader binds HTTP+WS on **:1994** (`/ws` plugin, `/ping` health, `/rpc` followers); extra clients become followers and proxy via `/rpc`. Multi-file registry keyed by `fileKey`.
-- `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.138.0** (Motion/Shaders/Slots/Grid APIs, video export, motion variables, text wrap style, SPACE_EVENLY/SPACE_AROUND, variable fonts). Update 139 (composed colors, `COLOR_OPACITY`) isn't published yet: local shim `src/main/figma-139-shim.ts`, deleted once typings ≥ 1.139 ship it.
+- `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.138.0** (Motion/Shaders/Slots/Grid APIs, video export, motion variables, text wrap style, SPACE_EVENLY/SPACE_AROUND, variable fonts). Update 139 (composed colors, `COLOR_OPACITY`) isn't published yet: `src/main/figma-139-shim.ts` holds the `ComposedColorValue` stand-in (swap it for the real `VariableComposedColor` once typings ≥ 1.139 ship it) next to the composed-color runtime guards and `write_variables` input helpers, which stay; `COLOR_OPACITY` rides the existing `VariableScope` casts.
 
 ## Orchestration layer (server/src/orchestration.ts)
 
