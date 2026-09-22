@@ -77,7 +77,7 @@ test("golden clean DS produces zero findings across the full suite", () => {
 test("golden clean DS stays at zero findings with a new plugin's library-scan fields", () => {
   // A file with no library references: the new plugin reports an empty list.
   const report = runLint(
-    { ...goldenSnapshot(), externalVariableIds: [], externalRefScanTruncated: false },
+    { ...goldenSnapshot(), externalVariableIds: [], externalUnresolvedIds: [], externalRefScanTruncated: false },
     { severity: "all" }
   );
   assert.equal(

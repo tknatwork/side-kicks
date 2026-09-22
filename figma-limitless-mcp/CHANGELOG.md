@@ -15,24 +15,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   `getLocalVariablesAsync()` leaves out imported library variables, so every alias to one was
   reported as a dangling ERROR although Figma resolves it. `lint_run` now looks up each distinct
   non-local target (plain aliases and composed-color sides) with `getVariableByIdAsync` and sends
-  the ones that resolved as `externalVariableIds`. Only a target that resolves to nothing is
-  still an ERROR, with the same message. The lookup stops at 2,000 ids and then sets
-  `externalRefScanTruncated`; past the cap, an unchecked target isn't reported, because it can't
-  be proven dangling. A plugin build older than 0.5.1 sends no `externalVariableIds`, so the
-  server keeps the old behaviour and reports every non-local target until the plugin is rebuilt.
-  A file with no library aliases lints exactly as before.
+  the ones that resolved as `externalVariableIds` and the ones that resolved to nothing as
+  `externalUnresolvedIds`. Only a target that resolves to nothing is still an ERROR, with the
+  same message. The lookup stops at 2,000 ids and then sets `externalRefScanTruncated`, which the
+  report's `scope` repeats. A checked target that resolved to nothing is still reported past the
+  cap; an unchecked one isn't, because it can't be proven dangling. A plugin build older than
+  0.5.1 sends no `externalVariableIds`, so the server keeps the old behaviour and reports every
+  non-local target until the plugin is rebuilt. A file with no library aliases lints exactly as
+  before.
 - **No other rule draws conclusions from a library target it can't see.** A collection with no
   tier word in its name that aliases the library is no longer inferred primitive (so
   `primitive-raw-values-only`, `primitive-hidden-from-publishing`, `no-node-binds-primitive` and
   `primitive-component-single-mode` stop firing on it) or semantic; its tier is unknown and the
-  tier rules skip it, unless a local non-primitive target already makes it component.
+  rules that need the exact tier skip it. If it also aliases another local collection, it is
+  still semantic or component: it is component when a target is proven semantic or component,
+  and otherwise the typed-token rules (`no-all-scopes-on-typed-token`, the color, dimension and
+  type role-scope matches, `hue-ramp-words-primitives-only`) still check it. A target collection
+  of unknown tier may be primitive, so it doesn't make the collections above it component.
   `three-tier-collections-exist` doesn't report a missing tier when the file aliases library
   variables (the library may supply it). `multi-brand-alias-discipline` doesn't report a token
-  whose chain reaches a library variable. `component-token-must-alias-semantic` and
-  `hue-ramp-words-primitives-only` skip unknown-tier variables, and an unknown-tier composed color
-  adds no hop to the alias depth, as a primitive's alpha variant doesn't. For a library target
-  itself, the depth, one-tier-down, component → semantic, contrast and binding rules were already
-  silent, and still are.
+  whose chain reaches a library variable. `component-token-must-alias-semantic` skips an
+  unknown-tier target, `hue-ramp-words-primitives-only` skips an unknown-tier variable that may be
+  primitive, and an unknown-tier composed color adds no hop to the alias depth, as a primitive's
+  alpha variant doesn't. For a library target itself, the depth, one-tier-down, component →
+  semantic, contrast and binding rules were already silent, and still are.
 
 ### Changed
 

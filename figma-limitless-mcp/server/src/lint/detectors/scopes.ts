@@ -5,7 +5,7 @@
 // classification. Role-matching is conservative — only clear roles fire.
 
 import type { Detector } from "../runner.js";
-import { analyze, roleSegment, type PartialFinding } from "./shared.js";
+import { analyze, isTyped, roleSegment, type PartialFinding } from "./shared.js";
 
 const LEGAL_SCOPES: Record<string, Set<string>> = {
   COLOR: new Set([
@@ -56,18 +56,17 @@ const TYPE_ROLES: Array<{ re: RegExp; scopes: string[]; type: string; label: str
   { re: /letter-?spacing|tracking/, scopes: ["LETTER_SPACING"], type: "FLOAT", label: "LETTER_SPACING" },
 ];
 
-const isTyped = (tier: string): boolean => tier === "semantic" || tier === "component";
 const has = (scopes: string[], any: string[]): boolean => any.some((s) => scopes.includes(s));
 
 const noAllScopesOnTypedToken: Detector = (snap) => {
   const a = analyze(snap);
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
-    if (isTyped(v.tier) && v.scopes.includes("ALL_SCOPES")) {
+    if (isTyped(a, v) && v.scopes.includes("ALL_SCOPES")) {
       out.push({
         rule_id: "no-all-scopes-on-typed-token",
         variableId: v.id,
-        message: `${v.tier} token '${v.name}' uses ALL_SCOPES; scope it to its real property so code-gen emits the right CSS (ALL_SCOPES on a bound token pollutes the binding menu and blurs intent).`,
+        message: `${v.tier === "unknown" ? "typed" : v.tier} token '${v.name}' uses ALL_SCOPES; scope it to its real property so code-gen emits the right CSS (ALL_SCOPES on a bound token pollutes the binding menu and blurs intent).`,
       });
     }
   }
@@ -120,7 +119,7 @@ function roleMatch(
   const a = analyze(snap);
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
-    if (!isTyped(v.tier)) continue;
+    if (!isTyped(a, v)) continue;
     if (wantType && v.resolvedType !== wantType) continue;
     const specific = v.scopes.filter((s) => s !== "ALL_SCOPES");
     if (specific.length === 0) continue; // ALL_SCOPES-only handled elsewhere
@@ -148,7 +147,7 @@ const typeRoleScopeMatch: Detector = (snap) => {
   const a = analyze(snap);
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
-    if (!isTyped(v.tier)) continue;
+    if (!isTyped(a, v)) continue;
     const specific = v.scopes.filter((s) => s !== "ALL_SCOPES");
     if (specific.length === 0) continue;
     const name = v.name.toLowerCase();

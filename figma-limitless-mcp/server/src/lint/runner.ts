@@ -112,11 +112,14 @@ export interface LintSnapshot {
   // Library-variable references. `variables` holds only LOCAL variables, so the
   // plugin resolves each non-local id an alias (or a composed colour's alias
   // side) references via getVariableByIdAsync and lists the ones that resolved
-  // (imported team-library variables). A NEW plugin always emits the key (even
-  // []); an OLD plugin omits it — `undefined` = not gathered => every non-local
-  // target is dangling, as before. Truncated (lookup cap hit) => an unlisted
-  // non-local id is unsettled, so it can't be proven dangling.
+  // (imported team-library variables) and the ones it checked that resolved to
+  // nothing (provably dangling, capped scan or not). A NEW plugin always emits
+  // both keys (even []); an OLD plugin omits them — `undefined` = not gathered
+  // => every non-local target is dangling, as before. Truncated (lookup cap
+  // hit) => a non-local id in neither list was never checked, so it can't be
+  // proven dangling.
   externalVariableIds?: string[];
+  externalUnresolvedIds?: string[];
   externalRefScanTruncated?: boolean;
   meta: { pageCount: number; scannedAllPages: boolean };
 }
@@ -193,7 +196,17 @@ export interface LintReport {
   rule_failures: Array<{ rule_id: string; message: string }>;
   /** Opt-in rules that are implemented but off this run — what the AI can turn on. */
   available_optin: OptInInfo[];
-  scope: { pageCount: number; scannedAllPages: boolean; variables: number; collections: number; components: number };
+  scope: {
+    pageCount: number;
+    scannedAllPages: boolean;
+    variables: number;
+    collections: number;
+    components: number;
+    /** Set only when the plugin's library-reference lookup hit its cap: a
+     *  non-local alias target past the cap wasn't checked, so
+     *  alias-target-resolves can't report it. */
+    externalRefScanTruncated?: true;
+  };
 }
 
 export function runLint(snap: LintSnapshot, opts: LintOptions = {}): LintReport {
@@ -315,6 +328,7 @@ export function runLint(snap: LintSnapshot, opts: LintOptions = {}): LintReport 
       variables: snap.variables.length,
       collections: snap.collections.length,
       components: snap.components.length,
+      ...(snap.externalRefScanTruncated === true ? { externalRefScanTruncated: true as const } : {}),
     },
   };
 }

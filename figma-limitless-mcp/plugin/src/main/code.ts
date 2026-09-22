@@ -5068,8 +5068,10 @@ const handleRequest = async (
         // imported team-library variables, so an alias to one looks dangling
         // against the local set. Resolve each distinct non-local id (plain
         // aliases and composed-color sides): a library variable resolves, a
-        // deleted one is null, and a lookup that throws counts as null. Capped;
-        // past the cap the rest stay unchecked and the scan says so.
+        // deleted one is null, and a lookup that throws counts as null. Both
+        // outcomes ship, so a checked null stays provably dangling even when
+        // the scan is capped; past the cap the rest stay unchecked and the scan
+        // says so.
         const MAX_EXTERNAL_REF_LOOKUPS = 2000;
         const EXTERNAL_REF_BATCH = 50;
         const localVariableIds = new Set(variables.map((vr) => vr.id));
@@ -5084,17 +5086,19 @@ const handleRequest = async (
         const refsToCheck = [...externalRefIds].slice(0, MAX_EXTERNAL_REF_LOOKUPS);
         const externalRefScanTruncated = externalRefIds.size > refsToCheck.length;
         const externalVariableIds: string[] = [];
+        const externalUnresolvedIds: string[] = [];
         for (let i = 0; i < refsToCheck.length; i += EXTERNAL_REF_BATCH) {
+          const batch = refsToCheck.slice(i, i + EXTERNAL_REF_BATCH);
           const resolved = await Promise.all(
-            refsToCheck.slice(i, i + EXTERNAL_REF_BATCH).map(async (id) => {
+            batch.map(async (id) => {
               try {
-                return (await figma.variables.getVariableByIdAsync(id)) ? id : null;
+                return Boolean(await figma.variables.getVariableByIdAsync(id));
               } catch {
-                return null;
+                return false;
               }
             })
           );
-          for (const id of resolved) if (id !== null) externalVariableIds.push(id);
+          batch.forEach((id, j) => (resolved[j] ? externalVariableIds : externalUnresolvedIds).push(id));
         }
 
         const snapCollections = collections.map((c) => ({
@@ -5470,6 +5474,7 @@ const handleRequest = async (
             frameDupScanTruncated,
             codeMappingScanTruncated,
             externalVariableIds,
+            externalUnresolvedIds,
             externalRefScanTruncated,
             meta: {
               pageCount: figma.root.children.length,

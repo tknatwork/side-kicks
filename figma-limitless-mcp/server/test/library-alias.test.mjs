@@ -2,8 +2,9 @@
 // getLocalVariablesAsync() leaves library variables out of the snapshot, so the
 // plugin's lint_run resolves every non-local id an alias (or a composed
 // colour's alias side) references with getVariableByIdAsync and ships the ones
-// that resolved as externalVariableIds, plus externalRefScanTruncated when its
-// lookup cap cut the scan short. These pin that a library alias is a live
+// that resolved as externalVariableIds and the ones that didn't as
+// externalUnresolvedIds, plus externalRefScanTruncated when its lookup cap cut
+// the scan short. These pin that a library alias is a live
 // reference (alias-target-resolves stays an ERROR only for a provably dangling
 // one), that no other rule asserts anything about a target it can't see, and
 // that an old plugin build (no externalVariableIds) keeps the old behaviour.
@@ -36,9 +37,9 @@ const snap = (collections, variables, extra = {}) => ({
 
 // Library variables the file consumes: they resolve, but aren't local.
 const LIB = ["lib_gray900", "lib_white", "lib_blue500", "lib_op40"];
-const NEW_PLUGIN = { externalVariableIds: LIB, externalRefScanTruncated: false };
+const NEW_PLUGIN = { externalVariableIds: LIB, externalUnresolvedIds: [], externalRefScanTruncated: false };
 // The lookup cap was hit before any id was checked.
-const TRUNCATED = { externalVariableIds: [], externalRefScanTruncated: true };
+const TRUNCATED = { externalVariableIds: [], externalUnresolvedIds: [], externalRefScanTruncated: true };
 
 const prims = () => [
   mkVar("p_g900", "gray/900", P, { [pm]: C(0.08, 0.08, 0.08) }, { hidden: true }),
@@ -101,7 +102,7 @@ test("a truncated library scan leaves an unchecked non-local id silent", () => {
     ...prims(),
     mkVar("s_bg", "background/default", S, { [sL]: A("lib_white"), [sD]: A("unchecked_1") }, { scopes: ["FRAME_FILL"] }),
     mkVar("s_scrim", "overlay/scrim", S, { [sL]: K(A("unchecked_2"), 40), [sD]: K(A("p_g900"), 40) }, { scopes: ["FRAME_FILL"] }),
-  ], { externalVariableIds: ["lib_white"], externalRefScanTruncated: true }));
+  ], { externalVariableIds: ["lib_white"], externalUnresolvedIds: [], externalRefScanTruncated: true }));
   assert.deepEqual(hits(rep, "alias-target-resolves"), []);
   noFailures(rep);
 });
@@ -281,4 +282,104 @@ test("multi-brand discipline doesn't guess whether a library variable is the bra
   // An old plugin build reports it, as before.
   const old = run(snap([PRIM, SEM], vars), opts);
   assert.deepEqual(hits(old, "multi-brand-alias-discipline").map((f) => f.variableId).sort(), ["s_direct", "s_lib"]);
+});
+
+// --- a capped scan keeps what the plugin proved ------------------------------
+
+test("a capped scan still reports a checked target that resolved to nothing", () => {
+  const rep = run(snap([PRIM, SEM], [
+    ...prims(),
+    mkVar("s_bg", "background/default", S, { [sL]: A("lib_white"), [sD]: A("deleted_1") }, { scopes: ["FRAME_FILL"] }),
+    mkVar("s_scrim", "overlay/scrim", S, { [sL]: K(A("p_g900"), A("deleted_op")), [sD]: K(A("p_g900"), 40) }, { scopes: ["FRAME_FILL"] }),
+    // past the cap: never checked, so not provably dangling
+    mkVar("s_fg", "foreground/default", S, { [sL]: A("unchecked_1"), [sD]: A("p_white") }, { scopes: ["TEXT_FILL"] }),
+  ], {
+    externalVariableIds: ["lib_white"],
+    externalUnresolvedIds: ["deleted_1", "deleted_op"],
+    externalRefScanTruncated: true,
+  }));
+  const errs = hits(rep, "alias-target-resolves");
+  const msg = Object.fromEntries(errs.map((f) => [f.variableId, f.message]));
+  assert.deepEqual(Object.keys(msg).sort(), ["s_bg", "s_scrim"]);
+  assert.equal(msg.s_bg, "'background/default' has a dangling alias in mode sDark (target deleted_1 not found).");
+  assert.equal(msg.s_scrim, "'overlay/scrim' has a dangling composed-color reference in mode sLight (target deleted_op not found).");
+  for (const f of errs) assert.equal(f.severity, "error");
+  // The report says the scan was capped; an uncapped one doesn't.
+  assert.equal(rep.scope.externalRefScanTruncated, true);
+  assert.equal("externalRefScanTruncated" in run(snap([PRIM, SEM], prims(), NEW_PLUGIN)).scope, false);
+  noFailures(rep);
+});
+
+test("a checked-null target isn't taken for a library one by the tier rules", () => {
+  const capped = { externalVariableIds: [], externalUnresolvedIds: ["deleted_1"], externalRefScanTruncated: true };
+  // three-tier-collections-exist: the only non-local target is proven dangling,
+  // so the file doesn't use the library and the missing tier is reported.
+  const sem = run(snap([SEM], [
+    mkVar("s_bg", "background/default", S, { [sL]: A("deleted_1"), [sD]: A("deleted_1") }, { scopes: ["FRAME_FILL"] }),
+  ], capped));
+  assert.equal(hits(sem, "three-tier-collections-exist").length, 1);
+  // An unnamed collection whose only reference is proven dangling is tiered
+  // as an old plugin build tiers it, not unknown.
+  const theme = { id: "cTheme", name: "Theme", defaultModeId: "L", modes: [{ modeId: "L", name: "Light" }] };
+  const vars = [mkVar("t_bg", "surface/default", "cTheme", { L: A("deleted_1") })];
+  assert.equal(forVar(run(snap([theme], vars, capped)), "primitive-raw-values-only", "t_bg"), true);
+  assert.equal(forVar(run(snap([theme], vars)), "primitive-raw-values-only", "t_bg"), true);
+  noFailures(sem);
+});
+
+// --- an unknown tier that is still provably semantic or component ------------
+
+test("a collection over local primitives and the library is still checked by the typed-token rules", () => {
+  // It aliases another local collection, so it is semantic or component; the
+  // library target only hides which. The scope and hue rules need no more.
+  const tokens = { id: "cTokens", name: "Tokens", defaultModeId: "L", modes: [{ modeId: "L", name: "Light" }, { modeId: "D", name: "Dark" }] };
+  const vars = [
+    ...prims(),
+    mkVar("t1", "surface/default", "cTokens", { L: A("p_white"), D: A("p_g900") }),
+    mkVar("t2", "background/raised", "cTokens", { L: A("p_white"), D: A("p_g900") }, { scopes: ["TEXT_FILL"] }),
+    mkVar("t3", "accent/blue", "cTokens", { L: A("lib_blue500"), D: A("lib_blue500") }, { scopes: ["FRAME_FILL"] }),
+  ];
+  for (const scan of [NEW_PLUGIN, TRUNCATED, undefined]) {
+    const rep = run(snap([PRIM, tokens], vars, scan));
+    const label = JSON.stringify(scan ?? "old plugin");
+    assert.equal(forVar(rep, "no-all-scopes-on-typed-token", "t1"), true, label);
+    assert.equal(forVar(rep, "color-role-scope-match", "t2"), true, label);
+    assert.equal(forVar(rep, "hue-ramp-words-primitives-only", "t3"), true, label);
+    if (scan) {
+      const f = hits(rep, "no-all-scopes-on-typed-token").find((x) => x.variableId === "t1");
+      assert.equal(f.message.startsWith("typed token 'surface/default' uses ALL_SCOPES"), true, f.message);
+      // Rules that need the exact tier still skip it.
+      assert.deepEqual(hits(rep, "semantic-alias-in-every-mode"), [], label);
+      noFailures(rep);
+    }
+  }
+});
+
+test("an unknown-tier palette doesn't make the local layers above it component", () => {
+  // Unnamed Colour (raw values + one library alias) -> unnamed 2-mode Theme ->
+  // unnamed Button. Colour may be a primitive, so Theme isn't proven
+  // component; Button aliases Theme, which is semantic or component, so it is.
+  const colour = { id: "cColour", name: "Colour", defaultModeId: "m", modes: [{ modeId: "m", name: "Value" }] };
+  const theme = { id: "cTheme", name: "Theme", defaultModeId: "L", modes: [{ modeId: "L", name: "Light" }, { modeId: "D", name: "Dark" }] };
+  const button = { id: "cButton", name: "Button", defaultModeId: "b", modes: [{ modeId: "b", name: "Value" }] };
+  const vars = (brand) => [
+    mkVar("x_ink", "gray/900", "cColour", { m: C(0.08, 0.08, 0.08) }, { hidden: true }),
+    mkVar("x_paper", "gray/0", "cColour", { m: C(1, 1, 1) }, { hidden: true }),
+    mkVar("x_brand", "brand/500", "cColour", { m: brand }, { hidden: true }),
+    mkVar("t_bg", "background/default", "cTheme", { L: A("x_paper"), D: A("x_ink") }, { scopes: ["FRAME_FILL"] }),
+    mkVar("t_fg", "foreground/default", "cTheme", { L: A("x_ink"), D: A("x_paper") }, { scopes: ["TEXT_FILL"] }),
+    mkVar("t_accent", "accent/default", "cTheme", { L: A("x_brand"), D: A("x_brand") }, { scopes: ["FRAME_FILL"] }),
+    mkVar("b_bg", "button/background", "cButton", { b: A("t_accent") }, { scopes: ["FRAME_FILL"] }),
+    mkVar("b_fg", "button/foreground", "cButton", { b: A("t_bg") }, { scopes: ["FRAME_FILL"] }),
+  ];
+  const colls = [colour, theme, button];
+  for (const order of [colls, [...colls].reverse(), [theme, button, colour]]) {
+    const rep = run(snap(order, vars(A("lib_blue500")), NEW_PLUGIN));
+    const label = order.map((c) => c.name).join(",");
+    assert.equal(rep.findings.length, 0, `${label}:\n${listFindings(rep)}`);
+    noFailures(rep);
+  }
+  // The same file with a raw brand colour: Colour primitive, Theme semantic, Button component.
+  const raw = run(snap(colls, vars(C(0.1, 0.3, 0.9)), NEW_PLUGIN));
+  assert.equal(raw.findings.length, 0, listFindings(raw));
 });
