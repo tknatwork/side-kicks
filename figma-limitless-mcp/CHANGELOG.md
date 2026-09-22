@@ -6,6 +6,84 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-22
+
+### Added — Figma Plugin API Updates 134–139 (typings 1.138.0)
+
+- **Text wrap style (Update 134)** — `textWrapStyle` (`AUTO` / `BALANCE` / `PRETTY`) on
+  `set_text_properties`, `create_text`, `create_text_style` and `update_text_style`; read back by
+  `get_text_styles`, `get_styles`, the create/update text-style results and the node serializer
+  (`get_node` / `get_selection` / `get_design_context`, `'mixed'` when paragraphs differ). On an
+  older Figma a write fails with a capability error before anything changes.
+- **`set_auto_layout` `primaryAxisAlignItems`: `SPACE_EVENLY` / `SPACE_AROUND` (Update 137)** —
+  CSS `justify-content: space-evenly / space-around`. The schema enum and the plugin whitelist
+  widen together (the plugin skipped unknown values silently), and the whitelist now fails the
+  build if a typings update adds a value it lacks. Reads pass Figma's value through, so consumers
+  that switch on MIN/MAX/CENTER/SPACE_BETWEEN should handle the new two. `counterAxisAlignItems`
+  is unchanged.
+- **Variable fonts (Update 138)**:
+  - `variationSettings` (e.g. `{wght: 550}`) on the same four text write tools, validated up
+    front: a static family, an axis tag the family doesn't define (the error lists the valid
+    ones) or a Figma without the API fails before anything changes. With the family and style
+    unchanged the axes merge over the current ones; the style is inferred only when the family
+    changes with axes and no style, or `create_text` gets axes and no style. Text styles always
+    keep an explicit style.
+  - `load_fonts` accepts `{family}` with no style to load every style of the family.
+  - `list_fonts` reports `variationAxes` per family whenever styles are included (`null` =
+    static family) — the only valid `variationSettings` keys.
+  - Reads: `fontVariationSettings` on text nodes, `fontName.variationSettings` on text styles,
+    and `create_text` returns the resolved `fontName`.
+- **Composed colors + the `COLOR_OPACITY` scope (Update 139)** — a COLOR value can be
+  `{color, opacity}`: the color `'#RRGGBB'` / `{r,g,b,a}` / `{alias}`, the opacity a 0–100
+  percentage (`60` = 60%) or `{alias}`, and at least one side an alias. `write_variables`
+  `set_value` / `create_variable` author it (`'$N.variableId'` refs resolve inside the alias
+  sides); `get_variable_defs` / `get_variables_deep` read it as `{type:'COMPOSED_COLOR', color,
+  opacity}`, nested aliases resolved. `COLOR_OPACITY` (a color's opacity channel, FLOAT) is
+  distinct from `OPACITY` (layer opacity). No published `@figma/plugin-typings` has Update 139 yet
+  (1.138.0 is the latest), so it runs on a local shim, `plugin/src/main/figma-139-shim.ts`, plus
+  runtime shape detection — delete the shim when typings ≥ 1.139 ship these types.
+
+### Changed
+
+- **`@figma/plugin-typings` 1.137.0 → 1.138.0** (exact pin + lockfile).
+- Version 0.5.0 on both halves (server + plugin).
+- `update_text_style` validates and loads the new font and axes before any patch, so a bad font,
+  family or axis now applies nothing (property patches used to land first).
+
+### Fixed
+
+- **TIMING values are seconds, not milliseconds.** The 0.4.0 notes, the `write_variables`
+  descriptions and the plugin's error text said milliseconds; Figma's `VariableValue` reference
+  defines seconds (`0.2` = 200 ms). Values have always passed through unchanged, so only the
+  documentation was wrong — but check any TIMING values written by following the old wording.
+- **Linter false ERRORs** — `scope-legal-for-resolved-type` no longer flags `COLOR_OPACITY` or
+  `TEXT_CONTENT` on FLOAT variables (both are in Figma's FLOAT scope list; the `TEXT_CONTENT` one
+  predates this release). A FLOAT scoped only `[TEXT_CONTENT]` is exempt from
+  `no-text-content-scope-on-token`, like a STRING.
+- `dimension-role-scope-match` accepts `opacity/*` scoped `[COLOR_OPACITY]` as well as `[OPACITY]`.
+- **Composed references in the alias graph** — a composed color's color/opacity aliases count as
+  alias edges for tier classification, alias-in-every-mode, component → semantic, one-tier-down,
+  cycles and depth, orphan usage (`unused-variable-orphan`) and multi-brand routing, and a
+  dangling reference inside a composed color is an `alias-target-resolves` ERROR.
+  `primitive-raw-values-only` still allows a same-collection alpha variant.
+- **Text whose ranges differ only in axes** — since Update 138 `fontName` reads `mixed` for it.
+  Such nodes now report their family/style plus `fontVariationSettings: 'mixed'` instead of
+  `'mixed'` fonts, `set_text_properties` can change their family or style again, and FigJam
+  sublayer text writes load every range's font instead of falling back to Inter Medium.
+- `create_text` resolves the font before creating the node and removes the node on any later
+  failure, so a failed call no longer leaves an orphan text node behind.
+
+### Note for the operator
+
+- `dist/` is untracked on both halves: rebuild both —
+  `pnpm --dir figma-limitless-mcp/plugin build && pnpm --dir figma-limitless-mcp/server build` —
+  then re-run the plugin in Figma **and restart every MCP client session**.
+- A stale 0.4.1 server still holding :1994 as leader validates follower `/rpc` calls with its OLD
+  schemas (`leader.ts`), so it answers 400 for the new enum values (`SPACE_EVENLY` /
+  `SPACE_AROUND`) and for calls that set only a new field (`textWrapStyle` or
+  `variationSettings` alone). `get_workspace_status` reports the leader's version — check it
+  says 0.5.0.
+
 ## [0.4.1] — 2026-09-01
 
 ### Changed

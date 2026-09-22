@@ -246,7 +246,7 @@ Every rule below is detectable via **Plugin API 1.130 locally** — no REST, no 
 | L13 | Every `ComponentSetNode` has a Code Connect mapping and its `componentPropertyDefinitions` are represented in the mapping | WARN | `ComponentSetNode.componentPropertyDefinitions` + `get_code_mappings` |
 
 ### Not detectable via Plugin API (do NOT add these as lint rules)
-- **Whether the generated code compiles / renders** — Dev Mode output isn't introspectable from the plugin sandbox.
+- **Whether the generated code compiles / renders** — the Dev Mode CSS itself IS readable (`node.getCSSAsync()`, e.g. via `execute_code`), but whether code generated from it compiles or renders is not.
 - **Whether a token name is *semantically meaningful*** (`color/bg/brand` vs `color/bg/thing`) — only the *format* of names/codeSyntax is checkable, not their meaning.
 - **Runtime contrast of on-brand text over brand bg** — only *approximable* by `exportAsync` pixel sampling of a rendered swatch (offline, but heavy and out of scope for code-correctness; belongs to an a11y skill, not this one).
 - **Whether ANDROID/iOS codeSyntax strings match real resource IDs in the app repo** — the plugin can't see the codebase; verify format only.
