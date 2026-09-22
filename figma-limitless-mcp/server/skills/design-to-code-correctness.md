@@ -11,7 +11,7 @@
 
 > Build tokens in **exactly three tiers — Primitives → Semantic → Component** — where:
 > 1. **A component only ever binds to a Semantic token.** Never to a Primitive, never to a raw value.
-> 2. **Every Semantic token is an *alias*** (a `VARIABLE_ALIAS` in every mode), never a literal value.
+> 2. **Every Semantic token is an *alias*** (a `VARIABLE_ALIAS` in every mode), never a literal value. A composed color whose color and/or opacity is an alias counts as an alias edge (Figma Update 139).
 > 3. **Every Semantic token carries `codeSyntax.WEB`** (plus `ANDROID`/`iOS` if those platforms ship).
 > 4. **Every visual property is bound to a variable** — fill, stroke, effect color, corner radius, gap, padding, size — never a hardcoded paint or number.
 > 5. **Every token is scoped** — `scopes` is never `['ALL_SCOPES']` for a typed token.
@@ -164,7 +164,7 @@ Why: the name is the fallback identifier when codeSyntax is absent, and it's the
 
 **F4 — every component binding must resolve into the `Semantic` collection.** The linter resolves `node.boundVariables` → `getVariableByIdAsync(id)` → `.variableCollectionId` and asserts it equals the Semantic collection id, not Primitives. Binding a button straight to `color/blue/500` is the single most common cause of "code got a raw palette value."
 
-**Semantic tokens must be aliases, not literals.** For every variable in `Semantic`, every entry of `valuesByMode` must be `{ type: 'VARIABLE_ALIAS' }`. A raw color sitting in Semantic means the palette leaked one tier down — code gets a hex with no primitive linkage and no cross-mode consistency.
+**Semantic tokens must be aliases, not literals.** For every variable in `Semantic`, every entry of `valuesByMode` must be `{ type: 'VARIABLE_ALIAS' }` (a composed color whose color and/or opacity is an alias counts as an alias edge). A raw color sitting in Semantic means the palette leaked one tier down — code gets a hex with no primitive linkage and no cross-mode consistency.
 
 **Scope every typed token** so Dev Mode offers the right token in the right slot (F5). Map by `resolvedType` + intent:
 
@@ -201,7 +201,7 @@ Run this as a build→lint→fix loop. Do not hand off with any FAIL.
 1. `get_variables_deep` → confirm exactly three collections (`Primitives`, `Semantic`, [`Component`]).
 2. **F1:** Every component/instance visual property is bound — no raw paints or numbers. Run `lint_design_system`.
 3. **F4:** Every component binding resolves into `Semantic` (never `Primitives`). `lint_design_system`.
-4. **Semantic = aliases:** Every `Semantic` variable is a `VARIABLE_ALIAS` in every mode. `lint_tokens`.
+4. **Semantic = aliases:** Every `Semantic` variable is a `VARIABLE_ALIAS` (or an aliased composed color) in every mode. `lint_tokens`.
 5. **F2:** Every publishable (`hiddenFromPublishing === false`) variable has `codeSyntax.WEB` (+ platforms you ship). `lint_tokens`.
 6. **F3:** Every variable name passes the kebab identifier regex. `lint_tokens`.
 7. **F5:** No typed token has `scopes === ['ALL_SCOPES']`. `lint_tokens`.
@@ -235,7 +235,7 @@ Every rule below is detectable via **Plugin API 1.130 locally** — no REST, no 
 | L2 | No typed variable has `scopes === ['ALL_SCOPES']`; scope set matches `resolvedType`+intent | ERROR | `Variable.scopes`, `Variable.resolvedType` |
 | L3 | Each `/`-segment of `Variable.name` matches `^[a-z][a-z0-9]*(-[a-z0-9]+)*$` | ERROR | `Variable.name` |
 | L4 | `codeSyntax.WEB` is derivable from name (`var(--` + name.replace(`/`→`-`) + `)`) | WARN | `Variable.name` + `Variable.codeSyntax.WEB` |
-| L5 | Every variable in the `Semantic` collection is a `VARIABLE_ALIAS` in **every** mode (no literals) | ERROR | `Variable.valuesByMode` entry `.type === 'VARIABLE_ALIAS'` |
+| L5 | Every variable in the `Semantic` collection is a `VARIABLE_ALIAS` in **every** mode (no literals; a composed color whose color and/or opacity is an alias counts as an alias edge) | ERROR | `Variable.valuesByMode` entry `.type === 'VARIABLE_ALIAS'`, or a `{color, opacity}` entry with an aliased side |
 | L6 | Every alias resolves (target exists) and depth ≤ 2 (semantic→primitive) | ERROR | follow `valuesByMode` alias `.id` → `getVariableByIdAsync` |
 | L7 | `Primitives.hiddenFromPublishing === true`; `Semantic.hiddenFromPublishing === false` | WARN | `Variable.hiddenFromPublishing` grouped by `variableCollectionId` |
 | L8 | `Semantic` collection has modes `Light`+`Dark`; `defaultModeId` → `Light` | WARN | `VariableCollection.modes`, `.defaultModeId` |

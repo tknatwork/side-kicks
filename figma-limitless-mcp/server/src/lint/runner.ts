@@ -19,7 +19,9 @@ export interface SnapVariable {
   hiddenFromPublishing: boolean;
   codeSyntax: Record<string, string>;
   description: string;
-  /** modeId -> raw value | { alias: variableId } */
+  /** modeId -> raw value | { alias: variableId } | composed colour (Figma
+   *  Update 139) { color: {r,g,b,a?} | { alias }, opacity: number (0-100
+   *  percent) | { alias } } */
   valuesByMode: Record<string, unknown>;
 }
 

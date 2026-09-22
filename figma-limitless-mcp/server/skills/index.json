@@ -24,7 +24,7 @@
     {
       "slug": "variable-scopes-binding-tokens",
       "title": "Variable Scopes \u2014 Binding the Right Token to the Right Property",
-      "summary": "Map Figma's 22 VariableScopes to correct usage so every non-primitive token binds only to its real property \u2014 the guardrail that makes design\u2192code output correct by construction.",
+      "summary": "Map Figma's 23 VariableScopes to correct usage so every non-primitive token binds only to its real property \u2014 the guardrail that makes design\u2192code output correct by construction.",
       "when_to_use": "Read this whenever you create or edit any non-primitive variable (semantic or component token) with write_variables, whenever you set or change a variable's `scopes`, and before you bind a variable to a node property. Also read it before running lint_tokens / lint_design_system so you know what \"correctly scoped\" means. If a token's scope is left at the default ALL_SCOPES, this skill applies.",
       "uri": "skill://design-system/variable-scopes-binding-tokens",
       "related_rules": [

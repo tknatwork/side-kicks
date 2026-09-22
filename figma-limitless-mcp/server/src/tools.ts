@@ -292,7 +292,7 @@ export function registerTools(
 
   server.tool(
     "get_variable_defs",
-    "Get all local variable definitions including variable collections, modes, and variable values. Variables are Figma's system for design tokens (colors, numbers, strings, booleans, easings, timings). When multiple files are connected, specify fileKey.",
+    "Get all local variable definitions including variable collections, modes, and variable values. Variables are Figma's system for design tokens (colors, numbers, strings, booleans, easings, timings). A COLOR value may be a composed color {type:'COMPOSED_COLOR', color, opacity (0-100 percent)} whose color and/or opacity is an alias (Figma Update 139). When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_variable_defs.shape,
     async ({ fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
@@ -871,7 +871,7 @@ export function registerTools(
 
   server.tool(
     "get_variables_deep",
-    "Full unthrottled variable dump the official MCP cannot produce: every local collection with ALL modes and per-mode values (not just defaults), scopes, descriptions, code syntax, and aliases resolved to {id, name, collection}. Filter to one collection by id or name. This is the ground truth for design-token work.",
+    "Full unthrottled variable dump the official MCP cannot produce: every local collection with ALL modes and per-mode values (not just defaults), scopes, descriptions, code syntax, and aliases resolved to {id, name, collection} (also inside composed colors {type:'COMPOSED_COLOR', color, opacity (0-100 percent)}, Figma Update 139). Filter to one collection by id or name. This is the ground truth for design-token work.",
     getVariablesDeepInput.shape,
     async ({ collectionId, collectionName, resolveAliases, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = {};
@@ -888,7 +888,7 @@ export function registerTools(
 
   server.tool(
     "write_variables",
-    "Author design tokens — the official MCP has NO variable-write surface. Sequential action batch: create_collection, rename_collection, delete_collection, add_mode, rename_mode, remove_mode, create_variable (with scopes/description/valuesByMode), rename_variable, update_variable (scopes/description/hiddenFromPublishing/codeSyntax), set_value, set_alias, bind_to_node (node fields or solid-paint colors), delete_variable. Later actions reference earlier results via '$N.<field>' (e.g. collectionId: '$0.collectionId'), so one call builds a whole collection. Stops at the first error by default and reports per-action outcomes.",
+    "Author design tokens — the official MCP has NO variable-write surface. Sequential action batch: create_collection, rename_collection, delete_collection, add_mode, rename_mode, remove_mode, create_variable (with scopes/description/valuesByMode), rename_variable, update_variable (scopes/description/hiddenFromPublishing/codeSyntax), set_value, set_alias (set_value/create_variable also take composed colors { color: hex|{r,g,b,a}|{alias}, opacity: 0-100|{alias} }), bind_to_node (node fields or solid-paint colors), delete_variable. Later actions reference earlier results via '$N.<field>' (e.g. collectionId: '$0.collectionId'), so one call builds a whole collection. Stops at the first error by default and reports per-action outcomes.",
     writeVariablesInput.shape,
     async ({ actions, stopOnError, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = { actions };

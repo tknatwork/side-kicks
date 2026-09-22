@@ -7,6 +7,8 @@ import type { Detector } from "../runner.js";
 import {
   analyze,
   aliasTarget,
+  composedColor,
+  referenceTargets,
   resolveChain,
   TIER_RANK,
   type PartialFinding,
@@ -34,6 +36,10 @@ const primitiveRawValuesOnly: Detector = (snap) => {
   for (const v of a.variables) {
     if (v.tier !== "primitive") continue;
     for (const [mode, val] of Object.entries(v.valuesByMode)) {
+      // Plain aliases only (aliasTarget, not referenceTargets): a composed
+      // colour inside the primitive collection is Figma's documented derived
+      // alpha variant, and one that reaches across collections is
+      // alias-one-tier-down's concern.
       if (aliasTarget(val)) {
         out.push({
           rule_id: "primitive-raw-values-only",
@@ -58,7 +64,8 @@ const semanticAliasInEveryMode: Detector = (snap) => {
     for (const mode of modes) {
       const val = v.valuesByMode[mode];
       if (val === undefined) continue;
-      if (aliasTarget(val)) aliasModes++;
+      // A composed colour references a variable and themes like an alias.
+      if (referenceTargets(val).length > 0) aliasModes++;
       else rawModes++;
     }
     // Only flag INCONSISTENCY — aliases in some modes, raw in others (a theme
@@ -81,8 +88,8 @@ const componentTokenMustAliasSemantic: Detector = (snap) => {
   for (const v of a.variables) {
     if (v.tier !== "component") continue;
     for (const [mode, val] of Object.entries(v.valuesByMode)) {
-      const t = aliasTarget(val);
-      if (!t) {
+      const refs = referenceTargets(val);
+      if (refs.length === 0) {
         out.push({
           rule_id: "component-token-must-alias-semantic",
           variableId: v.id,
@@ -90,12 +97,13 @@ const componentTokenMustAliasSemantic: Detector = (snap) => {
         });
         break;
       }
-      const target = a.byId.get(t);
-      if (target && target.tier !== "semantic") {
+      const target = refs.map((t) => a.byId.get(t)).find((t) => t && t.tier !== "semantic");
+      if (target) {
+        const verb = composedColor(val) ? "composes" : "aliases";
         out.push({
           rule_id: "component-token-must-alias-semantic",
           variableId: v.id,
-          message: `Component token '${v.name}' aliases a ${target.tier}-tier variable ('${target.name}'); it must alias a SEMANTIC token, not skip tiers.`,
+          message: `Component token '${v.name}' ${verb} a ${target.tier}-tier variable ('${target.name}'); it must alias a SEMANTIC token, not skip tiers.`,
         });
         break;
       }
@@ -109,21 +117,21 @@ const aliasOneTierDown: Detector = (snap) => {
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
     if (TIER_RANK[v.tier] < 0) continue;
-    for (const [mode, val] of Object.entries(v.valuesByMode)) {
-      const t = aliasTarget(val);
-      if (!t) continue;
-      const target = a.byId.get(t);
-      if (!target || TIER_RANK[target.tier] < 0) continue;
-      // Intra-collection aliases are a team's granular in-tier controls, not a
-      // tier violation — only check aliases that cross tier collections.
-      if (target.collectionId === v.collectionId) continue;
-      if (TIER_RANK[v.tier] - TIER_RANK[target.tier] !== 1) {
-        out.push({
-          rule_id: "alias-one-tier-down",
-          variableId: v.id,
-          message: `'${v.name}' (${v.tier}) aliases '${target.name}' (${target.tier}) across collections in mode ${mode}; cross-tier aliases must point EXACTLY one tier down (component->semantic->primitive).`,
-        });
-        break;
+    modes: for (const [mode, val] of Object.entries(v.valuesByMode)) {
+      for (const t of referenceTargets(val)) {
+        const target = a.byId.get(t);
+        if (!target || TIER_RANK[target.tier] < 0) continue;
+        // Intra-collection aliases are a team's granular in-tier controls, not a
+        // tier violation — only check aliases that cross tier collections.
+        if (target.collectionId === v.collectionId) continue;
+        if (TIER_RANK[v.tier] - TIER_RANK[target.tier] !== 1) {
+          out.push({
+            rule_id: "alias-one-tier-down",
+            variableId: v.id,
+            message: `'${v.name}' (${v.tier}) aliases '${target.name}' (${target.tier}) across collections in mode ${mode}; cross-tier aliases must point EXACTLY one tier down (component->semantic->primitive).`,
+          });
+          break modes;
+        }
       }
     }
   }
@@ -135,12 +143,15 @@ const aliasTargetResolves: Detector = (snap) => {
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
     for (const [mode, val] of Object.entries(v.valuesByMode)) {
-      const t = aliasTarget(val);
-      if (t && !a.byId.has(t)) {
+      // Composed-colour references resolve against the same local variable set
+      // as plain aliases.
+      const t = referenceTargets(val).find((id) => !a.byId.has(id));
+      if (t !== undefined) {
+        const kind = composedColor(val) ? "composed-color reference" : "alias";
         out.push({
           rule_id: "alias-target-resolves",
           variableId: v.id,
-          message: `'${v.name}' has a dangling alias in mode ${mode} (target ${t} not found).`,
+          message: `'${v.name}' has a dangling ${kind} in mode ${mode} (target ${t} not found).`,
         });
         break;
       }
@@ -154,7 +165,7 @@ const aliasGraphAcyclic: Detector = (snap) => {
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
     for (const [mode, val] of Object.entries(v.valuesByMode)) {
-      if (!aliasTarget(val)) continue;
+      if (referenceTargets(val).length === 0) continue;
       const { hops, cyclic, dangling } = resolveChain(a, val, mode);
       if (dangling) continue; // reported by alias-target-resolves
       if (cyclic) {
@@ -200,6 +211,8 @@ const duplicatePrimitiveValue: Detector = (snap) => {
   for (const v of a.variables) {
     if (v.tier !== "primitive") continue;
     const val = Object.values(v.valuesByMode)[0];
+    // Plain aliases are skipped; identical composed colours key identically
+    // and are reported like any duplicated raw value.
     if (val === undefined || aliasTarget(val)) continue;
     const key = v.resolvedType + ":" + JSON.stringify(val);
     const first = seen.get(key);
@@ -226,8 +239,7 @@ const unusedVariableOrphan: Detector = (snap) => {
   const aliased = new Set<string>();
   for (const v of a.variables) {
     for (const val of Object.values(v.valuesByMode)) {
-      const t = aliasTarget(val);
-      if (t) aliased.add(t);
+      for (const t of referenceTargets(val)) aliased.add(t);
     }
   }
   const out: PartialFinding[] = [];

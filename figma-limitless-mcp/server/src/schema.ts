@@ -639,7 +639,7 @@ export const getVariablesDeepInput = z.object({
     .boolean()
     .optional()
     .describe(
-      "Resolve VARIABLE_ALIAS values to {id, name, collection} (default true)"
+      "Resolve VARIABLE_ALIAS values to {id, name, collection} (default true), including the aliases nested in composed colors ({type:'COMPOSED_COLOR', color, opacity})"
     ),
   fileKey: fileKeyField,
 });
@@ -770,7 +770,9 @@ const variableAction = z.object({
     .array(z.string())
     .optional()
     .describe(
-      "create_variable: VariableScope list, e.g. ['FONT_FAMILY'] or ['ALL_SCOPES'] — never leave color tokens on ALL_SCOPES in a design system"
+      "create_variable/update_variable: VariableScope list, e.g. ['FONT_FAMILY'] or ['ALL_SCOPES'] — never leave color tokens on ALL_SCOPES in a design system. " +
+      "FLOAT opacity scopes: 'OPACITY' = layer opacity; 'COLOR_OPACITY' = a color's opacity channel (Figma Update 139 — scope the " +
+      "FLOAT behind a composed color's opacity with it; that opacity is a percentage, 60 = 60%)"
     ),
   description: z
     .string()
@@ -790,12 +792,16 @@ const variableAction = z.object({
     .unknown()
     .optional()
     .describe(
-      "set_value: matches resolvedType — COLOR accepts '#RRGGBB' or {r,g,b,a}; TIMING is seconds (0.2 = 200 ms)"
+      "set_value: matches resolvedType — COLOR accepts '#RRGGBB', {r,g,b,a}, or a composed color (Figma Update 139) " +
+      "{ color: '#RRGGBB' | {r,g,b,a?} | {alias: colorVariableId}, opacity: 0-100 percent (60 = 60%) | {alias: floatVariableId} } " +
+      "whose color and/or opacity must be an alias (alias ids may be '$N.variableId' refs); TIMING is seconds (0.2 = 200 ms)"
     ),
   valuesByMode: z
     .record(z.string(), z.unknown())
     .optional()
-    .describe("create_variable: initial values keyed by modeId"),
+    .describe(
+      "create_variable: initial values keyed by modeId — the same value shapes as set_value, composed colors included"
+    ),
   aliasVariableId: z.string().optional().describe("set_alias: the variable to point at"),
   nodeId: createFigmaNodeIdSchema().optional().describe("bind_to_node: target node"),
   field: z

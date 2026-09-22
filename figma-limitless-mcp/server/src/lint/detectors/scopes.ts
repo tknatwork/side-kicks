@@ -12,10 +12,14 @@ const LEGAL_SCOPES: Record<string, Set<string>> = {
     "ALL_SCOPES", "ALL_FILLS", "FRAME_FILL", "SHAPE_FILL", "TEXT_FILL",
     "STROKE_COLOR", "EFFECT_COLOR",
   ]),
+  // Figma's VariableScope reference (Update 139). OPACITY is layer opacity;
+  // COLOR_OPACITY is a colour's opacity channel (the opacity side of a composed
+  // colour). TEXT_CONTENT is legal on FLOAT as well as STRING.
   FLOAT: new Set([
-    "ALL_SCOPES", "CORNER_RADIUS", "WIDTH_HEIGHT", "GAP", "STROKE_FLOAT",
-    "EFFECT_FLOAT", "OPACITY", "FONT_WEIGHT", "FONT_SIZE", "LINE_HEIGHT",
-    "LETTER_SPACING", "PARAGRAPH_SPACING", "PARAGRAPH_INDENT",
+    "ALL_SCOPES", "TEXT_CONTENT", "CORNER_RADIUS", "WIDTH_HEIGHT", "GAP",
+    "STROKE_FLOAT", "EFFECT_FLOAT", "OPACITY", "COLOR_OPACITY", "FONT_WEIGHT",
+    "FONT_SIZE", "LINE_HEIGHT", "LETTER_SPACING", "PARAGRAPH_SPACING",
+    "PARAGRAPH_INDENT",
   ]),
   STRING: new Set(["ALL_SCOPES", "TEXT_CONTENT", "FONT_FAMILY", "FONT_STYLE"]),
   BOOLEAN: new Set(["ALL_SCOPES"]),
@@ -38,7 +42,7 @@ const DIM_ROLES: Array<{ re: RegExp; scopes: string[]; label: string }> = [
   { re: /^(radius|corner|rounding)$/, scopes: ["CORNER_RADIUS"], label: "CORNER_RADIUS" },
   { re: /^(space|spacing|gap|padding|margin|inset)$/, scopes: ["GAP"], label: "GAP" },
   { re: /^(size|width|height|sizing|dimension)$/, scopes: ["WIDTH_HEIGHT"], label: "WIDTH_HEIGHT" },
-  { re: /^(opacity|alpha)$/, scopes: ["OPACITY"], label: "OPACITY" },
+  { re: /^(opacity|alpha)$/, scopes: ["OPACITY", "COLOR_OPACITY"], label: "OPACITY or COLOR_OPACITY" },
 ];
 
 // Typography roles matched against the full name (naming varies: font/size,
@@ -184,6 +188,8 @@ const FIELD_SCOPES: Record<string, string[]> = {
   paddingRight: ["GAP"],
   paddingTop: ["GAP"],
   paddingBottom: ["GAP"],
+  // Layer opacity. COLOR_OPACITY (a colour's opacity channel, consumed through
+  // composed colours) deliberately does not cover it.
   opacity: ["OPACITY"],
   strokeWeight: ["STROKE_FLOAT"],
   characters: ["TEXT_CONTENT"],
@@ -237,12 +243,13 @@ const noTextContentScopeOnToken: Detector = (snap) => {
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
     if (!v.scopes.includes("TEXT_CONTENT")) continue;
-    // A pure content STRING ([TEXT_CONTENT] only) is legitimate; flag anything else.
-    const pureContentString =
-      v.resolvedType === "STRING" &&
+    // A pure content variable ([TEXT_CONTENT] only, STRING or FLOAT) is
+    // legitimate; flag anything else.
+    const pureContent =
+      (v.resolvedType === "STRING" || v.resolvedType === "FLOAT") &&
       v.scopes.length === 1 &&
       v.scopes[0] === "TEXT_CONTENT";
-    if (!pureContentString) {
+    if (!pureContent) {
       out.push({
         rule_id: "no-text-content-scope-on-token",
         variableId: v.id,

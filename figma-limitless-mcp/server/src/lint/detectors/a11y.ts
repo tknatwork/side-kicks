@@ -16,12 +16,54 @@
 
 import type { Detector } from "../runner.js";
 import type { AnalyzedVariable, PartialFinding } from "./shared.js";
-import { analyze, aliasTarget } from "./shared.js";
+import { analyze, aliasTarget, composedColor, nestedAliasId } from "./shared.js";
 
 type RGB = { r: number; g: number; b: number };
 
+/** A target's mode: the same mode when it has one, else its own first mode. */
+function targetMode(a: ReturnType<typeof analyze>, target: string, mode: string): string {
+  const tv = a.byId.get(target);
+  return tv && mode in tv.valuesByMode ? mode : tv ? Object.keys(tv.valuesByMode)[0] : mode;
+}
+
+/** A composed colour's opacity as a 0-100 percentage: the raw number, or a
+ *  FLOAT alias followed down to a raw number. Null when it can't be resolved. */
+function resolveOpacityPct(
+  a: ReturnType<typeof analyze>,
+  raw: unknown,
+  mode: string,
+  depth = 0
+): number | null {
+  if (typeof raw === "number") return raw;
+  const target = nestedAliasId(raw);
+  if (!target || depth > 16) return null;
+  const v = a.byId.get(target);
+  if (!v || v.resolvedType !== "FLOAT") return null;
+  const m = targetMode(a, target, mode);
+  const val = m in v.valuesByMode ? v.valuesByMode[m] : Object.values(v.valuesByMode)[0];
+  return resolveOpacityPct(a, val, m, depth + 1);
+}
+
+/** A raw {r,g,b,a?} colour value's RGB / alpha, or null when it isn't one. */
+function rawRGB(val: unknown): RGB | null {
+  if (val && typeof val === "object" && "r" in (val as object)) {
+    const o = val as { r: number; g: number; b: number };
+    if (typeof o.r === "number") return { r: o.r, g: o.g, b: o.b };
+  }
+  return null;
+}
+function rawAlpha(val: unknown): number | null {
+  if (val && typeof val === "object" && "r" in (val as object)) {
+    const o = val as { a?: number };
+    return typeof o.a === "number" ? o.a : 1;
+  }
+  return null;
+}
+
 /** Resolve a COLOR variable's value in a mode down to concrete RGB (follows
- *  aliases; a target's mode falls back to its own first mode when absent). */
+ *  aliases; a target's mode falls back to its own first mode when absent). A
+ *  composed colour resolves only when provably opaque: a translucent one
+ *  composites over its backdrop, so its RGB contrast proves nothing. */
 function resolveColor(
   a: ReturnType<typeof analyze>,
   varId: string,
@@ -34,15 +76,18 @@ function resolveColor(
   const val = mode in v.valuesByMode ? v.valuesByMode[mode] : Object.values(v.valuesByMode)[0];
   const target = aliasTarget(val);
   if (target) {
-    const tv = a.byId.get(target);
-    const tMode = tv && mode in tv.valuesByMode ? mode : tv ? Object.keys(tv.valuesByMode)[0] : mode;
-    return resolveColor(a, target, tMode, depth + 1);
+    return resolveColor(a, target, targetMode(a, target, mode), depth + 1);
   }
-  if (val && typeof val === "object" && "r" in (val as object)) {
-    const o = val as { r: number; g: number; b: number };
-    if (typeof o.r === "number") return { r: o.r, g: o.g, b: o.b };
+  const composed = composedColor(val);
+  if (composed) {
+    const pct = resolveOpacityPct(a, composed.opacity, mode);
+    if (pct === null || pct < 99.9) return null;
+    const colorRef = nestedAliasId(composed.color);
+    return colorRef
+      ? resolveColor(a, colorRef, targetMode(a, colorRef, mode), depth + 1)
+      : rawRGB(composed.color);
   }
-  return null;
+  return rawRGB(val);
 }
 
 /** Resolve to the raw alpha of a COLOR variable in a mode (1 if opaque/absent). */
@@ -58,15 +103,24 @@ function resolveAlpha(
   const val = mode in v.valuesByMode ? v.valuesByMode[mode] : Object.values(v.valuesByMode)[0];
   const target = aliasTarget(val);
   if (target) {
-    const tv = a.byId.get(target);
-    const tMode = tv && mode in tv.valuesByMode ? mode : tv ? Object.keys(tv.valuesByMode)[0] : mode;
-    return resolveAlpha(a, target, tMode, depth + 1);
+    return resolveAlpha(a, target, targetMode(a, target, mode), depth + 1);
   }
-  if (val && typeof val === "object" && "r" in (val as object)) {
-    const o = val as { a?: number };
-    return typeof o.a === "number" ? o.a : 1;
+  const composed = composedColor(val);
+  if (composed) {
+    // Whether a translucent colour side compounds with the opacity is
+    // unverified, so report only what both readings agree on: below 100% the
+    // result is translucent (alpha <= opacity); at 100% it is opaque only when
+    // the colour side is.
+    const pct = resolveOpacityPct(a, composed.opacity, mode);
+    if (pct === null) return null;
+    if (pct < 99.9) return pct / 100;
+    const colorRef = nestedAliasId(composed.color);
+    const colorAlpha = colorRef
+      ? resolveAlpha(a, colorRef, targetMode(a, colorRef, mode), depth + 1)
+      : rawAlpha(composed.color);
+    return colorAlpha !== null && colorAlpha >= 0.999 ? colorAlpha : null;
   }
-  return null;
+  return rawAlpha(val);
 }
 
 const luminance = ({ r, g, b }: RGB): number => {

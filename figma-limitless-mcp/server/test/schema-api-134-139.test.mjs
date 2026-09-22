@@ -157,3 +157,35 @@ test("the registered (unrefined) shapes advertise the new fields", () => {
     assert.ok("textWrapStyle" in schema.shape);
   }
 });
+
+// --- Update 139: composed colours + COLOR_OPACITY ----------------------------
+
+const COMPOSED = { color: { alias: "$1.variableId" }, opacity: 60 };
+
+test("write_variables carries composed colours through the strict action schema", () => {
+  const actions = [
+    { action: "set_value", variableId: "V:1", modeId: "1:0", value: COMPOSED },
+    { action: "set_value", variableId: "V:1", modeId: "1:0", value: { color: "#101010", opacity: { alias: "V:3" } } },
+    {
+      action: "create_variable", collectionId: "$0.collectionId", name: "overlay/scrim",
+      resolvedType: "COLOR", scopes: ["FRAME_FILL"], valuesByMode: { "$0.defaultModeId": COMPOSED },
+    },
+    { action: "create_variable", collectionId: "C:1", name: "opacity/60", resolvedType: "FLOAT", scopes: ["COLOR_OPACITY"] },
+    { action: "update_variable", variableId: "V:2", scopes: ["COLOR_OPACITY"] },
+  ];
+  accepts("write_variables", { actions });
+  assert.equal(validateRpc("write_variables", undefined, { actions }), null);
+  // .strict() still rejects a misnamed field next to a composed value.
+  rejects("write_variables", {
+    actions: [{ action: "create_variable", collectionId: "C:1", name: "x", resolvedType: "COLOR", values: { m: COMPOSED } }],
+  });
+});
+
+test("write_variables documents composed colours and the two opacity scopes", () => {
+  const { value, valuesByMode, scopes } = writeVariablesInput.shape.actions.element.shape;
+  assert.match(value.description, /composed color/);
+  assert.match(value.description, /0-100 percent/);
+  assert.match(valuesByMode.description, /composed colors/);
+  assert.match(scopes.description, /'OPACITY' = layer opacity/);
+  assert.match(scopes.description, /'COLOR_OPACITY' = a color's opacity channel/);
+});
