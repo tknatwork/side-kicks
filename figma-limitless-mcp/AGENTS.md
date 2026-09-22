@@ -53,8 +53,9 @@ structure right?" — no network, no Figma AI credits.
   whitelisted slug — no path traversal), `get_build_recipe(step?)` (the canonical
   Primitive→Semantic→Component order + the step's **actionable lint gate**).
 - **Linter** — `lint_design_system` runs all 57/57 catalog detectors over a `LintSnapshot`. The
-  plugin's `lint_run` gathers the snapshot (variable graph + styles + components +
-  node bindings, after `loadAllPagesAsync()`) — plus **per-component enrichment**
+  plugin's `lint_run` gathers the snapshot (variable graph + the library variables
+  its aliases resolve to + styles + components + node bindings, after
+  `loadAllPagesAsync()`) — plus **per-component enrichment**
   from one bounded DFS (20k-node budget + `componentScanTruncated`): TEXT-style
   `fontSize`, and per-component AGGREGATES (raw-paint/untyped-text booleans, min
   font size, referenced-property-key union, variant tuples) — never raw node

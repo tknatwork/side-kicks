@@ -79,7 +79,7 @@ A COLOR variable's value can be **composed**: a color plus a separate opacity, `
   ```
 
 - Reads (`get_variable_defs`, `get_variables_deep`) return `{ type: 'COMPOSED_COLOR', color, opacity }`; `get_variables_deep` resolves the nested aliases to names.
-- The linter treats the color and opacity aliases as **alias edges**: they count for alias-in-every-mode, component → semantic, one-tier-down, depth/cycles and usage, and a reference that resolves to no local variable is an `alias-target-resolves` error, exactly like a plain alias. Tier classification counts only the color side, and a primitive's alpha variant adds no hop to the alias depth.
+- The linter treats the color and opacity aliases as **alias edges**: they count for alias-in-every-mode, component → semantic, one-tier-down, depth/cycles and usage, and a reference that resolves to no variable (local or team-library) is an `alias-target-resolves` error, exactly like a plain alias. Tier classification counts only the color side, and a primitive's alpha variant adds no hop to the alias depth.
 
 ---
 

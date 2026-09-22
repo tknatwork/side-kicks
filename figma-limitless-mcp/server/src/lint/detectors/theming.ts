@@ -4,7 +4,7 @@
 
 import type { Detector } from "../runner.js";
 import type { PartialFinding } from "./shared.js";
-import { analyze, referenceTargets } from "./shared.js";
+import { analyze, isExternalRef, referenceTargets } from "./shared.js";
 
 const primitiveComponentSingleMode: Detector = (snap) => {
   const a = analyze(snap);
@@ -141,8 +141,11 @@ const multiBrandAliasDiscipline: Detector = (snap, config) => {
     // mode's chain in THAT SAME mode (falling back to a target's first mode only
     // when the mode is absent) — collapsing to the first mode makes the result
     // order-dependent and can fabricate/miss a finding on per-mode-divergent chains.
-    // A composed colour branches into its aliased sides (bounded DFS).
+    // A composed colour branches into its aliased sides (bounded DFS). A
+    // library variable's name and chain aren't in this file — it may be (or
+    // route through) the brand layer — so reaching one proves nothing.
     let routed = false;
+    let unprovable = false;
     for (const [modeId, val] of Object.entries(v.valuesByMode)) {
       const stack = referenceTargets(val).map((id) => ({ id, hops: 0 }));
       const seen = new Set<string>();
@@ -151,7 +154,10 @@ const multiBrandAliasDiscipline: Detector = (snap, config) => {
         if (seen.has(id) || hops >= 16) continue;
         seen.add(id);
         const tv = a.byId.get(id);
-        if (!tv) continue;
+        if (!tv) {
+          if (isExternalRef(a, id)) unprovable = true;
+          continue;
+        }
         if (isBrandVar(tv.name)) {
           routed = true;
           break;
@@ -161,7 +167,7 @@ const multiBrandAliasDiscipline: Detector = (snap, config) => {
       }
       if (routed) break;
     }
-    if (!routed) {
+    if (!routed && !unprovable) {
       out.push({
         rule_id: "multi-brand-alias-discipline",
         variableId: v.id,

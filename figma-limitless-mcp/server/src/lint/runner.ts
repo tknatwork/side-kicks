@@ -109,6 +109,15 @@ export interface LintSnapshot {
   frameDupCandidates?: SnapFrameDup[];
   frameDupScanTruncated?: boolean;
   codeMappingScanTruncated?: boolean;
+  // Library-variable references. `variables` holds only LOCAL variables, so the
+  // plugin resolves each non-local id an alias (or a composed colour's alias
+  // side) references via getVariableByIdAsync and lists the ones that resolved
+  // (imported team-library variables). A NEW plugin always emits the key (even
+  // []); an OLD plugin omits it — `undefined` = not gathered => every non-local
+  // target is dangling, as before. Truncated (lookup cap hit) => an unlisted
+  // non-local id is unsettled, so it can't be proven dangling.
+  externalVariableIds?: string[];
+  externalRefScanTruncated?: boolean;
   meta: { pageCount: number; scannedAllPages: boolean };
 }
 

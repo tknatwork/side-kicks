@@ -59,7 +59,9 @@ const hueRampWordsPrimitivesOnly: Detector = (snap) => {
   const a = analyze(snap);
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
-    if (v.tier === "primitive") continue; // hue ramps belong in primitives
+    // Hue ramps belong in primitives; an unknown-tier collection (its tier
+    // hangs on library variables) may be one.
+    if (v.tier === "primitive" || v.tier === "unknown") continue;
     const hue = v.name
       .toLowerCase()
       .split("/")

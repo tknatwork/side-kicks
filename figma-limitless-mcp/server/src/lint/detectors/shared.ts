@@ -32,6 +32,32 @@ export interface Analysis {
   varsByCollection: Map<string, AnalyzedVariable[]>;
   modesByCollection: Map<string, string[]>;
   hasVariables: boolean;
+  /** Referenced non-local ids the plugin resolved (imported library variables). */
+  externalIds: Set<string>;
+  /** The plugin's library lookup hit its cap: an unlisted non-local id is unsettled. */
+  externalScanTruncated: boolean;
+}
+
+/**
+ * What a referenced variable id resolves to: a local variable; an imported
+ * team-library variable (the plugin resolved it); an id the plugin's capped
+ * lookup never reached ("unproven" — it may be a library variable); or
+ * nothing ("dangling"). An old plugin build ships no library list, so every
+ * non-local id is dangling, as before.
+ */
+export type RefStatus = "local" | "library" | "unproven" | "dangling";
+
+export function refStatus(a: Analysis, id: string): RefStatus {
+  if (a.byId.has(id)) return "local";
+  if (a.externalIds.has(id)) return "library";
+  return a.externalScanTruncated ? "unproven" : "dangling";
+}
+
+/** A non-local reference that may be a library variable. Its name, tier and
+ *  value live outside this file, so a rule can prove nothing about it. */
+export function isExternalRef(a: Analysis, id: string): boolean {
+  const s = refStatus(a, id);
+  return s === "library" || s === "unproven";
 }
 
 /** If `val` is a serialized alias ({ alias: variableId }), return the target id. */
@@ -129,7 +155,10 @@ function nameHint(name: string): Tier {
  * Empty/ambiguous collections fall back to a name hint. A cyclic graph
  * classifies both ends as component (the acyclic rule flags the cycle). A
  * composed colour whose colour side is an alias counts as an alias; its
- * opacity side does not (see tierReferenceTargets).
+ * opacity side does not (see tierReferenceTargets). A reference to a library
+ * variable (isExternalRef) aliases into a collection whose tier this file
+ * can't see: it rules out primitive, and without a local non-primitive target
+ * to prove component, the collection's tier is unknown (tier rules skip it).
  */
 // analyze() is called independently by ~30 detectors; recomputing the alias-DAG
 // classification per detector over a 1,121-variable / 48-page file is wasteful.
@@ -152,9 +181,14 @@ function computeAnalysis(snap: LintSnapshot): Analysis {
     snap.collections.map((c) => [c.id, c.modes.map((m) => m.modeId)])
   );
 
+  const externalIds = new Set(snap.externalVariableIds ?? []);
+  const externalScanTruncated = snap.externalRefScanTruncated === true;
+
   // Cross-collection alias targets per collection (a composed colour's colour
-  // side included, its opacity side not).
+  // side included, its opacity side not), and the collections that reference
+  // a library variable.
   const outColls = new Map<string, Set<string>>();
+  const libraryRefColls = new Set<string>();
   for (const v of snap.variables) {
     for (const val of Object.values(v.valuesByMode)) {
       for (const t of tierReferenceTargets(val)) {
@@ -163,6 +197,8 @@ function computeAnalysis(snap: LintSnapshot): Analysis {
           (outColls.get(v.collectionId) ?? outColls.set(v.collectionId, new Set()).get(v.collectionId)!).add(
             target.collectionId
           );
+        } else if (!target && (externalIds.has(t) || externalScanTruncated)) {
+          libraryRefColls.add(v.collectionId);
         }
       }
     }
@@ -179,18 +215,19 @@ function computeAnalysis(snap: LintSnapshot): Analysis {
     if (hint !== "unknown") tier.set(c.id, hint);
   }
   // Pass 2 (fallback): unnamed collections with no cross-collection out-aliases
-  // are primitive.
+  // are primitive — unless they reference a library variable (unknown).
   for (const c of snap.collections) {
     if (tier.has(c.id)) continue;
     const outs = outColls.get(c.id);
-    if (!outs || outs.size === 0) tier.set(c.id, "primitive");
+    if (!outs || outs.size === 0) tier.set(c.id, libraryRefColls.has(c.id) ? "unknown" : "primitive");
   }
-  // Pass 3 (fallback): the rest are semantic (all targets primitive) or component.
+  // Pass 3 (fallback): the rest are semantic (all targets primitive) or
+  // component; with a library reference too, "semantic" is unproven (unknown).
   for (const c of snap.collections) {
     if (tier.has(c.id)) continue;
     const outs = outColls.get(c.id)!;
     const allPrimitive = [...outs].every((o) => tier.get(o) === "primitive");
-    tier.set(c.id, allPrimitive ? "semantic" : "component");
+    tier.set(c.id, !allPrimitive ? "component" : libraryRefColls.has(c.id) ? "unknown" : "semantic");
   }
 
   const analyzed: AnalyzedVariable[] = snap.variables.map((v) => ({
@@ -212,6 +249,8 @@ function computeAnalysis(snap: LintSnapshot): Analysis {
     varsByCollection,
     modesByCollection: collModes,
     hasVariables: snap.variables.length > 0,
+    externalIds,
+    externalScanTruncated,
   };
 }
 
@@ -221,8 +260,11 @@ function computeAnalysis(snap: LintSnapshot): Analysis {
  * aliased sides (a bounded DFS; hops is the deepest branch); a plain alias
  * chain resolves exactly as a linear walk would. A primitive's composed colour
  * (the allowed derived alpha variant) adds no hops: the walk goes on through it
- * only to find cycles and dangling references. Bounded by MAX to survive
- * cycles, and stops at the first cycle or dangling reference.
+ * only to find cycles and dangling references; so does one in an unknown-tier
+ * collection, which may be a primitive's. Bounded by MAX to survive cycles,
+ * and stops at the first cycle or non-local reference: `dangling` is set for
+ * any target outside the local set, a library variable included (the walk
+ * can't follow it out of the file, so the depth rule skips that chain).
  */
 export function resolveChain(
   a: Analysis,
@@ -251,7 +293,8 @@ export function resolveChain(
         modeId in v.valuesByMode
           ? v.valuesByMode[modeId]
           : Object.values(v.valuesByMode)[0];
-      const alphaVariant = v.tier === "primitive" && composedColor(next) !== null;
+      const alphaVariant =
+        (v.tier === "primitive" || v.tier === "unknown") && composedColor(next) !== null;
       path.add(target);
       walk(next, depth + 1, counting && !alphaVariant);
       path.delete(target);

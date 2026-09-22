@@ -6,6 +6,45 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-09-22
+
+### Fixed
+
+- **`alias-target-resolves` no longer reports aliases to team-library variables as dangling.**
+  This changes an ERROR rule, and it applies to plain aliases as well as composed colors.
+  `getLocalVariablesAsync()` leaves out imported library variables, so every alias to one was
+  reported as a dangling ERROR although Figma resolves it. `lint_run` now looks up each distinct
+  non-local target (plain aliases and composed-color sides) with `getVariableByIdAsync` and sends
+  the ones that resolved as `externalVariableIds`. Only a target that resolves to nothing is
+  still an ERROR, with the same message. The lookup stops at 2,000 ids and then sets
+  `externalRefScanTruncated`; past the cap, an unchecked target isn't reported, because it can't
+  be proven dangling. A plugin build older than 0.5.1 sends no `externalVariableIds`, so the
+  server keeps the old behaviour and reports every non-local target until the plugin is rebuilt.
+  A file with no library aliases lints exactly as before.
+- **No other rule draws conclusions from a library target it can't see.** A collection with no
+  tier word in its name that aliases the library is no longer inferred primitive (so
+  `primitive-raw-values-only`, `primitive-hidden-from-publishing`, `no-node-binds-primitive` and
+  `primitive-component-single-mode` stop firing on it) or semantic; its tier is unknown and the
+  tier rules skip it, unless a local non-primitive target already makes it component.
+  `three-tier-collections-exist` doesn't report a missing tier when the file aliases library
+  variables (the library may supply it). `multi-brand-alias-discipline` doesn't report a token
+  whose chain reaches a library variable. `component-token-must-alias-semantic` and
+  `hue-ramp-words-primitives-only` skip unknown-tier variables, and an unknown-tier composed color
+  adds no hop to the alias depth, as a primitive's alpha variant doesn't. For a library target
+  itself, the depth, one-tier-down, component → semantic, contrast and binding rules were already
+  silent, and still are.
+
+### Changed
+
+- Version 0.5.1 on both halves (server + plugin).
+
+### Note for the operator
+
+- Rebuild both halves — `pnpm --dir figma-limitless-mcp/plugin build && pnpm --dir
+  figma-limitless-mcp/server build` — then re-run the plugin in Figma **and restart every MCP
+  client session**. The fix needs the new plugin: until it is rebuilt and re-run, library aliases
+  are still reported as dangling ERRORs.
+
 ## [0.5.0] — 2026-09-22
 
 ### Added — Figma Plugin API Updates 134–139 (typings 1.138.0)
