@@ -8,6 +8,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** For each surface/on-* (bg/fg) pair, in every theme mode, resolved-RGB WCAG contrast >=4.5:1 for normal text and >=3:1 for large text (fontSize>=24px, or >=18.66px with weight>=700) (A11Y-01).
 - **Detect:** When resolving an alias into a primitive, read the primitive in ITS collection's mode (single-mode → defaultModeId), not the semantic modeId. Pairing fg/bg is name-convention (surface/on-*) but RGB+contrast is fully local.
 - **Fix:** Re-point the fg or bg alias to a primitive that clears the ratio in every mode; verify Light and Dark independently.
+- **Composed colors:** only a provably opaque composed color (100% opacity over an opaque color side) is contrast-checked, through its color side; any other composites over its backdrop and is left to contrast-fallback-export-sampling.
 
 ### `border-icon-graphical-contrast` — WARN
 - **Checks:** border/* and icon/* semantic tokens must meet >=3:1 against their paired surface in every theme mode (SC 1.4.11) (A11Y-03).
@@ -23,6 +24,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** When a paint has color.a<1, paint.opacity<1, type!=='SOLID', or the node has effects/blend modes, the raw-RGB WCAG shortcut is invalid - contrast must come from exportAsync pixel sampling (A11Y-05). Methodology guard for the contrast rules.
 - **Detect:** Inspect paint.color.a, paint.opacity, paint.type, and node.effects/blendMode; when any trip, switch the contrast computation to node.exportAsync({format:'PNG'}) and sample the rendered pixels instead of resolved token RGB.
 - **Fix:** Run the contrast check via exportAsync sampling for these nodes; do not trust the alias-resolved RGB when alpha/effects are present.
+- **Composed colors:** a semantic token that resolves to a composed color below 100% opacity, or at 100% over a translucent color side, is flagged the same way as an RGBA with alpha < 1.
 
 ## code-output
 
@@ -168,7 +170,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Fix:** Replace ALL_SCOPES with the specific scope family for the token's role (e.g. bg -> FRAME_FILL, radius -> CORNER_RADIUS).
 
 ### `scope-legal-for-resolved-type` — ERROR
-- **Checks:** COLOR->fill/stroke/effect-color scopes; STRING->FONT_FAMILY/FONT_STYLE/TEXT_CONTENT; FLOAT->the 12 numeric scopes; BOOLEAN->ALL_SCOPES only. Also scopes.length>=1 for non-primitives.
+- **Checks:** COLOR->fill/stroke/effect-color scopes; STRING->FONT_FAMILY/FONT_STYLE/TEXT_CONTENT; FLOAT->the 13 numeric scopes (COLOR_OPACITY, a color's opacity channel, included next to OPACITY, layer opacity) plus TEXT_CONTENT; BOOLEAN->ALL_SCOPES only. Also scopes.length>=1 for non-primitives.
 - **Detect:** Cross-check Variable.resolvedType against each entry of Variable.scopes using the fixed legal-scope table per type; error on any illegal (type,scope) pair or empty scopes on a non-primitive.
 - **Fix:** Remove scopes that don't apply to the variable's resolvedType and add the correct one; a COLOR token cannot carry CORNER_RADIUS, etc.
 
@@ -183,7 +185,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Fix:** Set scopes to the family the name implies (a fg/* token gets TEXT_FILL, a border/* token gets STROKE_COLOR).
 
 ### `dimension-role-scope-match` — ERROR
-- **Checks:** radius/*->[CORNER_RADIUS]; space|gap|padding/*->[GAP]; size|*/width|*/height->[WIDTH_HEIGHT]; border/width/*->[STROKE_FLOAT]; opacity/*->[OPACITY].
+- **Checks:** radius/*->[CORNER_RADIUS]; space|gap|padding/*->[GAP]; size|*/width|*/height->[WIDTH_HEIGHT]; border/width/*->[STROKE_FLOAT]; opacity/*->[OPACITY] or [COLOR_OPACITY].
 - **Detect:** For FLOAT variables (Variable.resolvedType==='FLOAT'), derive role from Variable.name and assert Variable.scopes equals the mapped numeric scope.
 - **Fix:** Align scopes to the dimension role the name encodes; a space/* token binds GAP, not WIDTH_HEIGHT.
 
@@ -193,7 +195,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Fix:** Set the single correct typography scope for the token; a font/family STRING gets FONT_FAMILY, a font/weight FLOAT gets FONT_WEIGHT.
 
 ### `no-text-content-scope-on-token` — ERROR
-- **Checks:** No primitive, semantic, or component design token may include TEXT_CONTENT in scopes (that scope is for content strings only).
+- **Checks:** No primitive, semantic, or component design token may include TEXT_CONTENT in scopes (that scope is for content only). A pure content variable, a STRING or FLOAT scoped exactly [TEXT_CONTENT], is exempt.
 - **Detect:** Variable.scopes; error if any design-token variable contains 'TEXT_CONTENT'.
 - **Fix:** Remove TEXT_CONTENT and use the correct font/family/style scope; reserve TEXT_CONTENT for content-string variables outside the token system.
 
@@ -245,6 +247,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** A Primitives, a Semantic, and (optionally) a Component collection must exist and be identifiable; every local variable belongs to exactly one tier.
 - **Detect:** figma.variables.getLocalVariableCollectionsAsync() -> classify each collection by name/convention into Primitive|Semantic|Component; getLocalVariablesAsync() then group by variableCollectionId and assert each variable maps to exactly one classified tier. Error if <2 tiers resolvable or any variable's collection is unclassifiable.
 - **Fix:** Create the missing collection(s) via write_variables and move stray variables into the correct tier; ensure collection names follow the Primitives/Semantic/Component convention the classifier keys on.
+- **Composed colors:** when a collection's tier is inferred from its references, the aliased color side of a composed color counts as an alias edge; the opacity side (a COLOR drawing on a FLOAT) does not, so a palette whose alpha variants take their opacity from a separate opacity collection stays primitive.
 
 ### `no-node-binds-primitive` — ERROR
 - **Checks:** No node property or paint binds a variable whose collection is the Primitives tier - nodes bind Semantic/Component only.
@@ -255,31 +258,37 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** Component->Semantic and Semantic->Primitive only. Flag skip-tier (Component->Primitive), sideways/self (same collection), and upward (Semantic->Component) aliases.
 - **Detect:** For each variable, for each mode in valuesByMode: if value.type==='VARIABLE_ALIAS', getVariableByIdAsync(value.id).variableCollectionId -> targetTier; assert targetTier === sourceTier - 1. Same-collection target = sideways/self; higher tier = upward; two-down = skip-tier.
 - **Fix:** Re-point the alias to the adjacent lower tier; if a component needs a primitive value, first create the intervening semantic token and alias through it.
+- **Composed colors:** a composed color `{color, opacity}` whose color and/or opacity is an alias counts as an alias edge (Figma Update 139), so each aliased side is checked like a plain alias target.
 
 ### `primitive-raw-values-only` — ERROR
 - **Checks:** No valuesByMode entry of a primitive-tier variable may be a VARIABLE_ALIAS (TOK-01).
 - **Detect:** getLocalVariablesAsync() filtered to the Primitives collection id; for each, assert every valuesByMode entry .type !== 'VARIABLE_ALIAS' (must be {r,g,b,a} | number | string literal).
 - **Fix:** Replace the alias with a literal value in the primitive, or move the token to the semantic tier where aliasing is correct.
+- **Composed colors:** a same-collection composed alpha variant (`{color: alias to a primitive, opacity}`) is allowed in primitives; one that reaches another collection is reported by alias-one-tier-down.
 
 ### `semantic-alias-in-every-mode` — ERROR
 - **Checks:** Every valuesByMode entry of a semantic-collection variable must be a VARIABLE_ALIAS - a raw hex/number/string literal in any semantic mode is the raw-per-mode anti-pattern (TOK-02).
 - **Detect:** getLocalVariablesAsync() filtered to the Semantic collection id; for each variable assert Object.values(valuesByMode).every(v => v.type === 'VARIABLE_ALIAS').
 - **Fix:** Replace the literal with an alias to the primitive that encodes that value in that mode, so theme switching flows through the alias.
+- **Composed colors:** a composed color whose color and/or opacity is an alias counts as an alias mode.
 
 ### `component-token-must-alias-semantic` — ERROR
 - **Checks:** Every component-collection variable must be a VARIABLE_ALIAS resolving into the Semantic collection - not a raw per-mode literal (duplicated theme logic) and not a direct primitive alias (TOK-03).
 - **Detect:** For each variable in the Component collection: assert every valuesByMode entry .type==='VARIABLE_ALIAS' AND getVariableByIdAsync(entry.id).variableCollectionId === Semantic collection id.
 - **Fix:** Alias the component token to the matching semantic token; if the needed semantic token is missing, create it first, then alias.
+- **Composed colors:** a composed color counts as an alias; every aliased side must be a semantic token.
 
 ### `alias-target-resolves` — ERROR
 - **Checks:** Every VARIABLE_ALIAS id must resolve to an existing variable (ORPH-01).
 - **Detect:** For each valuesByMode VARIABLE_ALIAS, await figma.variables.getVariableByIdAsync(value.id); error if it returns null/undefined (deleted or cross-file-unresolvable target).
 - **Fix:** Re-point the alias to a live variable or recreate the deleted target; never leave a broken alias id.
+- **Composed colors:** the color and opacity aliases of a composed color are checked too; a dangling one is reported as a dangling composed-color reference.
 
 ### `alias-graph-acyclic-max-depth-2` — ERROR
 - **Checks:** Following aliases from any variable must terminate at a raw primitive value within <=2 hops (Component->Semantic->raw) and must contain no cycles.
 - **Detect:** When following an alias into the target variable, evaluate the target's value in the target collection's own mode (single-mode primitive → its defaultModeId), not the source modeId, so cross-collection chains resolve correctly.
 - **Fix:** Flatten the extra indirection so the chain is at most Component->Semantic->Primitive; break any cycle by re-pointing one alias to a literal-backed primitive.
+- **Composed colors:** the walk follows both aliased sides of a composed color; the depth is the deepest side. A primitive's composed alpha variant adds no hop (component -> semantic -> alpha variant is 2 hops); the walk still goes through it to find cycles.
 
 ### `primitive-hidden-from-publishing` — ERROR
 - **Checks:** Every Primitive variable hiddenFromPublishing===true; every Semantic and Component variable hiddenFromPublishing===false.
@@ -300,4 +309,5 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** A variable absent from every node binding AND from every alias target set is unused locally (ORPH-02). Advisory only - cross-file usage is not locally detectable; never auto-delete.
 - **Detect:** Prepend loadAllPagesAsync so the node-binding half of the usage set covers every page; otherwise on-page-only scanning falsely flags tokens used on other pages.
 - **Fix:** Confirm the token is not consumed by another library file before removing; if truly dead, delete it.
+- **Composed colors:** a variable referenced only as the color or opacity of a composed color is used, not an orphan.
 

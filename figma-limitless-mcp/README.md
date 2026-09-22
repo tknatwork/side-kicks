@@ -108,7 +108,7 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 1. **Orient first:** `get_workspace_status` → `get_file_digest` (token-lean file map, ~1ms from cache when nothing changed). Never start with `get_document`.
 2. **Resume, don't redo:** `load_checkpoint` + `get_journal` reconstruct what a previous session did. `save_checkpoint` after each milestone.
 3. **Building a design system?** `get_build_recipe` first, then build a tier → `lint_design_system` → fix → descend. Read `read_skill` when a rule needs explaining.
-4. **Fonts:** `list_fonts` returns exact `{family, style}` strings — including local/brand fonts the remote MCP can't see. Never guess ('Semibold' ≠ 'Semi Bold' ≠ 'SemiBold').
+4. **Fonts:** `list_fonts` returns exact `{family, style}` strings — including local/brand fonts the remote MCP can't see. Never guess ('Semibold' ≠ 'Semi Bold' ≠ 'SemiBold'). Variable fonts also report their `variationAxes`; drive them with `variationSettings` (e.g. `{wght: 550}`).
 5. **Structure over raw values:** bind variables > apply styles > raw values. Author with `write_variables` (one batched call via `$N.field` back-refs); read with `get_variables_deep`.
 6. **Parallel agents:** `acquire_lock` on what you mutate; locks auto-expire. After a timeout, **read before retrying** — the op may have landed; the journal knows.
 
@@ -119,9 +119,9 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 | 🧭 Orientation | `get_workspace_status` · `get_file_digest` (cached) · `list_files` · `get_metadata` |
 | 📖 Reads | `get_document` · `get_node` · `get_selection` · `get_design_context` · `get_styles` · `get_text_styles` · `get_effect_styles` · `get_variables_deep` · `get_variable_defs` · `get_annotations` · `get_reactions` · `get_motion` · `list_shaders` · `list_fonts` · `list_library_variables` |
 | 🎨 Create & style | `create_frame` · `create_text` · `create_shape` · `create_image` · `set_solid_fill` · `set_gradient_fill` · `set_effects` · `set_stroke_properties` · `apply_style` · `create_paint_style` · `create_effect_style` |
-| ✍️ Text | `set_text_content` · `set_text_properties` · `create_text_style` · `update_text_style` · `apply_text_style` · `load_fonts` |
-| 📐 Layout & structure | `set_auto_layout` · `set_grid_layout` · `set_node_properties` · `set_node_visibility` · `duplicate_nodes` · `reparent_nodes` · `group_nodes` · `ungroup_node` · `delete_nodes` (confirm-gated) |
-| 🔧 Variables | `write_variables` (batched authoring with `$N.field` refs; COLOR/FLOAT/STRING/BOOLEAN + motion EASING/TIMING) |
+| ✍️ Text | `set_text_content` · `set_text_properties` · `create_text_style` · `update_text_style` · `apply_text_style` · `load_fonts` — variable-font axes (`variationSettings`) and text wrap (AUTO/BALANCE/PRETTY) on text nodes and styles |
+| 📐 Layout & structure | `set_auto_layout` (incl. SPACE_EVENLY/SPACE_AROUND) · `set_grid_layout` · `set_node_properties` · `set_node_visibility` · `duplicate_nodes` · `reparent_nodes` · `group_nodes` · `ungroup_node` · `delete_nodes` (confirm-gated) |
+| 🔧 Variables | `write_variables` (batched authoring with `$N.field` refs; COLOR/FLOAT/STRING/BOOLEAN, motion EASING/TIMING with TIMING in seconds, and composed colors — a color plus an opacity, at least one of them an alias — with the COLOR_OPACITY scope) |
 | 🧩 Components & instances | `create_component_from_node` · `combine_as_variants` · `add_component_property` · `create_slot` · `append_to_slot` · `reset_slot` · `get_slots` · `instantiate_component` · `set_instance_properties` · `swap_instance` |
 | 🔀 Prototyping | `set_reactions` · `set_flow_starting_point` |
 | 🎞️ Motion / shaders (beta) | `apply_animation_style` · `apply_shader` |
@@ -155,7 +155,9 @@ All session state lives in `~/.figma-limitless-mcp/` and survives restarts.
 | "Multiple files connected. Specify a fileKey" | Pass `fileKey` (from `list_files`) — the plugin is running in 2+ files |
 | `list_library_variables` errors about permissions | Re-import the plugin — the manifest needs `teamlibrary` (already declared) |
 | Font load fails | The style string is wrong — `list_fonts` for exact values; never guess |
+| "Axis … is not defined" / "… is a static font family" | Use only the axis tags `list_fonts` reports in `variationAxes` (`null` = static family) |
 | A timeout error after a mutation | The op may still have applied — verify with a read (`get_journal` / `get_node`) before retrying |
+| New values (e.g. `SPACE_EVENLY`) or single-field calls fail with a 400 right after an upgrade | An older server still holds :1994 and validates with its old schemas — restart every MCP client session; `get_workspace_status` shows the running version |
 | Changed detector/gather code and lint looks stale | The server loads at session start — rebuild, then a fresh session (or a plugin re-run for gather changes) picks it up |
 
 ## Security & privacy

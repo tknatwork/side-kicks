@@ -43,6 +43,66 @@ export function aliasTarget(val: unknown): string | null {
   return null;
 }
 
+/** The target id of an alias nested in a composed colour: the snapshot's
+ *  { alias: id }, or Figma's raw { type: 'VARIABLE_ALIAS', id } (what an older
+ *  plugin build passes through verbatim). */
+export function nestedAliasId(x: unknown): string | null {
+  const t = aliasTarget(x);
+  if (t !== null) return t;
+  if (x && typeof x === "object") {
+    const o = x as { type?: unknown; id?: unknown };
+    if (o.type === "VARIABLE_ALIAS" && typeof o.id === "string") return o.id;
+  }
+  return null;
+}
+
+/** A composed colour value (Figma Update 139): a colour ({r,g,b,a?} or an
+ *  alias) plus an opacity (a 0-100 percentage or an alias). */
+export interface ComposedColor {
+  color: unknown;
+  opacity: unknown;
+}
+
+export function composedColor(val: unknown): ComposedColor | null {
+  if (!val || typeof val !== "object" || Array.isArray(val)) return null;
+  const o = val as Record<string, unknown>;
+  if (!("color" in o) || !("opacity" in o) || "alias" in o || "r" in o) return null;
+  return { color: o.color, opacity: o.opacity };
+}
+
+/**
+ * Every variable a mode value references: the alias target, or the aliased
+ * sides of a composed colour (which count as alias edges). Detectors that
+ * reason about the alias GRAPH use this; aliasTarget() answers only "is this
+ * value a plain alias".
+ */
+export function referenceTargets(val: unknown): string[] {
+  const t = aliasTarget(val);
+  if (t !== null) return [t];
+  const c = composedColor(val);
+  if (!c) return [];
+  const out: string[] = [];
+  const colorRef = nestedAliasId(c.color);
+  if (colorRef !== null) out.push(colorRef);
+  const opacityRef = nestedAliasId(c.opacity);
+  if (opacityRef !== null) out.push(opacityRef);
+  return out;
+}
+
+/**
+ * The references that say which tier a value's collection sits in: a plain
+ * alias target, or the colour side of a composed colour. The opacity side is
+ * left out — a COLOR drawing its opacity from a FLOAT collection (a type edge
+ * no plain alias can form) says nothing about the colour collection's tier.
+ */
+export function tierReferenceTargets(val: unknown): string[] {
+  const t = aliasTarget(val);
+  if (t !== null) return [t];
+  const c = composedColor(val);
+  const colorRef = c ? nestedAliasId(c.color) : null;
+  return colorRef !== null ? [colorRef] : [];
+}
+
 /** First path segment of a slash-structured name, lowercased (e.g. "bg/default" -> "bg"). */
 export function roleSegment(name: string): string {
   return name.split("/")[0]?.toLowerCase().trim() ?? "";
@@ -67,7 +127,9 @@ function nameHint(name: string): Tier {
  *   - aliases only into primitive collections        -> semantic
  *   - aliases into a non-primitive collection        -> component
  * Empty/ambiguous collections fall back to a name hint. A cyclic graph
- * classifies both ends as component (the acyclic rule flags the cycle).
+ * classifies both ends as component (the acyclic rule flags the cycle). A
+ * composed colour whose colour side is an alias counts as an alias; its
+ * opacity side does not (see tierReferenceTargets).
  */
 // analyze() is called independently by ~30 detectors; recomputing the alias-DAG
 // classification per detector over a 1,121-variable / 48-page file is wasteful.
@@ -90,17 +152,18 @@ function computeAnalysis(snap: LintSnapshot): Analysis {
     snap.collections.map((c) => [c.id, c.modes.map((m) => m.modeId)])
   );
 
-  // Cross-collection alias targets per collection.
+  // Cross-collection alias targets per collection (a composed colour's colour
+  // side included, its opacity side not).
   const outColls = new Map<string, Set<string>>();
   for (const v of snap.variables) {
     for (const val of Object.values(v.valuesByMode)) {
-      const t = aliasTarget(val);
-      if (!t) continue;
-      const target = varById.get(t);
-      if (target && target.collectionId !== v.collectionId) {
-        (outColls.get(v.collectionId) ?? outColls.set(v.collectionId, new Set()).get(v.collectionId)!).add(
-          target.collectionId
-        );
+      for (const t of tierReferenceTargets(val)) {
+        const target = varById.get(t);
+        if (target && target.collectionId !== v.collectionId) {
+          (outColls.get(v.collectionId) ?? outColls.set(v.collectionId, new Set()).get(v.collectionId)!).add(
+            target.collectionId
+          );
+        }
       }
     }
   }
@@ -154,7 +217,12 @@ function computeAnalysis(snap: LintSnapshot): Analysis {
 
 /**
  * Resolve an alias chain from a variable's mode value. Returns the hop count to
- * a raw value, or a cycle/dangling marker. Bounded by MAX to survive cycles.
+ * a raw value, or a cycle/dangling marker. A composed colour branches into its
+ * aliased sides (a bounded DFS; hops is the deepest branch); a plain alias
+ * chain resolves exactly as a linear walk would. A primitive's composed colour
+ * (the allowed derived alpha variant) adds no hops: the walk goes on through it
+ * only to find cycles and dangling references. Bounded by MAX to survive
+ * cycles, and stops at the first cycle or dangling reference.
  */
 export function resolveChain(
   a: Analysis,
@@ -162,21 +230,33 @@ export function resolveChain(
   modeId: string
 ): { hops: number; cyclic: boolean; dangling: boolean } {
   let hops = 0;
-  let target = aliasTarget(startValue);
-  const seen = new Set<string>();
-  while (target !== null) {
-    if (seen.has(target)) return { hops, cyclic: true, dangling: false };
-    seen.add(target);
-    hops++;
-    if (hops > 16) return { hops, cyclic: true, dangling: false };
-    const v = a.byId.get(target);
-    if (!v) return { hops, cyclic: false, dangling: true };
-    // Follow this variable's value in the SAME mode if present, else its default.
-    const next =
-      modeId in v.valuesByMode
-        ? v.valuesByMode[modeId]
-        : Object.values(v.valuesByMode)[0];
-    target = aliasTarget(next);
-  }
-  return { hops, cyclic: false, dangling: false };
+  let cyclic = false;
+  let dangling = false;
+  const path = new Set<string>();
+  const walk = (val: unknown, depth: number, counting: boolean): void => {
+    for (const target of referenceTargets(val)) {
+      if (cyclic || dangling) return;
+      if (path.has(target) || depth + 1 > 16) {
+        cyclic = true;
+        return;
+      }
+      if (counting) hops = Math.max(hops, depth + 1);
+      const v = a.byId.get(target);
+      if (!v) {
+        dangling = true;
+        return;
+      }
+      // Follow this variable's value in the SAME mode if present, else its default.
+      const next =
+        modeId in v.valuesByMode
+          ? v.valuesByMode[modeId]
+          : Object.values(v.valuesByMode)[0];
+      const alphaVariant = v.tier === "primitive" && composedColor(next) !== null;
+      path.add(target);
+      walk(next, depth + 1, counting && !alphaVariant);
+      path.delete(target);
+    }
+  };
+  walk(startValue, 0, true);
+  return { hops, cyclic, dangling };
 }

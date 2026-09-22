@@ -4,7 +4,7 @@
 
 import type { Detector } from "../runner.js";
 import type { PartialFinding } from "./shared.js";
-import { analyze, aliasTarget } from "./shared.js";
+import { analyze, referenceTargets } from "./shared.js";
 
 const primitiveComponentSingleMode: Detector = (snap) => {
   const a = analyze(snap);
@@ -141,22 +141,23 @@ const multiBrandAliasDiscipline: Detector = (snap, config) => {
     // mode's chain in THAT SAME mode (falling back to a target's first mode only
     // when the mode is absent) — collapsing to the first mode makes the result
     // order-dependent and can fabricate/miss a finding on per-mode-divergent chains.
+    // A composed colour branches into its aliased sides (bounded DFS).
     let routed = false;
     for (const [modeId, val] of Object.entries(v.valuesByMode)) {
-      let t = aliasTarget(val);
+      const stack = referenceTargets(val).map((id) => ({ id, hops: 0 }));
       const seen = new Set<string>();
-      let hops = 0;
-      while (t && !seen.has(t) && hops < 16) {
-        seen.add(t);
-        const tv = a.byId.get(t);
-        if (!tv) break;
+      while (stack.length > 0) {
+        const { id, hops } = stack.pop()!;
+        if (seen.has(id) || hops >= 16) continue;
+        seen.add(id);
+        const tv = a.byId.get(id);
+        if (!tv) continue;
         if (isBrandVar(tv.name)) {
           routed = true;
           break;
         }
         const next = modeId in tv.valuesByMode ? tv.valuesByMode[modeId] : Object.values(tv.valuesByMode)[0];
-        t = aliasTarget(next);
-        hops++;
+        for (const t of referenceTargets(next)) stack.push({ id: t, hops: hops + 1 });
       }
       if (routed) break;
     }

@@ -5,6 +5,7 @@
 // legal state. These tests pin both directions: legal motion variables stay
 // silent, and a snapshot claiming an impossible scope fires the ERROR rule
 // (fail-open lookup would previously have skipped unknown types entirely).
+// TIMING values are seconds (Figma's VariableValue reference): 0.15 = 150 ms.
 // Runs against compiled dist/ (pnpm test builds first).
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -33,7 +34,7 @@ test("legal motion variables (ALL_SCOPES) produce no scope errors", () => {
   const snap = base([
     mkMotion("e1", "motion/ease-standard", "EASING", { m: EASE }),
     mkMotion("e2", "motion/ease-entrance", "EASING", { m: BEZIER }),
-    mkMotion("t1", "motion/duration-fast", "TIMING", { m: 150 }),
+    mkMotion("t1", "motion/duration-fast", "TIMING", { m: 0.15 }),
   ]);
   const report = runLint(snap, { severity: "all" });
   assert.equal(
@@ -49,7 +50,7 @@ test("a motion variable with an impossible scope fires the ERROR rule", () => {
   // fail-open on the new types.
   const snap = base([
     mkMotion("e_bad", "motion/ease-broken", "EASING", { m: EASE }, ["EFFECT_FLOAT"]),
-    mkMotion("t_bad", "motion/duration-broken", "TIMING", { m: 200 }, ["WIDTH_HEIGHT"]),
+    mkMotion("t_bad", "motion/duration-broken", "TIMING", { m: 0.2 }, ["WIDTH_HEIGHT"]),
   ]);
   const report = runLint(snap, { severity: "all" });
   const hits = report.findings.filter((f) => f.rule_id === "scope-legal-for-resolved-type");

@@ -55,7 +55,7 @@ The full, un-editorialized ramp. Raw values only.
 
 - **Collection:** `Primitives`. **Modes:** exactly **one** (`Value`). A primitive's hex does not change with theme — the *mapping* does, and that lives in Semantic.
 - **Contents:** the complete color ramps (`color/neutral/0…900`, `color/blue/50…900`), the spacing scale (`space/*`), radii (`radius/*`), and type primitives (`font/family/*`, `font/size/*`, `line-height/*`).
-- **Aliases:** none, ever. Primitives are the leaves of the DAG.
+- **Aliases:** none — primitives are the leaves of the DAG. The one allowance is a translucent variant composed from a primitive in the **same** collection (a composed color, see Tier 2).
 - **Scopes:** `['ALL_SCOPES']` is acceptable **because primitives are never bound to a node** (see Tier 2). Scoping them is busywork — the enforcement that matters is "no node binds a primitive," not the primitive's own scope list.
 - **Publishing:** **`hiddenFromPublishing: true` on every primitive.** Consumers of the library theme against semantics; exposing 120 raw swatches invites people to bind them directly, which breaks theming.
 - **Naming:** `category/family/step` → `color/blue/600`, `space/4`, `radius/md`. Slashes create Figma groups.
@@ -67,6 +67,7 @@ The only tier most nodes should ever touch. Every token is a **role**, and every
 - **Collection:** `Semantic`. **Modes:** the **theme axis** — `Light`, `Dark` (add `hc`, `brand-b`, etc. as more modes on *this same collection*).
 - **Contents — roles, not colors:** `bg/*`, `fg/*`, `border/*`, `brand/*` (and `fg/on-brand`, `bg/subtle`, `border/strong`…). Name by *job*, never by hue: `bg/default`, not `bg/white`.
 - **Aliases:** each variable aliases a **Primitive**, and does so **once per mode**. `bg/default` in `Light` → `color/neutral/0`; in `Dark` → `color/neutral/900`. Same variable, two modes, two primitive targets — this is the entire theming mechanism.
+- **Translucent variants — compose, don't copy.** Since Figma Update 139 a COLOR value can be a composed color `{ color, opacity }`: the color aliases a base color, the opacity is a percentage (`60` = 60%) or aliases a FLOAT scoped `COLOR_OPACITY`. The hue stays linked to its base instead of living in a hard-coded RGBA. A composed color whose color and/or opacity is an alias counts as an alias edge, so it obeys one-tier-down like any alias (composing inside the primitive collection is fine).
 - **Scopes:** **tight, and never `ALL_SCOPES`.** The scope declares which CSS property the token feeds (the scope matrix below).
 - **codeSyntax:** set `WEB` for every one — `--bg-default`, `--fg-muted`, `--border-default`.
 
@@ -82,7 +83,7 @@ The only tier most nodes should ever touch. Every token is a **role**, and every
 | `space/*` (semantic) | gap / padding | `['GAP']` | `gap` / `padding` |
 | `size/*` (semantic) | width / height | `['WIDTH_HEIGHT']` | `width` / `height` |
 
-Valid Plugin-API 1.130 `VariableScope` values you'll use: `ALL_SCOPES`, `FRAME_FILL`, `SHAPE_FILL`, `TEXT_FILL`, `STROKE_COLOR`, `EFFECT_COLOR`, `CORNER_RADIUS`, `GAP`, `WIDTH_HEIGHT`, `STROKE_FLOAT`, `FONT_SIZE`, `LINE_HEIGHT`, `LETTER_SPACING`, `FONT_FAMILY`, `FONT_STYLE`, `FONT_WEIGHT`, `OPACITY`. **`ALL_SCOPES` on a bound color is the single most common structural defect** — it is the reason the generator can't tell a text color from a background.
+Valid current Plugin-API `VariableScope` values you'll use: `ALL_SCOPES`, `FRAME_FILL`, `SHAPE_FILL`, `TEXT_FILL`, `STROKE_COLOR`, `EFFECT_COLOR`, `CORNER_RADIUS`, `GAP`, `WIDTH_HEIGHT`, `STROKE_FLOAT`, `FONT_SIZE`, `LINE_HEIGHT`, `LETTER_SPACING`, `FONT_FAMILY`, `FONT_STYLE`, `FONT_WEIGHT`, `OPACITY` (layer opacity), `COLOR_OPACITY` (a color's opacity channel, Update 139). **`ALL_SCOPES` on a bound color is the single most common structural defect** — it is the reason the generator can't tell a text color from a background.
 
 ## Tier 3 — COMPONENT (optional, per-component — resist it)
 
@@ -260,8 +261,8 @@ Each rule names its **Plugin API 1.130 detection path**. Rules marked *(not lint
 
 1. **Three-collection tiering.** `getLocalVariableCollectionsAsync()` returns collections identifiable as Primitive/Semantic/Component (by name and by signature: Primitive = all-raw single-mode, Semantic = multi-mode + aliases). Every variable belongs to exactly one tier.
 2. **No node bound to a Primitive.** Traverse with `findAllWithCriteria`; for each node read `node.boundVariables` (fields like `itemSpacing`, `topLeftRadius`, `width`, `opacity`, `strokeWeight`) **and** each `paint.boundVariables.color` in `fills`/`strokes`. Resolve the referenced variable → its collection → its tier. If tier is Primitive ⇒ **error**.
-3. **Alias direction is one tier down.** For each variable, inspect `valuesByMode` for `{ type: 'VARIABLE_ALIAS', id }`; resolve the target's collection/tier and assert `targetTier === sourceTier − 1`. Flags skip-tier (Component→Primitive), sideways (Semantic→Semantic, Component→Component), and upward aliases.
-4. **Primitives hold raw values only.** No entry in a Primitive's `valuesByMode` is a `VARIABLE_ALIAS`.
+3. **Alias direction is one tier down.** For each variable, inspect `valuesByMode` for `{ type: 'VARIABLE_ALIAS', id }` (and the aliased sides of a composed color, which count as alias edges); resolve the target's collection/tier and assert `targetTier === sourceTier − 1`. Flags skip-tier (Component→Primitive), sideways (Semantic→Semantic, Component→Component), and upward aliases.
+4. **Primitives hold raw values only.** No entry in a Primitive's `valuesByMode` is a `VARIABLE_ALIAS` (a same-collection composed alpha variant is allowed).
 5. **Primitives hidden from publishing.** Every Primitive `Variable.hiddenFromPublishing === true`.
 6. **No `ALL_SCOPES` on bound color.** For COLOR variables in Semantic/Component tiers, `Variable.scopes` must be non-empty and must **not** contain `ALL_SCOPES`.
 7. **Semantic color scope matches role.** Parse the name prefix (`bg/`,`fg/`,`border/`,`brand/`) and assert `scopes` ⊆ the allowed set (bg/brand→`FRAME_FILL`/`SHAPE_FILL`; fg→`TEXT_FILL`; border→`STROKE_COLOR`). Flags e.g. a `border/*` scoped `TEXT_FILL`.

@@ -29,7 +29,7 @@ Building a structurally-correct system in Figma "always messes up the code outpu
 
 ---
 
-## 2. The 22 scopes — the canonical map
+## 2. The 23 scopes — the canonical map
 
 `resolvedType` gates the coarse category; `scopes` gates the exact property. A scope is only legal on a matching `resolvedType`. Memorize this table — it is the whole skill.
 
@@ -46,7 +46,8 @@ Building a structurally-correct system in Figma "always messes up the code outpu
 | `WIDTH_HEIGHT` | FLOAT | width, height, min/max size | `node.boundVariables.width` / `.height` |
 | `GAP` | FLOAT | auto-layout **item spacing AND padding** | `boundVariables.itemSpacing` / `paddingLeft`… |
 | `STROKE_FLOAT` | FLOAT | stroke weight | `node.boundVariables.strokeWeight` / `strokeTopWeight`… |
-| `OPACITY` | FLOAT | layer opacity | `node.boundVariables.opacity` |
+| `OPACITY` | FLOAT | layer opacity (NOT a color's opacity channel) | `node.boundVariables.opacity` |
+| `COLOR_OPACITY` | FLOAT | a color's opacity channel (Update 139) | the `opacity` alias of a COLOR variable's composed value (§2a) |
 | `EFFECT_FLOAT` | FLOAT | effect radius / spread / offset | `node.effects[i].boundVariables.radius`… |
 | `FONT_SIZE` | FLOAT | font size | `node.boundVariables.fontSize` (whole-node) / styled segments |
 | `FONT_WEIGHT` | FLOAT | numeric font weight (e.g. 400) | `boundVariables.fontWeight` |
@@ -56,13 +57,29 @@ Building a structurally-correct system in Figma "always messes up the code outpu
 | `PARAGRAPH_INDENT` | FLOAT | paragraph indent | `boundVariables.paragraphIndent` |
 | `FONT_FAMILY` | STRING | font family | `boundVariables.fontFamily` |
 | `FONT_STYLE` | STRING | font style ("Regular"/"Semi Bold") | `boundVariables.fontStyle` |
-| `TEXT_CONTENT` | STRING | the text string itself | `boundVariables.characters` |
+| `TEXT_CONTENT` | STRING, FLOAT | the text string itself | `boundVariables.characters` |
 
 **BOOLEAN variables** support no design-property scope — only `ALL_SCOPES`. (They drive visibility/exposed props, not painted properties.)
 
-**Note on padding:** there is deliberately **no** `PADDING` scope in the 22. Auto-layout padding binds under `GAP`. Therefore a spacing token used for gap *and* padding is scoped `[GAP]` — that is the only correct answer, by elimination.
+**Note on padding:** there is deliberately **no** `PADDING` scope in the 23. Auto-layout padding binds under `GAP`. Therefore a spacing token used for gap *and* padding is scoped `[GAP]` — that is the only correct answer, by elimination.
 
 **Note on `ALL_FILLS`:** it is a *grouping* scope equal to `FRAME_FILL + SHAPE_FILL + TEXT_FILL`. Use it only when a color genuinely applies to all three surfaces (rare for a well-factored system). Combining `ALL_FILLS` with any of its members is redundant and is a lint failure.
+
+### 2a. Composed colors and `COLOR_OPACITY` (Figma Update 139)
+
+A COLOR variable's value can be **composed**: a color plus a separate opacity, `{ color, opacity }`. The color is a raw color or an alias to a COLOR variable; the opacity is a **percentage** (`60` = 60%) or an alias to a FLOAT variable. Figma requires the color and/or the opacity to be an alias. A translucent variant then stays linked to its base hue instead of being a hard-coded RGBA copy.
+
+- Scope the FLOAT behind a composed opacity `[COLOR_OPACITY]`, which offers it only in color-opacity pickers. `OPACITY` is a different property (layer opacity); don't use one for the other.
+- Author one with `write_variables` (`set_value`, or `create_variable` `valuesByMode`). Aliases are variable ids, and `$N.variableId` refs work (here `$1` is the base COLOR and `$2` the `COLOR_OPACITY` FLOAT, created earlier in the same batch):
+
+  ```json
+  { "action": "create_variable", "collectionId": "$0.collectionId", "name": "overlay/scrim", "resolvedType": "COLOR",
+    "scopes": ["FRAME_FILL"],
+    "valuesByMode": { "$0.defaultModeId": { "color": { "alias": "$1.variableId" }, "opacity": { "alias": "$2.variableId" } } } }
+  ```
+
+- Reads (`get_variable_defs`, `get_variables_deep`) return `{ type: 'COMPOSED_COLOR', color, opacity }`; `get_variables_deep` resolves the nested aliases to names.
+- The linter treats the color and opacity aliases as **alias edges**: they count for alias-in-every-mode, component → semantic, one-tier-down, depth/cycles and usage, and a reference that resolves to no local variable is an `alias-target-resolves` error, exactly like a plain alias. Tier classification counts only the color side, and a primitive's alpha variant adds no hop to the alias depth.
 
 ---
 
@@ -89,7 +106,7 @@ Rationale for the clean split: **surfaces are `FRAME_FILL`, content ink is `TEXT
 | `space/*`, `gap/*`, `padding/*` | `[GAP]` |
 | `size/*`, `*/width`, `*/height` (icon size, control height, avatar size) | `[WIDTH_HEIGHT]` |
 | `border/width/*`, `stroke/width/*` | `[STROKE_FLOAT]` |
-| `opacity/*` | `[OPACITY]` |
+| `opacity/*` | `[OPACITY]` (layer opacity) or `[COLOR_OPACITY]` (the opacity side of composed colors, §2a) |
 | `elevation/*/blur`, `*/spread`, `*/offset` | `[EFFECT_FLOAT]` |
 
 ### Type roles
@@ -104,7 +121,7 @@ Rationale for the clean split: **surfaces are `FRAME_FILL`, content ink is `TEXT
 | `font/letterSpacing/*` | FLOAT | `[LETTER_SPACING]` |
 | `font/paragraphSpacing/*` | FLOAT | `[PARAGRAPH_SPACING]` |
 
-`TEXT_CONTENT` is **never** used on a design token — it is for binding real content strings (data), not the design system. Any primitive or semantic token carrying `TEXT_CONTENT` is a lint failure.
+`TEXT_CONTENT` is **never** used on a design token — it is for binding real content (a STRING, or a FLOAT shown as text), not the design system. Any primitive or semantic token carrying `TEXT_CONTENT` is a lint failure.
 
 ### Primitives are the one exception
 
@@ -194,10 +211,10 @@ Every binding is forced correct; the emitted code is deterministic. That is the 
 Every rule below is checkable with `figma.variables.getLocalVariablesAsync()`, `getLocalVariableCollectionsAsync()`, `Variable.resolvedType / .scopes / .hiddenFromPublishing / .variableCollectionId`, alias resolution, and `node.boundVariables` (incl. `paints[].boundVariables`) via `findAllWithCriteria`. Identify the primitives collection by convention (name matches `/primitive|core|palette|^_/i` or a configured id).
 
 1. **No ALL_SCOPES on non-primitives.** For any variable whose collection is not the primitives collection: `!scopes.includes('ALL_SCOPES')`. Else → error.
-2. **Non-empty, type-valid scopes.** Non-primitive variables must have `scopes.length >= 1` and every scope must be legal for `resolvedType` (COLOR→{ALL_FILLS,FRAME_FILL,SHAPE_FILL,TEXT_FILL,STROKE_COLOR,EFFECT_COLOR}; STRING→{FONT_FAMILY,FONT_STYLE,TEXT_CONTENT}; FLOAT→{CORNER_RADIUS,WIDTH_HEIGHT,GAP,STROKE_FLOAT,OPACITY,EFFECT_FLOAT,FONT_SIZE,FONT_WEIGHT,LINE_HEIGHT,LETTER_SPACING,PARAGRAPH_SPACING,PARAGRAPH_INDENT}; BOOLEAN→{}). Any scope outside its type set → error.
+2. **Non-empty, type-valid scopes.** Non-primitive variables must have `scopes.length >= 1` and every scope must be legal for `resolvedType` (COLOR→{ALL_FILLS,FRAME_FILL,SHAPE_FILL,TEXT_FILL,STROKE_COLOR,EFFECT_COLOR}; STRING→{FONT_FAMILY,FONT_STYLE,TEXT_CONTENT}; FLOAT→{TEXT_CONTENT,CORNER_RADIUS,WIDTH_HEIGHT,GAP,STROKE_FLOAT,OPACITY,COLOR_OPACITY,EFFECT_FLOAT,FONT_SIZE,FONT_WEIGHT,LINE_HEIGHT,LETTER_SPACING,PARAGRAPH_SPACING,PARAGRAPH_INDENT}; BOOLEAN→{}). Any scope outside its type set → error.
 3. **No redundant scope sets.** If `scopes` includes `ALL_SCOPES` it must be the only entry. If it includes `ALL_FILLS` it must not also include `FRAME_FILL`/`SHAPE_FILL`/`TEXT_FILL`. Else → warning.
 4. **Color-role ⇄ scope by name.** `*/bg/*|*/surface/*` → fill scopes only, must not include `STROKE_COLOR`/`EFFECT_COLOR`; `*/border/*|*/divider/*` → `[STROKE_COLOR]` only; `*/fg/*|*/text/*|*/label/*|*/icon/*` → subset of `{TEXT_FILL,SHAPE_FILL}` only; `*/shadow/*|*/overlay/*` → `[EFFECT_COLOR]` only. Mismatch → error.
-5. **Dimension-role ⇄ scope by name.** `radius/*`→`[CORNER_RADIUS]`; `space/*|gap/*|padding/*`→`[GAP]`; `size/*|*/width|*/height`→`[WIDTH_HEIGHT]`; `border/width/*|stroke/width/*`→`[STROKE_FLOAT]`; `opacity/*`→`[OPACITY]`. Mismatch → error.
+5. **Dimension-role ⇄ scope by name.** `radius/*`→`[CORNER_RADIUS]`; `space/*|gap/*|padding/*`→`[GAP]`; `size/*|*/width|*/height`→`[WIDTH_HEIGHT]`; `border/width/*|stroke/width/*`→`[STROKE_FLOAT]`; `opacity/*`→`[OPACITY]` or `[COLOR_OPACITY]`. Mismatch → error.
 6. **Type-role ⇄ scope by name.** `font/size/*`→`[FONT_SIZE]`; `*/lineHeight/*`→`[LINE_HEIGHT]`; `*/letterSpacing/*`→`[LETTER_SPACING]`; `font/weight/*`(FLOAT)→`[FONT_WEIGHT]`; `font/family/*`(STRING)→`[FONT_FAMILY]`; `font/style/*`(STRING)→`[FONT_STYLE]`. Mismatch → error.
 7. **No TEXT_CONTENT on design tokens.** Any variable in the primitives or semantic/component collections with `scopes.includes('TEXT_CONTENT')` → error.
 8. **Bound-property ⇄ scope match (live drift check).** For every `node.boundVariables` and `paints[].boundVariables` entry, resolve the variable and confirm its `scopes` permit that property given `node.type`: fill on a container frame → needs `FRAME_FILL`/`ALL_FILLS`; fill on `TEXT` → `TEXT_FILL`/`ALL_FILLS`; fill on a shape → `SHAPE_FILL`/`ALL_FILLS`; stroke color → `STROKE_COLOR`; `topLeftRadius`/`cornerRadius` → `CORNER_RADIUS`; `itemSpacing`/`padding*` → `GAP`; `strokeWeight` → `STROKE_FLOAT`; `width`/`height` → `WIDTH_HEIGHT`; `fontSize`→`FONT_SIZE`, etc. Off-scope binding → error (this is the check that catches wrong bindings before they reach code output).

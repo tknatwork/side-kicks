@@ -314,10 +314,26 @@ const fontPair = z.object({
   style: z
     .string()
     .min(1)
+    .optional()
     .describe(
-      "Exact style string as Figma reports it (e.g. 'Semibold' vs 'Semi Bold' — discover via list_fonts, never guess)"
+      "Exact style string as Figma reports it (e.g. 'Semibold' vs 'Semi Bold' — discover via list_fonts, never guess). Omit to load EVERY style of the family in one call (Plugin API Update 138) — needed before a variationSettings write that lets Figma pick the style; heavier for large families."
     ),
 });
+
+// Plugin API Update 138 variable fonts: axis values keyed by OpenType axis tag.
+// Figma: "a tag is always four ASCII characters"; NaN/Infinity would only fail
+// deep inside Figma. Each use site describes its own merge semantics.
+const fontVariationSettingsInput = z
+  .record(
+    z
+      .string()
+      .regex(
+        /^[\x20-\x7E]{4}$/,
+        "Axis tags are exactly 4 printable ASCII characters (e.g. 'wght', 'wdth', 'slnt', 'opsz')"
+      ),
+    z.number().finite()
+  )
+  .refine((value) => Object.keys(value).length > 0, "variationSettings needs at least one axis");
 
 const lineHeightInput = z
   .union([
@@ -349,6 +365,12 @@ const textCase = z.enum([
 
 const textDecoration = z.enum(["NONE", "UNDERLINE", "STRIKETHROUGH"]);
 
+const textWrapStyle = z
+  .enum(["AUTO", "BALANCE", "PRETTY"])
+  .describe(
+    "Paragraph wrap style (Plugin API Update 134+): AUTO = normal wrapping (the CSS default); BALANCE = even line lengths (CSS text-wrap: balance — headings); PRETTY = avoids a short last line (CSS text-wrap: pretty — body copy). Only visible when the text wraps (a fixed width, i.e. textAutoResize other than WIDTH_AND_HEIGHT)."
+  );
+
 const textStylePatchFields = {
   fontSize: z
     .number()
@@ -369,6 +391,7 @@ const textStylePatchFields = {
     .describe("Paragraph indent in pixels"),
   textCase: textCase.optional(),
   textDecoration: textDecoration.optional(),
+  textWrapStyle: textWrapStyle.optional(),
   description: z
     .string()
     .optional()
@@ -388,6 +411,11 @@ export const createTextStyleInput = z.object({
     .string()
     .min(1)
     .describe("Exact font style string (discover via list_fonts)"),
+  variationSettings: fontVariationSettingsInput
+    .optional()
+    .describe(
+      "Optional variable-font axes for the style, e.g. {wght: 550} (tags from list_fonts `variationAxes`). fontStyle is still required; axes you omit keep that named instance's defaults."
+    ),
   ...textStylePatchFields,
   skipIfExists: z
     .boolean()
@@ -419,7 +447,14 @@ export const updateTextStyleShape = z.object({
     .string()
     .min(1)
     .optional()
-    .describe("New font style string (defaults to the style's current one when only fontFamily changes)"),
+    .describe(
+      "New font style string (defaults to the style's current one when only fontFamily changes). A new family/style resets custom axes to that named instance unless variationSettings is also given; repeating the current family/style keeps them."
+    ),
+  variationSettings: fontVariationSettingsInput
+    .optional()
+    .describe(
+      "Variable-font axes, e.g. {wght: 550} (tags from list_fonts `variationAxes`). With the family and style unchanged they merge over the style's current axes; with a new family/style they apply as given (omitted axes keep the named instance's defaults)."
+    ),
   ...textStylePatchFields,
   fileKey: fileKeyField,
 });
@@ -434,6 +469,7 @@ export const updateTextStyleInput = updateTextStyleShape
       value.newName !== undefined ||
       value.fontFamily !== undefined ||
       value.fontStyle !== undefined ||
+      value.variationSettings !== undefined ||
       value.fontSize !== undefined ||
       value.lineHeight !== undefined ||
       value.letterSpacing !== undefined ||
@@ -441,6 +477,7 @@ export const updateTextStyleInput = updateTextStyleShape
       value.paragraphIndent !== undefined ||
       value.textCase !== undefined ||
       value.textDecoration !== undefined ||
+      value.textWrapStyle !== undefined ||
       value.description !== undefined,
     "At least one property to update must be provided"
   );
@@ -489,7 +526,7 @@ export const loadFontsInput = z.object({
   fonts: z
     .array(fontPair)
     .min(1)
-    .describe("Exact {family, style} pairs to load"),
+    .describe("Exact {family, style?} entries to load (omit style to load the whole family)"),
   fileKey: fileKeyField,
 });
 
@@ -602,7 +639,7 @@ export const getVariablesDeepInput = z.object({
     .boolean()
     .optional()
     .describe(
-      "Resolve VARIABLE_ALIAS values to {id, name, collection} (default true)"
+      "Resolve VARIABLE_ALIAS values to {id, name, collection} (default true), including the aliases nested in composed colors ({type:'COMPOSED_COLOR', color, opacity})"
     ),
   fileKey: fileKeyField,
 });
@@ -726,14 +763,16 @@ const variableAction = z.object({
       "create_variable: the variable type. Motion variables: EASING values are " +
       "{ type, easingFunctionCubicBezier?, easingFunctionSpring? } (type e.g. " +
       "EASE_IN_AND_OUT, CUSTOM_CUBIC_BEZIER, GENTLE, HOLD); TIMING values are " +
-      "plain numbers in ms. Motion variables are fixed to ALL_SCOPES — Figma " +
-      "rejects setting scopes on them."
+      "plain numbers in seconds (0.2 = 200 ms). Motion variables are fixed to " +
+      "ALL_SCOPES — Figma rejects setting scopes on them."
     ),
   scopes: z
     .array(z.string())
     .optional()
     .describe(
-      "create_variable: VariableScope list, e.g. ['FONT_FAMILY'] or ['ALL_SCOPES'] — never leave color tokens on ALL_SCOPES in a design system"
+      "create_variable/update_variable: VariableScope list, e.g. ['FONT_FAMILY'] or ['ALL_SCOPES'] — never leave color tokens on ALL_SCOPES in a design system. " +
+      "FLOAT opacity scopes: 'OPACITY' = layer opacity; 'COLOR_OPACITY' = a color's opacity channel (Figma Update 139 — scope the " +
+      "FLOAT behind a composed color's opacity with it; that opacity is a percentage, 60 = 60%)"
     ),
   description: z
     .string()
@@ -752,11 +791,17 @@ const variableAction = z.object({
   value: z
     .unknown()
     .optional()
-    .describe("set_value: matches resolvedType — COLOR accepts '#RRGGBB' or {r,g,b,a}"),
+    .describe(
+      "set_value: matches resolvedType — COLOR accepts '#RRGGBB', {r,g,b,a}, or a composed color (Figma Update 139) " +
+      "{ color: '#RRGGBB' | {r,g,b,a?} | {alias: colorVariableId}, opacity: 0-100 percent (60 = 60%) | {alias: floatVariableId} } " +
+      "whose color and/or opacity must be an alias (alias ids may be '$N.variableId' refs); TIMING is seconds (0.2 = 200 ms)"
+    ),
   valuesByMode: z
     .record(z.string(), z.unknown())
     .optional()
-    .describe("create_variable: initial values keyed by modeId"),
+    .describe(
+      "create_variable: initial values keyed by modeId — the same value shapes as set_value, composed colors included"
+    ),
   aliasVariableId: z.string().optional().describe("set_alias: the variable to point at"),
   nodeId: createFigmaNodeIdSchema().optional().describe("bind_to_node: target node"),
   field: z
@@ -1480,9 +1525,13 @@ export const setAutoLayoutInput = z.object({
   paddingBottom: z.number().min(0).optional(),
   paddingLeft: z.number().min(0).optional(),
   primaryAxisAlignItems: z
-    .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"])
+    .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN", "SPACE_EVENLY", "SPACE_AROUND"])
     .optional()
-    .describe("Alignment along the primary axis"),
+    .describe(
+      "Alignment along the primary axis (CSS justify-content): MIN=flex-start, MAX=flex-end, " +
+      "CENTER=center, SPACE_BETWEEN=space-between, SPACE_EVENLY=space-evenly, " +
+      "SPACE_AROUND=space-around. SPACE_EVENLY/SPACE_AROUND need Figma Plugin API Update 137+."
+    ),
   counterAxisAlignItems: z
     .enum(["MIN", "MAX", "CENTER", "BASELINE"])
     .optional()
@@ -1526,7 +1575,17 @@ export const createFrameInput = z.object({
 export const setTextPropertiesShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("The text node ID to update"),
   fontFamily: z.string().optional().describe("Optional font family"),
-  fontStyle: z.string().optional().describe("Optional font style"),
+  fontStyle: z
+    .string()
+    .optional()
+    .describe(
+      "Optional font style. When omitted it is kept from the node — except when fontFamily changes together with variationSettings, where Figma picks the new family's named instance closest to the axes. Repeating the node's current family/style without variationSettings leaves its font (custom axes included) untouched."
+    ),
+  variationSettings: fontVariationSettingsInput
+    .optional()
+    .describe(
+      "Optional variable-font axes, e.g. {wght: 550} (tags from list_fonts `variationAxes`). With the family and style unchanged they merge over the node's current axes (range by range when its ranges differ only in axes); with a new family/style they apply as given (omitted axes keep the named instance's defaults)."
+    ),
   fontSize: z.number().positive().optional().describe("Optional font size"),
   textAlignHorizontal: textAlignHorizontal
     .optional()
@@ -1537,6 +1596,11 @@ export const setTextPropertiesShape = z.object({
   textAutoResize: textAutoResize
     .optional()
     .describe("Optional text auto-resize mode"),
+  textWrapStyle: textWrapStyle
+    .optional()
+    .describe(
+      "Optional paragraph wrap style for every paragraph of the node (AUTO|BALANCE|PRETTY; Plugin API Update 134+). A per-layer value overrides the node's text style — prefer setting it on the style via update_text_style."
+    ),
   lineHeightPx: z
     .number()
     .positive()
@@ -1567,10 +1631,12 @@ export const setTextPropertiesInput = setTextPropertiesShape
     (value) =>
       value.fontFamily !== undefined ||
       value.fontStyle !== undefined ||
+      value.variationSettings !== undefined ||
       value.fontSize !== undefined ||
       value.textAlignHorizontal !== undefined ||
       value.textAlignVertical !== undefined ||
       value.textAutoResize !== undefined ||
+      value.textWrapStyle !== undefined ||
       value.lineHeightPx !== undefined ||
       value.letterSpacingPx !== undefined ||
       value.fillHex !== undefined ||
@@ -1593,7 +1659,17 @@ export const createTextShape = z.object({
     .describe("Optional parent node ID to append the text into"),
   characters: z.string().optional().describe("Initial text content"),
   fontFamily: z.string().optional().describe("Font family, defaults to Inter"),
-  fontStyle: z.string().optional().describe("Font style, defaults to Regular"),
+  fontStyle: z
+    .string()
+    .optional()
+    .describe(
+      "Font style, defaults to Regular — or, when variationSettings is given without fontStyle, Figma picks the named instance closest to the axes"
+    ),
+  variationSettings: fontVariationSettingsInput
+    .optional()
+    .describe(
+      "Optional variable-font axes, e.g. {wght: 550} (tags from list_fonts `variationAxes`; axes you omit keep the named instance's defaults)"
+    ),
   fontSize: z.number().positive().optional().describe("Optional font size"),
   textAlignHorizontal: textAlignHorizontal
     .optional()
@@ -1601,6 +1677,7 @@ export const createTextShape = z.object({
   textAutoResize: textAutoResize
     .optional()
     .describe("Optional text auto-resize mode"),
+  textWrapStyle: textWrapStyle.optional(),
   fillHex: createHexColorSchema()
     .optional()
     .describe("Optional text fill color as hex"),

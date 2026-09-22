@@ -19,6 +19,10 @@ const mkVar = (id, name, coll, valuesByMode, scopes, hidden = false) => ({
   scopes, hiddenFromPublishing: hidden, codeSyntax: {}, description: "",
   valuesByMode,
 });
+const mkFloat = (...args) => ({ ...mkVar(...args), resolvedType: "FLOAT" });
+// Figma Update 139 composed colour: colour and opacity (a 0-100 percentage),
+// either side an alias.
+const CC = (color, opacity) => ({ color, opacity });
 
 const FILL = ["ALL_FILLS"];
 const TEXT = ["TEXT_FILL"];
@@ -28,6 +32,8 @@ const STROKE = ["STROKE_COLOR"];
 // colour and are hidden from publishing; semantics are role-named and cover
 // every mode (Light + Dark); components alias semantics. Role-named tokens
 // carry the narrow scope the linter expects (fg->TEXT_FILL, border->STROKE_COLOR).
+// The scrim is a composed colour over a primitive colour and a COLOR_OPACITY
+// opacity step (Figma's documented Update 139 pattern).
 const goldenSnapshot = () => ({
   collections: [
     { id: P, name: "Primitives", defaultModeId: pm, modes: [{ modeId: pm, name: "Value" }] },
@@ -41,12 +47,14 @@ const goldenSnapshot = () => ({
     mkVar("p_g900", "gray/900", P, { [pm]: C(0.08, 0.08, 0.08) }, FILL, true),
     mkVar("p_blue500", "blue/500", P, { [pm]: C(0.13, 0.38, 0.92) }, FILL, true),
     mkVar("p_blue600", "blue/600", P, { [pm]: C(0.10, 0.30, 0.80) }, FILL, true),
+    mkFloat("p_op60", "opacity/60", P, { [pm]: 60 }, ["COLOR_OPACITY"], true),
     // semantic (alias one tier down; both modes; role-scoped)
     mkVar("s_bg", "background/default", S, { [sL]: A("p_white"), [sD]: A("p_g900") }, FILL),
     mkVar("s_bg_muted", "background/muted", S, { [sL]: A("p_g100"), [sD]: A("p_g900") }, FILL),
     mkVar("s_fg", "foreground/default", S, { [sL]: A("p_g900"), [sD]: A("p_white") }, TEXT),
     mkVar("s_border", "border/default", S, { [sL]: A("p_g900"), [sD]: A("p_white") }, STROKE),
     mkVar("s_accent", "accent/default", S, { [sL]: A("p_blue500"), [sD]: A("p_blue500") }, FILL),
+    mkVar("s_scrim", "overlay/scrim", S, { [sL]: CC(A("p_g900"), A("p_op60")), [sD]: CC(A("p_g900"), A("p_op60")) }, FILL),
     // component (alias one tier down into semantic)
     mkVar("c_btn_bg", "button/background", K, { [km]: A("s_accent") }, FILL),
     mkVar("c_btn_fg", "button/foreground", K, { [km]: A("s_bg") }, FILL),

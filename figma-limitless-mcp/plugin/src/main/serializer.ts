@@ -223,24 +223,53 @@ const getBounds = (node: SerializableNode): SerializedBounds | undefined => {
   return undefined;
 };
 
-const serializeText = (node: TextNode, base: SerializedNode) => {
-  let fontFamily: string | undefined;
-  let fontStyle: string | undefined;
-  if (typeof node.fontName === "symbol") {
-    fontFamily = "mixed";
-    fontStyle = "mixed";
-  } else if (node.fontName) {
-    fontFamily = node.fontName.family;
-    fontStyle = node.fontName.style;
+/**
+ * The node's one family/style, or null when it really mixes fonts. Since
+ * Plugin API 138 fontName is also figma.mixed when ranges share a family/style
+ * and differ only in variable-font axes: that case reports the shared font with
+ * axesMixed. Ranges are scanned only when fontName is mixed.
+ */
+export const uniformFontIdentity = (
+  node: TextNode
+): {
+  family: string;
+  style: string;
+  variationSettings?: FontVariationSettings;
+  axesMixed: boolean;
+} | null => {
+  const font = node.fontName;
+  if (!isMixed(font)) {
+    return {
+      family: font.family,
+      style: font.style,
+      variationSettings: font.variationSettings,
+      axesMixed: false,
+    };
   }
+  if (node.characters.length === 0) return null;
+  const ranges = node.getRangeAllFontNames(0, node.characters.length);
+  const first = ranges[0];
+  if (
+    !first ||
+    ranges.some((f) => f.family !== first.family || f.style !== first.style)
+  ) {
+    return null;
+  }
+  return { family: first.family, style: first.style, axesMixed: true };
+};
+
+const serializeText = (node: TextNode, base: SerializedNode) => {
+  const font = uniformFontIdentity(node);
   return {
     ...base,
     characters: node.characters,
     styles: {
       ...base.styles,
       fontSize: isMixed(node.fontSize) ? "mixed" : node.fontSize,
-      fontFamily,
-      fontStyle,
+      fontFamily: font ? font.family : "mixed",
+      fontStyle: font ? font.style : "mixed",
+      // Variable fonts only (static fonts read no variationSettings).
+      fontVariationSettings: font?.axesMixed ? "mixed" : font?.variationSettings,
       fontWeight: isMixed(node.fontWeight) ? "mixed" : node.fontWeight,
       textDecoration: isMixed(node.textDecoration)
         ? "mixed"
@@ -254,6 +283,7 @@ const serializeText = (node: TextNode, base: SerializedNode) => {
         ? "mixed"
         : node.textAlignVertical,
       textAutoResize: node.textAutoResize,
+      textWrapStyle: isMixed(node.textWrapStyle) ? "mixed" : node.textWrapStyle,
     },
   };
 };

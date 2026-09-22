@@ -57,7 +57,7 @@ This makes contrast a **deterministic, node-free computation over `valuesByMode`
 
 - No `TextStyle` and no `font-size` primitive is below **12px** (absolute floor). → `RULE A11Y-04`
 - Default body text style is **≥ 16px**; a text style tagged/ named `body*` below 16px is a warning. → `RULE A11Y-05`
-- The 4.5:1 vs 3:1 contrast threshold is chosen per style using the WCAG **large-text** rule: `fontSize ≥ 24px`, **or** `fontSize ≥ 18.66px` AND weight ≥ 700 (from `TextStyle.fontName.style`). → feeds `A11Y-01`.
+- The 4.5:1 vs 3:1 contrast threshold is chosen per style using the WCAG **large-text** rule: `fontSize ≥ 24px`, **or** `fontSize ≥ 18.66px` AND weight ≥ 700 (from `TextStyle.fontName.variationSettings.wght` when present — a variable font's style name need not match its axes — else inferred from `fontName.style`). → feeds `A11Y-01`.
 
 ---
 
@@ -163,7 +163,7 @@ This is exactly the guarantee that lets design→code stop being "build one piec
 | NAME-06 (codeSyntax) | `Variable.codeSyntax` (WEB/ANDROID/iOS keys) |
 | NAME-07 (code collision) | derive identifier from `codeSyntax.WEB` ?? name; detect dupes |
 | PAIR-01 (`on-*` completeness) | set-diff over `Variable.name` within `theme` collection |
-| A11Y-01 (WCAG pair gate) | `valuesByMode` → resolve alias chain → RGB → luminance formula; large-text branch from `TextStyle.fontSize` + `fontName.style` |
+| A11Y-01 (WCAG pair gate) | `valuesByMode` → resolve alias chain → RGB → luminance formula; large-text branch from `TextStyle.fontSize` + weight (`fontName.variationSettings.wght`, else `fontName.style`) |
 | A11Y-02 (APCA advisory) | same resolved RGB → bundled `apca-w3` |
 | A11Y-03 (pixel fallback trigger) | `paint.opacity`, `paint.type`, `color.a`, `node.effects`, `node.blendMode`; `node.exportAsync({format:'PNG'})` sampling |
 | A11Y-04/05 (text floor) | `getLocalTextStylesAsync()` → `.fontSize`, `.fontName`; `font-size` primitives with scope `FONT_SIZE` |

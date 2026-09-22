@@ -19,7 +19,7 @@ digests). AI operating rules: `docs/AI-GUIDE.md`.
 ## Architecture (2 packages)
 
 - `server/` — stdio MCP server (`node dist/index.js`), TypeScript → `tsc`. Leader binds HTTP+WS on **:1994** (`/ws` plugin, `/ping` health, `/rpc` followers); extra clients become followers and proxy via `/rpc`. Multi-file registry keyed by `fileKey`.
-- `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.137.0** (Motion/Shaders/Slots/Grid APIs, video export, motion variables).
+- `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.138.0** (Motion/Shaders/Slots/Grid APIs, video export, motion variables, text wrap style, SPACE_EVENLY/SPACE_AROUND, variable fonts). Update 139 (composed colors, `COLOR_OPACITY`) isn't published yet: `src/main/figma-139-shim.ts` holds the `ComposedColorValue` stand-in (swap it for the real `VariableComposedColor` once typings ≥ 1.139 ship it) next to the composed-color runtime guards and `write_variables` input helpers, which stay; `COLOR_OPACITY` rides the existing `VariableScope` casts.
 
 ## Orchestration layer (server/src/orchestration.ts)
 
@@ -110,7 +110,8 @@ case to `server/test/` and, if it belongs to a build step, wire it into
 - **pnpm only** (workspace rule). Build: `pnpm install && pnpm run build` in each package.
 - Port **1994** is hardcoded in `server/src/index.ts`, `plugin/src/ui/App.tsx`, `plugin/manifest.json` — change all three together or not at all.
 - Adding a tool touches 4 places: `plugin/src/main/code.ts` (RequestType union + handler, EDIT_REQUEST_TYPES if it writes), `server/src/schema.ts` (input schema + `toolInputSchemas` + `rpcToArgs` — Record types make omissions compile errors), `server/src/tools.ts` (registration). Refined Zod schemas register the **unrefined** `.shape` and validate the refined schema via `parseToolInput` (see `update_text_style`).
-- Font rules are load-bearing: exact `{family, style}` strings only (discover via `list_fonts`, never guess); load fonts before any text/style mutation; `lineHeight`/`letterSpacing` are `{unit, value}` objects.
+- Font rules are load-bearing: exact `{family, style}` strings only (discover via `list_fonts`, never guess); load fonts before any text/style mutation; `lineHeight`/`letterSpacing` are `{unit, value}` objects. Variable fonts (API 138): `variationSettings` keys only from `list_fonts` `variationAxes`; `style` is optional only with axes on node writes (styles always take one); load dedupe stays `family::style` (`loadFontAsync` ignores axes); `mixed` may mean axes-only — use `uniformFontIdentity`.
+- A new optional field on a tool with an "at least one property" refine also goes into that refine's OR-chain AND the plugin-side gate (e.g. `hasFontDependentPatch`), or a call setting only it is rejected.
 - Write tools must stay Dev-Mode-guarded (`EDIT_REQUEST_TYPES`); `delete_nodes` keeps its `confirm: true` gate; `execute_code` returns JSON-only, size-capped.
 - Rebuild `plugin/dist` after ANY `plugin/src` edit and re-run the plugin in Figma — Figma loads the built bundle, not the source.
 - File keys: saved team files expose `figma.fileKey` (unique). Personal drafts don't, so the plugin persists a unique random key in the document's shared plugin data (`getFileKey`) — stable across restarts, distinct per file. Do NOT revert to name-derived keys (same-named drafts collide, breaking per-file journal/checkpoint buckets).
@@ -141,6 +142,10 @@ Two layers:
 User-scope MCP entry in `~/.claude.json` → `mcpServers.figma-limitless-mcp`
 (`node <this>/server/dist/index.js`). The plugin is imported into Figma Desktop
 via Plugins > Development > Import plugin from manifest… → `plugin/manifest.json`.
+After a schema change restart EVERY client session: the :1994 leader validates
+follower `/rpc` calls with its OWN schemas (`leader.ts`), so a stale leader 400s
+new enum values and new-field-only calls. `get_workspace_status` reports the
+leader's version.
 
 ## Boundaries
 

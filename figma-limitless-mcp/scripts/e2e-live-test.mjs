@@ -12,6 +12,10 @@
  * Deliberately skipped (they would disturb the human's live session):
  * set_selection / scroll_and_zoom_into_view (current-page only), apply_shader
  * (needs a shader in the file), import_library_asset (needs a published key).
+ *
+ * The Plugin API Update 134-139 checks (text wrap, auto-layout spacing, variable
+ * fonts, composed colors) pass with a "skipped: …" note on a Figma build that
+ * predates them; the variable-font check also skips a family without a wght axis.
  */
 import { spawn } from "node:child_process";
 import { existsSync, unlinkSync } from "node:fs";
@@ -164,7 +168,7 @@ async function main() {
   });
 
   // ---- fonts --------------------------------------------------------------
-  let family = "Inter", style = "Regular";
+  let family = "Inter", style = "Regular", axes = null;
   await check("list_fonts", async () => {
     const r = await call("list_fonts", { filter: "inter" });
     expect(!r.err, r.err);
@@ -172,12 +176,76 @@ async function main() {
     if (hit) {
       family = hit.family;
       style = hit.styles?.includes("Regular") ? "Regular" : hit.styles?.[0] ?? "Regular";
+      axes = hit.variationAxes ?? null;
     }
     return `${r.data.matchedFamilies} matched; using ${family} ${style}`;
   });
   await check("load_fonts", async () => {
     const r = await call("load_fonts", { fonts: [{ family, style }] });
     expect(!r.err && r.data.allLoaded, r.err ?? "not loaded");
+  });
+  await check("variable fonts: node + style axes (Update 138)", async () => {
+    // list_fonts omits variationAxes before Update 138 and reports null for a static family.
+    if (!Array.isArray(axes) || !axes.includes("wght")) {
+      return `skipped: no wght axis reported for ${family} (static family or Figma predates Update 138)`;
+    }
+    const lf = await call("load_fonts", { fonts: [{ family }] });
+    expect(!lf.err && lf.data.allLoaded, lf.err ?? "whole-family load failed");
+
+    // No fontStyle: Figma picks the named instance closest to the axes.
+    const t = await call("create_text", { parentId: S.root, characters: "Axes", fontFamily: family, variationSettings: { wght: 550 }, fontSize: 20, x: 600, y: 600, name: "VarFont" });
+    expect(!t.err, t.err);
+    const created = t.data.fontName.variationSettings ?? {};
+    expect(created.wght === 550, "created: " + JSON.stringify(t.data.fontName));
+
+    // Axes-only patch: wght moves, the style and every other axis stay.
+    const p = await call("set_text_properties", { nodeId: t.data.nodeId, variationSettings: { wght: 650 } });
+    expect(!p.err, p.err);
+    const patched = p.data.applied.fontName;
+    expect(patched.style === t.data.fontName.style && patched.variationSettings?.wght === 650, "patched: " + JSON.stringify(patched));
+    for (const tag of Object.keys(created)) {
+      if (tag !== "wght") expect(patched.variationSettings[tag] === created[tag], `axis ${tag} changed: ${created[tag]} -> ${patched.variationSettings[tag]}`);
+    }
+
+    // An undefined axis fails before the node exists: no orphan in S.root.
+    const countCode = `var p = await figma.getNodeByIdAsync('${S.root}'); return p.children.length;`;
+    const before = await call("execute_code", { code: countCode });
+    const bad = await call("create_text", { parentId: S.root, characters: "Bad axis", fontFamily: family, variationSettings: { ZZZZ: 1 } });
+    const after = await call("execute_code", { code: countCode });
+    expect(bad.err && bad.err.includes("not defined"), "undefined axis accepted: " + (bad.err ?? "no error"));
+    expect(!before.err && !after.err && after.data.result === before.data.result, `orphan left: ${before.data?.result} -> ${after.data?.result}`);
+
+    // Ranges that differ only in wght: fontName reads mixed, family/style stay concrete.
+    const mix = await call("execute_code", {
+      code: `var n = await figma.getNodeByIdAsync('${t.data.nodeId}'); var f = n.fontName; await figma.loadFontAsync({ family: f.family, style: f.style }); n.setRangeFontName(0, 2, { family: f.family, style: f.style, variationSettings: { wght: 400 } }); return n.fontName === figma.mixed;`,
+    });
+    expect(!mix.err && mix.data.result === true, mix.err ?? "fontName not mixed after an axes-only range change");
+    const n = await call("get_node", { nodeId: t.data.nodeId });
+    const st = n.data?.styles ?? {};
+    expect(!n.err && st.fontFamily === family && st.fontStyle === patched.style && st.fontVariationSettings === "mixed", n.err ?? "axes-only mixed read: " + JSON.stringify([st.fontFamily, st.fontStyle, st.fontVariationSettings]));
+    // An axes-only patch on that node merges range by range: re-asserting
+    // another axis at its current value keeps each range's own wght.
+    const other = axes.find((tag) => tag !== "wght");
+    if (other !== undefined && typeof created[other] === "number") {
+      const ap = await call("set_text_properties", { nodeId: t.data.nodeId, variationSettings: { [other]: created[other] } });
+      expect(!ap.err, ap.err);
+      const rw = await call("execute_code", {
+        code: `var n = await figma.getNodeByIdAsync('${t.data.nodeId}'); return [n.getRangeFontName(0, 1).variationSettings.wght, n.getRangeFontName(3, 4).variationSettings.wght];`,
+      });
+      expect(!rw.err && rw.data.result[0] === 400 && rw.data.result[1] === 650, rw.err ?? "per-range wght after an axes-only patch: " + JSON.stringify(rw.data.result));
+    }
+    const restyle = await call("set_text_properties", { nodeId: t.data.nodeId, fontStyle: style });
+    expect(!restyle.err, "style change on an axes-only mixed node: " + restyle.err);
+
+    // Text styles keep an explicit style; an axes-only update merges.
+    const cs = await call("create_text_style", { name: "MCP-E2E/Variable", fontFamily: family, fontStyle: style, variationSettings: { wght: 550 }, fontSize: 16 });
+    expect(!cs.err && cs.data.style.fontName.variationSettings?.wght === 550, cs.err ?? "style: " + JSON.stringify(cs.data.style.fontName));
+    const us = await call("update_text_style", { styleId: cs.data.style.id, variationSettings: { wght: 650 } });
+    expect(!us.err && us.data.style.fontName.style === style && us.data.style.fontName.variationSettings?.wght === 650, us.err ?? "style update: " + JSON.stringify(us.data.style.fontName));
+    // Repeating the style's own family without axes keeps its custom axes.
+    const rs = await call("update_text_style", { styleId: cs.data.style.id, fontFamily: family, fontSize: 18 });
+    expect(!rs.err && rs.data.style.fontName.variationSettings?.wght === 650, rs.err ?? "axes reset by a same-family update: " + JSON.stringify(rs.data.style.fontName));
+    return `${family} axes ${axes.join(",")}; created as ${t.data.fontName.style}`;
   });
 
   // ---- basic creation ------------------------------------------------------
@@ -242,6 +310,19 @@ async function main() {
     const r2 = await call("set_auto_layout", { nodeId: S.auto, layoutMode: "VERTICAL", itemSpacing: 8, paddingTop: 12, paddingLeft: 12, paddingRight: 12, paddingBottom: 12 });
     expect(!r2.err, r2.err);
   });
+  await check("set_auto_layout SPACE_EVENLY / SPACE_AROUND (Update 137)", async () => {
+    for (const v of ["SPACE_EVENLY", "SPACE_AROUND"]) {
+      const r = await call("set_auto_layout", { nodeId: S.auto, primaryAxisAlignItems: v });
+      // An older Figma rejects the value itself; when its error names it, skip.
+      if (r.err && r.err.includes(v)) return `skipped: Figma rejected ${v} (predates Update 137?) — ${r.err}`;
+      expect(!r.err && r.data.applied.primaryAxisAlignItems === v, r.err ?? "not applied: " + v);
+      const n = await call("get_node", { nodeId: S.auto });
+      const got = n.data?.styles?.autoLayout?.primaryAxisAlign;
+      expect(!n.err && got === v, `read-back ${v}: ${n.err ?? got}`);
+    }
+    const reset = await call("set_auto_layout", { nodeId: S.auto, primaryAxisAlignItems: "MIN" });
+    expect(!reset.err, reset.err);
+  });
   await check("set_grid_layout (+placements)", async () => {
     const g = await call("create_frame", { name: "Grid", parentId: S.root, width: 300, height: 200, x: 260, y: 200 });
     expect(!g.err, g.err);
@@ -293,6 +374,17 @@ async function main() {
     const r = await call("get_text_styles");
     expect(!r.err && r.data.styles.some((s) => s.name === "MCP-E2E/Heading"), r.err ?? "missing");
   });
+  await check("textWrapStyle on a node + a text style (Update 134)", async () => {
+    // textWrapStyle-only calls: the "at least one property" refines and
+    // update_text_style's plugin-side gate must count the field.
+    const r = await call("set_text_properties", { nodeId: S.text, textWrapStyle: "PRETTY" });
+    if (r.err && r.err.includes("Update 134+")) return "skipped: Figma predates Plugin API Update 134";
+    expect(!r.err && r.data.applied.textWrapStyle === "PRETTY", r.err ?? "not applied");
+    const n = await call("get_node", { nodeId: S.text });
+    expect(!n.err && n.data.styles.textWrapStyle === "PRETTY", n.err ?? "read-back " + n.data.styles.textWrapStyle);
+    const u = await call("update_text_style", { styleId: S.textStyle, textWrapStyle: "BALANCE" });
+    expect(!u.err && u.data.applied.textWrapStyle === "BALANCE" && u.data.style.textWrapStyle === "BALANCE", u.err ?? "style not updated");
+  });
   await check("create_paint_style + apply_style(fill)", async () => {
     const c = await call("create_paint_style", { name: "MCP-E2E/Brand", hex: "#7B2FF7", skipIfExists: true });
     expect(!c.err, c.err);
@@ -321,6 +413,7 @@ async function main() {
     expect(!r.err, r.err);
     expect(r.data.failed === 0, "failed actions: " + JSON.stringify(r.data.results.filter((x) => x.error)));
     S.collection = r.data.results[0].collectionId;
+    S.mode = r.data.results[0].defaultModeId;
     S.var = r.data.results[2].variableId;
   });
   await check("get_variables_deep resolves alias", async () => {
@@ -333,6 +426,41 @@ async function main() {
   await check("write_variables delete_variable", async () => {
     const r = await call("write_variables", { actions: [{ action: "delete_variable", variableId: S.var }] });
     expect(!r.err && r.data.failed === 0, r.err ?? "delete failed");
+  });
+  await check("TIMING value round-trips as seconds", async () => {
+    const r = await call("write_variables", {
+      actions: [{ action: "create_variable", collectionId: S.collection, name: "motion/duration", resolvedType: "TIMING", valuesByMode: { [S.mode]: 0.2 } }],
+    });
+    expect(!r.err && r.data.failed === 0, r.err ?? "failed: " + JSON.stringify(r.data.results));
+    const d = await call("get_variables_deep", { collectionName: "MCP-E2E" });
+    expect(!d.err, d.err);
+    const v = d.data.collections[0].variables.find((x) => x.name === "motion/duration");
+    // Passed through unchanged (no unit conversion); tolerate float32 storage.
+    expect(v && Math.abs(v.valuesByMode[S.mode] - 0.2) < 1e-6, "read-back: " + JSON.stringify(v && v.valuesByMode));
+  });
+  await check("write_variables composed color + COLOR_OPACITY (Update 139)", async () => {
+    // Own base variables, not S.var (deleted above).
+    const r = await call("write_variables", {
+      actions: [
+        { action: "create_variable", collectionId: S.collection, name: "color/base", resolvedType: "COLOR", scopes: ["ALL_FILLS"], valuesByMode: { [S.mode]: "#3366FF" } },
+        { action: "create_variable", collectionId: S.collection, name: "opacity/scrim", resolvedType: "FLOAT", scopes: ["COLOR_OPACITY"], valuesByMode: { [S.mode]: 60 } },
+        { action: "create_variable", collectionId: S.collection, name: "color/scrim", resolvedType: "COLOR", scopes: ["ALL_FILLS"], valuesByMode: { [S.mode]: { color: { alias: "$0.variableId" }, opacity: { alias: "$1.variableId" } } } },
+        { action: "create_variable", collectionId: S.collection, name: "color/tint", resolvedType: "COLOR", scopes: ["ALL_FILLS"], valuesByMode: { [S.mode]: { color: { alias: "$0.variableId" }, opacity: 40 } } },
+      ],
+    });
+    expect(!r.err, r.err);
+    const scopeErr = r.data.results[1]?.error;
+    if (scopeErr && scopeErr.includes("COLOR_OPACITY")) return `skipped: Figma rejected COLOR_OPACITY (predates Update 139?) — ${scopeErr}`;
+    expect(r.data.failed === 0, "failed actions: " + JSON.stringify(r.data.results.filter((x) => x.error)));
+    const d = await call("get_variables_deep", { collectionName: "MCP-E2E" });
+    expect(!d.err, d.err);
+    const byName = new Map(d.data.collections[0].variables.map((v) => [v.name, v]));
+    const opacityScopes = byName.get("opacity/scrim")?.scopes ?? [];
+    expect(opacityScopes.includes("COLOR_OPACITY"), "scopes: " + JSON.stringify(opacityScopes));
+    const scrim = byName.get("color/scrim")?.valuesByMode[S.mode];
+    expect(scrim?.type === "COMPOSED_COLOR" && scrim.color?.name === "color/base" && scrim.opacity?.name === "opacity/scrim", "alias + alias: " + JSON.stringify(scrim));
+    const tint = byName.get("color/tint")?.valuesByMode[S.mode];
+    expect(tint?.type === "COMPOSED_COLOR" && tint.color?.name === "color/base" && tint.opacity === 40, "alias + percent: " + JSON.stringify(tint));
   });
 
   // ---- components ---------------------------------------------------------------

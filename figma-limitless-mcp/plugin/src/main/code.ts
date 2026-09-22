@@ -1,4 +1,15 @@
-import { serializeNode, type SerializableNode } from "./serializer";
+import {
+  serializeNode,
+  uniformFontIdentity,
+  type SerializableNode,
+} from "./serializer";
+import {
+  aliasInputId,
+  isComposedColorInput,
+  isComposedColorValue,
+  type ComposedColorInput,
+  type ComposedColorValue,
+} from "./figma-139-shim";
 
 type RequestType =
   | "get_document"
@@ -261,6 +272,15 @@ const serializeVariableValue = (value: VariableValue): unknown => {
       }
       return out;
     }
+    if (isComposedColorValue(value)) {
+      // Update 139 composed color. Each side is normalized like a top-level
+      // value; opacity stays a 0-100 percentage or an alias.
+      return {
+        type: "COMPOSED_COLOR",
+        color: serializeVariableValue(value.color),
+        opacity: serializeVariableValue(value.opacity),
+      };
+    }
     if ("r" in value && "g" in value && "b" in value) {
       // It's an RGB or RGBA color
       const color = value as RGBA;
@@ -466,28 +486,130 @@ const buildGradientPaint = (
   return paint;
 };
 
-const loadFontsForTextNode = async (node: TextNode): Promise<void> => {
+const loadRangeFonts = async (
+  text: TextNode | TextSublayerNode
+): Promise<void> => {
   const fonts = new Map<string, FontName>();
+  // family::style on purpose: loadFontAsync ignores variationSettings (Plugin
+  // API 138), so ranges that differ only in axes need a single load.
+  for (const font of text.getRangeAllFontNames(0, text.characters.length)) {
+    fonts.set(`${font.family}::${font.style}`, font);
+  }
+  await Promise.all([...fonts.values()].map((font) => figma.loadFontAsync(font)));
+};
 
+const loadFontsForTextNode = async (node: TextNode): Promise<void> => {
   if (node.characters.length > 0) {
-    for (const font of node.getRangeAllFontNames(0, node.characters.length)) {
-      fonts.set(`${font.family}::${font.style}`, font);
-    }
+    await loadRangeFonts(node);
   } else if (typeof node.fontName !== "symbol") {
-    fonts.set(`${node.fontName.family}::${node.fontName.style}`, node.fontName);
+    await figma.loadFontAsync(node.fontName);
   } else {
     throw new Error(
       `Cannot determine font for empty mixed-font text node: ${node.id}`
     );
   }
-
-  await Promise.all([...fonts.values()].map((font) => figma.loadFontAsync(font)));
 };
 
-const ensureFont = async (family: string, style: string): Promise<FontName> => {
-  const font: FontName = { family, style };
-  await figma.loadFontAsync(font);
-  return font;
+const VARIABLE_FONTS_UNAVAILABLE =
+  "variationSettings requires Figma with Plugin API Update 138+ (variable fonts) — update Figma Desktop and re-run the plugin.";
+
+const hasVariableFontApi = (): boolean => "getFontFamilyVariationAxes" in figma;
+
+/** Defence in depth for raw params (the server validates the same shape). */
+const parseVariationSettings = (
+  raw: unknown
+): FontVariationSettings | undefined => {
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("variationSettings must be an object like {wght: 550}");
+  }
+  const entries = Object.entries(raw as Record<string, unknown>);
+  if (entries.length === 0) {
+    throw new Error("variationSettings needs at least one axis");
+  }
+  for (const [tag, value] of entries) {
+    if (!/^[\x20-\x7E]{4}$/.test(tag)) {
+      throw new Error(
+        `variationSettings axis tag "${tag}" must be exactly 4 printable ASCII characters (e.g. 'wght')`
+      );
+    }
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      throw new Error(`variationSettings.${tag} must be a finite number`);
+    }
+  }
+  return raw as FontVariationSettings;
+};
+
+/** Checks axis tags against the family BEFORE any mutation: Figma's own throw
+ * comes later and names no valid tags. */
+const assertVariationAxes = (
+  family: string,
+  variationSettings: FontVariationSettings
+): void => {
+  if (!hasVariableFontApi()) {
+    throw new Error(VARIABLE_FONTS_UNAVAILABLE);
+  }
+  let axes: string[] | null;
+  try {
+    axes = figma.getFontFamilyVariationAxes(family);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`${message} Discover exact family names via list_fonts.`);
+  }
+  if (axes === null) {
+    throw new Error(
+      `"${family}" is a static font family; variationSettings only applies to variable fonts (list_fonts reports variationAxes: null).`
+    );
+  }
+  const valid = axes;
+  const unknown = Object.keys(variationSettings).filter(
+    (tag) => valid.indexOf(tag) === -1
+  );
+  if (unknown.length > 0) {
+    throw new Error(
+      `Axis ${unknown.join(", ")} is not defined by "${family}" — valid axes: ${valid.join(", ")}`
+    );
+  }
+};
+
+/** Validates any axes, then loads the font. Mutates nothing, so callers run it
+ * before touching the node/style. */
+const ensureFont = async (
+  family: string,
+  style: string,
+  variationSettings?: FontVariationSettings
+): Promise<FontName> => {
+  if (variationSettings) {
+    assertVariationAxes(family, variationSettings);
+  }
+  await figma.loadFontAsync({ family, style });
+  return variationSettings ? { family, style, variationSettings } : { family, style };
+};
+
+/** Node writes also accept a style-less FontNameInput: Figma picks the named
+ * instance closest to the axes, which needs every style of the family loaded. */
+const ensureNodeFont = async (
+  family: string,
+  style: string | undefined,
+  variationSettings?: FontVariationSettings
+): Promise<FontNameInput> => {
+  if (style !== undefined) {
+    return ensureFont(family, style, variationSettings);
+  }
+  if (!variationSettings) {
+    throw new Error("A font style is required unless variationSettings is given");
+  }
+  assertVariationAxes(family, variationSettings);
+  await figma.loadFontAsync({ family });
+  return { family, variationSettings };
+};
+
+// Typings 1.138 still declare the node setter as FontName, although Figma
+// documents it accepting a FontNameInput (style omitted). The one cast lives here.
+const assignNodeFontName = (node: TextNode, font: FontNameInput): void => {
+  (node as { fontName: FontNameInput }).fontName = font;
 };
 
 const applyTextFill = (
@@ -577,16 +699,16 @@ const HEAVY_READ_HINTS: { [key: string]: string } = {
 const yieldToUI = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 0));
 
-type FontPairInput = { family: string; style: string };
+type FontPairInput = { family: string; style?: string };
 
 const loadFontsBatched = async (
   fonts: FontPairInput[]
 ): Promise<
-  Array<{ family: string; style: string; loaded: boolean; error?: string }>
+  Array<{ family: string; style?: string; loaded: boolean; error?: string }>
 > => {
   const results: Array<{
     family: string;
-    style: string;
+    style?: string;
     loaded: boolean;
     error?: string;
   }> = [];
@@ -595,7 +717,9 @@ const loadFontsBatched = async (
     const settled = await Promise.all(
       batch.map(async ({ family, style }) => {
         try {
-          await figma.loadFontAsync({ family, style });
+          // No style loads every style of the family (Plugin API 138); omit
+          // the key rather than pass style: undefined.
+          await figma.loadFontAsync(style === undefined ? { family } : { family, style });
           return { family, style, loaded: true };
         } catch (err) {
           return {
@@ -653,6 +777,17 @@ const isTextCase = (value: unknown): value is TextCase =>
 const isTextDecoration = (value: unknown): value is TextDecoration =>
   value === "NONE" || value === "UNDERLINE" || value === "STRIKETHROUGH";
 
+const isTextWrapStyle = (value: unknown): value is TextWrapStyle =>
+  value === "AUTO" || value === "BALANCE" || value === "PRETTY";
+
+// Plain boolean, not a type guard: an `in` guard on a target typed as always
+// having the prop narrows it to `never` in the false branch.
+const supportsTextWrapStyle = (target: object): boolean =>
+  "textWrapStyle" in target;
+
+const TEXT_WRAP_STYLE_UNAVAILABLE =
+  "textWrapStyle requires Figma with Plugin API Update 134+ — update Figma Desktop and re-run the plugin.";
+
 const resolveTextStyle = async (
   styleId: unknown,
   styleName: unknown
@@ -690,6 +825,7 @@ const serializeTextStyle = (style: TextStyle) => ({
   paragraphIndent: style.paragraphIndent,
   textCase: style.textCase,
   textDecoration: style.textDecoration,
+  textWrapStyle: style.textWrapStyle,
   boundVariables: style.boundVariables,
 });
 
@@ -703,6 +839,10 @@ const applyTextStylePatches = (
   params: Record<string, unknown>,
   applied: Record<string, unknown>
 ): void => {
+  // Before any setter, so an old runtime never leaves a partial patch.
+  if (isTextWrapStyle(params.textWrapStyle) && !supportsTextWrapStyle(style)) {
+    throw new Error(TEXT_WRAP_STYLE_UNAVAILABLE);
+  }
   if (typeof params.fontSize === "number") {
     style.fontSize = params.fontSize;
     applied.fontSize = style.fontSize;
@@ -730,6 +870,10 @@ const applyTextStylePatches = (
   if (isTextDecoration(params.textDecoration)) {
     style.textDecoration = params.textDecoration;
     applied.textDecoration = style.textDecoration;
+  }
+  if (isTextWrapStyle(params.textWrapStyle)) {
+    style.textWrapStyle = params.textWrapStyle;
+    applied.textWrapStyle = style.textWrapStyle;
   }
   if (typeof params.description === "string") {
     style.description = params.description;
@@ -785,15 +929,18 @@ const parseVariableValue = (
       const c = value as { r: number; g: number; b: number; a?: number };
       return { r: c.r, g: c.g, b: c.b, a: typeof c.a === "number" ? c.a : 1 };
     }
-    throw new Error("COLOR value must be a hex string or {r,g,b,a?}");
+    throw new Error(
+      "COLOR value must be a hex string, {r,g,b,a?}, or a composed color {color, opacity}"
+    );
   }
   if (resolvedType === "FLOAT" && typeof value === "number") return value;
   if (resolvedType === "STRING" && typeof value === "string") return value;
   if (resolvedType === "BOOLEAN" && typeof value === "boolean") return value;
   if (resolvedType === "TIMING") {
-    // Measured: TIMING values are plain numbers (milliseconds).
+    // TIMING values are plain numbers in seconds, per Figma's VariableValue
+    // reference (the unit of every Motion duration in the API). Passed through.
     if (typeof value === "number" && isFinite(value) && value >= 0) return value;
-    throw new Error("TIMING value must be a non-negative number (milliseconds)");
+    throw new Error("TIMING value must be a non-negative number (seconds)");
   }
   if (resolvedType === "EASING") {
     // Measured: setValueForMode accepts {type} with optional bezier/spring params
@@ -820,6 +967,98 @@ const parseVariableValue = (
   throw new Error(
     `Value ${JSON.stringify(value)} does not match resolvedType ${resolvedType}`
   );
+};
+
+/**
+ * Builds an Update 139 composed color from write_variables input. Alias sides
+ * are variable ids, the same ids set_alias takes as aliasVariableId (so
+ * '$N.variableId' refs work), given as {alias: id} or {type:'VARIABLE_ALIAS', id}.
+ * Validated here because Figma's own validation errors arrive truncated.
+ */
+const buildComposedColor = async (
+  input: ComposedColorInput
+): Promise<ComposedColorValue> => {
+  const colorId = aliasInputId(input.color);
+  const opacityId = aliasInputId(input.opacity);
+  if (colorId === null && opacityId === null) {
+    // Figma: either the color or the opacity must be an alias, or both.
+    throw new Error(
+      "A composed color needs its color and/or opacity as an alias ({alias: variableId}); " +
+        "for two raw values set a plain {r,g,b,a} instead"
+    );
+  }
+  const aliasTo = async (
+    id: string,
+    want: VariableResolvedDataType,
+    side: string
+  ): Promise<VariableAlias> => {
+    const target = await figma.variables.getVariableByIdAsync(id);
+    if (!target) throw new Error(`composed color ${side}: variable not found: ${id}`);
+    if (target.resolvedType !== want) {
+      throw new Error(
+        `composed color ${side} must alias a ${want} variable; '${target.name}' is ${target.resolvedType}`
+      );
+    }
+    return figma.variables.createVariableAlias(target);
+  };
+
+  let color: RGB | RGBA | VariableAlias;
+  const rawColor = input.color as { r?: unknown; g?: unknown; b?: unknown; a?: unknown };
+  if (colorId !== null) {
+    color = await aliasTo(colorId, "COLOR", "color");
+  } else if (typeof input.color === "string") {
+    color = parseHexColor(input.color);
+  } else if (
+    rawColor &&
+    typeof rawColor === "object" &&
+    typeof rawColor.r === "number" &&
+    typeof rawColor.g === "number" &&
+    typeof rawColor.b === "number"
+  ) {
+    color =
+      typeof rawColor.a === "number"
+        ? { r: rawColor.r, g: rawColor.g, b: rawColor.b, a: rawColor.a }
+        : { r: rawColor.r, g: rawColor.g, b: rawColor.b };
+  } else {
+    throw new Error(
+      "composed color.color must be '#RRGGBB', {r,g,b,a?}, or {alias: colorVariableId}"
+    );
+  }
+
+  let opacity: number | VariableAlias;
+  if (opacityId !== null) {
+    opacity = await aliasTo(opacityId, "FLOAT", "opacity");
+  } else if (
+    typeof input.opacity === "number" &&
+    isFinite(input.opacity) &&
+    input.opacity >= 0 &&
+    input.opacity <= 100
+  ) {
+    opacity = input.opacity;
+  } else {
+    throw new Error(
+      "composed color.opacity must be a percentage 0-100 (60 = 60%) or {alias: floatVariableId}"
+    );
+  }
+  return { color, opacity };
+};
+
+/** parseVariableValue plus the Update 139 composed color, whose alias sides
+ * need an async lookup. Every other value goes through the sync parser. */
+const parseVariableValueAsync = async (
+  resolvedType: VariableResolvedDataType,
+  value: unknown
+): Promise<VariableValue> => {
+  if (isComposedColorInput(value)) {
+    if (resolvedType !== "COLOR") {
+      throw new Error(
+        `A composed {color, opacity} value is only valid on COLOR variables, not ${resolvedType}`
+      );
+    }
+    // Cast: VariableComposedColor isn't in typings 1.138 (see figma-139-shim.ts).
+    return (await buildComposedColor(value)) as unknown as VariableValue;
+  }
+  return parseVariableValue(resolvedType, value);
 };
 
 /** Fields where "$N.field" back-references are resolved. Restricting to id
@@ -855,11 +1094,34 @@ const resolveRefString = (
   return referenced;
 };
 
+/** Resolves "$N.field" refs in the alias sides of a composed-color value
+ * ({color: {alias: '$2.variableId'}, ...}). Gated on the composed shape, so a
+ * STRING value that merely looks like a ref is never touched. */
+const resolveComposedRefs = (
+  value: unknown,
+  results: Array<Record<string, unknown>>
+): unknown => {
+  if (!isComposedColorInput(value)) return value;
+  const fix = (side: unknown): unknown => {
+    if (!side || typeof side !== "object") return side;
+    const o = side as Record<string, unknown>;
+    if (typeof o.alias === "string" && REF_PATTERN.test(o.alias)) {
+      return { ...o, alias: resolveRefString(o.alias, results) };
+    }
+    if (o.type === "VARIABLE_ALIAS" && typeof o.id === "string" && REF_PATTERN.test(o.id)) {
+      return { ...o, id: resolveRefString(o.id, results) };
+    }
+    return side;
+  };
+  return { ...value, color: fix(value.color), opacity: fix(value.opacity) };
+};
+
 /**
  * Resolves "$N.field" references in a write_variables action against the
  * results of earlier actions in the same batch, so a single call can create
  * a collection, add modes, and create variables inside it. Only id-bearing
- * fields (and valuesByMode KEYS) are resolved.
+ * fields, valuesByMode KEYS and the alias sides of composed-color values
+ * are resolved.
  */
 const resolveActionRefs = (
   action: Record<string, unknown>,
@@ -870,6 +1132,8 @@ const resolveActionRefs = (
     const value = action[key];
     if (REF_FIELDS.has(key) && typeof value === "string" && REF_PATTERN.test(value)) {
       resolved[key] = resolveRefString(value, results);
+    } else if (key === "value") {
+      resolved[key] = resolveComposedRefs(value, results);
     } else if (key === "valuesByMode" && value && typeof value === "object") {
       const mapped: Record<string, unknown> = {};
       for (const [modeKey, modeValue] of Object.entries(
@@ -878,7 +1142,7 @@ const resolveActionRefs = (
         const resolvedKey = REF_PATTERN.test(modeKey)
           ? String(resolveRefString(modeKey, results))
           : modeKey;
-        mapped[resolvedKey] = modeValue;
+        mapped[resolvedKey] = resolveComposedRefs(modeValue, results);
       }
       resolved[key] = mapped;
     } else {
@@ -1000,6 +1264,22 @@ const requireMotionApi = (): MotionAPI => {
   return figma.motion;
 };
 
+/** primaryAxisAlignItems values (typings 1.138.0; SPACE_EVENLY/SPACE_AROUND are
+ * Plugin API Update 137). set_auto_layout skips values missing from this list,
+ * so the type assertion below fails `pnpm typecheck` — and `pnpm build`, which
+ * type-checks first — when the typings add one. */
+const PRIMARY_AXIS_ALIGN_ITEMS = [
+  "MIN", "MAX", "CENTER", "SPACE_BETWEEN", "SPACE_EVENLY", "SPACE_AROUND",
+] as const satisfies readonly FrameNode["primaryAxisAlignItems"][];
+
+type AssertNever<T extends never> = T;
+type _PrimaryAxisAlignExhaustive = AssertNever<
+  Exclude<FrameNode["primaryAxisAlignItems"], (typeof PRIMARY_AXIS_ALIGN_ITEMS)[number]>
+>;
+
+const isPrimaryAxisAlign = (v: unknown): v is FrameNode["primaryAxisAlignItems"] =>
+  typeof v === "string" && (PRIMARY_AXIS_ALIGN_ITEMS as readonly string[]).indexOf(v) !== -1;
+
 const EDIT_REQUEST_TYPES = new Set<RequestType>([
   "set_node_visibility",
   "set_text_content",
@@ -1120,16 +1400,20 @@ const solidPaintFromHex = (hex: string): SolidPaint => ({
 });
 
 // FigJam text lives in a TextSublayerNode; setting characters requires the
-// sublayer's font loaded first (Inter Medium is the FigJam default).
+// sublayer's fonts loaded first (Inter Medium is the FigJam default). A mixed
+// fontName (several fonts, or since Update 138 axes-only differences) loads
+// every range's font; only empty text falls back to the default.
 const setSublayerText = async (
   sublayer: TextSublayerNode,
   text: string
 ): Promise<void> => {
   const font = sublayer.fontName;
-  if (typeof font === "symbol") {
-    await figma.loadFontAsync({ family: "Inter", style: "Medium" });
-  } else {
+  if (typeof font !== "symbol") {
     await figma.loadFontAsync(font);
+  } else if (sublayer.characters.length > 0) {
+    await loadRangeFonts(sublayer);
+  } else {
+    await figma.loadFontAsync({ family: "Inter", style: "Medium" });
   }
   sublayer.characters = text;
 };
@@ -1201,6 +1485,7 @@ const handleRequest = async (
               fontSize: style.fontSize,
               fontName: style.fontName,
               textDecoration: style.textDecoration,
+              textWrapStyle: style.textWrapStyle,
               lineHeight: style.lineHeight,
               letterSpacing: style.letterSpacing,
             })),
@@ -1500,26 +1785,76 @@ const handleRequest = async (
 
         await loadFontsForTextNode(node);
 
-        if (typeof params.fontFamily === "string" || typeof params.fontStyle === "string") {
-          const currentFontName =
-            typeof node.fontName === "symbol" ? null : node.fontName;
+        // This handler is not transactional: everything that can throw (the
+        // capability check, axis validation, font load) runs before the first
+        // mutation, and the font swap below is that first mutation.
+        if (isTextWrapStyle(params.textWrapStyle) && !supportsTextWrapStyle(node)) {
+          throw new Error(TEXT_WRAP_STYLE_UNAVAILABLE);
+        }
+        const variationSettings = parseVariationSettings(params.variationSettings);
+
+        if (
+          typeof params.fontFamily === "string" ||
+          typeof params.fontStyle === "string" ||
+          variationSettings
+        ) {
+          const current = uniformFontIdentity(node);
           const nextFamily =
             typeof params.fontFamily === "string"
               ? params.fontFamily
-              : currentFontName?.family;
+              : current?.family;
+          const familyChanges = nextFamily !== current?.family;
+          const styleChanges =
+            typeof params.fontStyle === "string" &&
+            params.fontStyle !== current?.style;
+          // Style is explicit or kept — except a new family with axes and no
+          // style, where Figma picks that family's closest named instance.
           const nextStyle =
             typeof params.fontStyle === "string"
               ? params.fontStyle
-              : currentFontName?.style;
+              : familyChanges && variationSettings
+                ? undefined
+                : current?.style;
+          const sameFont = current !== null && !familyChanges && !styleChanges;
 
-          if (!nextFamily || !nextStyle) {
-            throw new Error(
-              "fontFamily and fontStyle must resolve to a concrete font for set_text_properties"
-            );
+          if (sameFont && !variationSettings) {
+            // Repeating the node's own family/style changes nothing: skip the
+            // write, which would reset custom (or per-range) axes to the
+            // named instance.
+          } else if (current && sameFont && current.axesMixed) {
+            // Ranges differ only in axes: patch each range's own axes, since a
+            // node-wide write would reset the axes it omits on every range.
+            await ensureFont(current.family, current.style, variationSettings);
+            for (const segment of node.getStyledTextSegments(["fontName"])) {
+              node.setRangeFontName(segment.start, segment.end, {
+                family: current.family,
+                style: current.style,
+                variationSettings: {
+                  ...segment.fontName.variationSettings,
+                  ...variationSettings,
+                },
+              });
+            }
+            applied.fontName =
+              typeof node.fontName === "symbol"
+                ? { family: current.family, style: current.style, variationSettings: "mixed" }
+                : node.fontName;
+          } else {
+            // Same family and style: the given axes patch the current ones.
+            const nextAxes =
+              variationSettings && current && sameFont
+                ? { ...current.variationSettings, ...variationSettings }
+                : variationSettings;
+
+            if (!nextFamily || (nextStyle === undefined && !nextAxes)) {
+              throw new Error(
+                "fontFamily and fontStyle must resolve to a concrete font for set_text_properties"
+              );
+            }
+
+            assignNodeFontName(node, await ensureNodeFont(nextFamily, nextStyle, nextAxes));
+            applied.fontName = node.fontName;
           }
-
-          node.fontName = await ensureFont(nextFamily, nextStyle);
-          applied.fontName = node.fontName;
         }
 
         if (typeof params.fontSize === "number") {
@@ -1554,6 +1889,11 @@ const handleRequest = async (
         ) {
           node.textAutoResize = params.textAutoResize;
           applied.textAutoResize = node.textAutoResize;
+        }
+
+        if (isTextWrapStyle(params.textWrapStyle)) {
+          node.textWrapStyle = params.textWrapStyle;
+          applied.textWrapStyle = node.textWrapStyle;
         }
 
         if (typeof params.lineHeightPx === "number") {
@@ -1925,12 +2265,7 @@ const handleRequest = async (
           applied.paddingLeft = params.paddingLeft;
         }
 
-        if (
-          params.primaryAxisAlignItems === "MIN" ||
-          params.primaryAxisAlignItems === "MAX" ||
-          params.primaryAxisAlignItems === "CENTER" ||
-          params.primaryAxisAlignItems === "SPACE_BETWEEN"
-        ) {
+        if (isPrimaryAxisAlign(params.primaryAxisAlignItems)) {
           frame.primaryAxisAlignItems = params.primaryAxisAlignItems;
           applied.primaryAxisAlignItems = params.primaryAxisAlignItems;
         }
@@ -2012,50 +2347,72 @@ const handleRequest = async (
       }
       case "create_text": {
         const params = request.params ?? {};
-        const text = figma.createText();
-
+        const variationSettings = parseVariationSettings(params.variationSettings);
         const fontFamily =
           typeof params.fontFamily === "string" ? params.fontFamily : "Inter";
+        // With axes and no style, Figma picks the closest named instance.
         const fontStyle =
-          typeof params.fontStyle === "string" ? params.fontStyle : "Regular";
-        text.fontName = await ensureFont(fontFamily, fontStyle);
+          typeof params.fontStyle === "string"
+            ? params.fontStyle
+            : variationSettings
+              ? undefined
+              : "Regular";
+        // Resolved (axes validated, font loaded) before the node exists, so a
+        // bad font leaves nothing behind.
+        const font = await ensureNodeFont(fontFamily, fontStyle, variationSettings);
 
-        if (typeof params.name === "string") {
-          text.name = params.name;
-        }
-        if (typeof params.characters === "string") {
-          text.characters = params.characters;
-        }
-        if (typeof params.fontSize === "number") {
-          text.fontSize = params.fontSize;
-        }
-        if (typeof params.fillHex === "string") {
-          const fillOpacity =
-            typeof params.fillOpacity === "number" ? params.fillOpacity : undefined;
-          applyTextFill(text, params.fillHex, fillOpacity);
-        }
+        const text = figma.createText();
+        try {
+          assignNodeFontName(text, font);
 
-        if (
-          params.textAlignHorizontal === "LEFT" ||
-          params.textAlignHorizontal === "CENTER" ||
-          params.textAlignHorizontal === "RIGHT" ||
-          params.textAlignHorizontal === "JUSTIFIED"
-        ) {
-          text.textAlignHorizontal = params.textAlignHorizontal;
-        }
+          if (typeof params.name === "string") {
+            text.name = params.name;
+          }
+          if (typeof params.characters === "string") {
+            text.characters = params.characters;
+          }
+          if (typeof params.fontSize === "number") {
+            text.fontSize = params.fontSize;
+          }
+          if (typeof params.fillHex === "string") {
+            const fillOpacity =
+              typeof params.fillOpacity === "number" ? params.fillOpacity : undefined;
+            applyTextFill(text, params.fillHex, fillOpacity);
+          }
 
-        if (
-          params.textAutoResize === "NONE" ||
-          params.textAutoResize === "WIDTH_AND_HEIGHT" ||
-          params.textAutoResize === "HEIGHT" ||
-          params.textAutoResize === "TRUNCATE"
-        ) {
-          text.textAutoResize = params.textAutoResize;
-        }
+          if (
+            params.textAlignHorizontal === "LEFT" ||
+            params.textAlignHorizontal === "CENTER" ||
+            params.textAlignHorizontal === "RIGHT" ||
+            params.textAlignHorizontal === "JUSTIFIED"
+          ) {
+            text.textAlignHorizontal = params.textAlignHorizontal;
+          }
 
-        resizeNodeIfSupported(text, params.width, params.height);
-        await appendToParentIfProvided(text, params.parentId);
-        positionNode(text, params.x, params.y);
+          if (
+            params.textAutoResize === "NONE" ||
+            params.textAutoResize === "WIDTH_AND_HEIGHT" ||
+            params.textAutoResize === "HEIGHT" ||
+            params.textAutoResize === "TRUNCATE"
+          ) {
+            text.textAutoResize = params.textAutoResize;
+          }
+
+          if (isTextWrapStyle(params.textWrapStyle)) {
+            if (!supportsTextWrapStyle(text)) {
+              throw new Error(TEXT_WRAP_STYLE_UNAVAILABLE);
+            }
+            text.textWrapStyle = params.textWrapStyle;
+          }
+
+          resizeNodeIfSupported(text, params.width, params.height);
+          await appendToParentIfProvided(text, params.parentId);
+          positionNode(text, params.x, params.y);
+        } catch (err) {
+          // The single removal path: don't leave an orphan text node behind.
+          text.remove();
+          throw err;
+        }
 
         return {
           type: request.type,
@@ -2065,6 +2422,7 @@ const handleRequest = async (
             nodeName: text.name,
             parentId: text.parent?.id,
             characters: text.characters,
+            fontName: text.fontName,
             x: text.x,
             y: text.y,
             width: text.width,
@@ -2438,6 +2796,22 @@ const handleRequest = async (
         // Unfiltered catalogs run to 1700+ families; keep the payload sane by
         // dropping per-family style lists past this threshold.
         const includeStyles = matched.length <= 200;
+        // Update 138: axis tags per family (null = static), within the same
+        // bound. Synchronous and needs no font load; a family the call rejects
+        // simply omits the field (null would falsely claim "static").
+        const withAxes =
+          includeStyles && hasVariableFontApi()
+            ? matched.map((entry) => {
+                try {
+                  return {
+                    ...entry,
+                    variationAxes: figma.getFontFamilyVariationAxes(entry.family),
+                  };
+                } catch {
+                  return entry;
+                }
+              })
+            : matched;
         return {
           type: request.type,
           requestId: request.requestId,
@@ -2448,7 +2822,7 @@ const handleRequest = async (
             matchedFamilies: matched.length,
             stylesIncluded: includeStyles,
             fonts: includeStyles
-              ? matched
+              ? withAxes
               : matched.map((entry) => ({ family: entry.family })),
           },
         };
@@ -2494,6 +2868,7 @@ const handleRequest = async (
             "fontFamily and fontStyle are required for create_text_style (discover exact strings via list_fonts first)"
           );
         }
+        const variationSettings = parseVariationSettings(params.variationSettings);
 
         if (params.skipIfExists === true) {
           const existing = (await figma.getLocalTextStylesAsync()).find(
@@ -2511,7 +2886,7 @@ const handleRequest = async (
           }
         }
 
-        const font = await ensureFont(fontFamily, fontStyle);
+        const font = await ensureFont(fontFamily, fontStyle, variationSettings);
         const style = figma.createTextStyle();
         try {
           style.name = name;
@@ -2537,10 +2912,12 @@ const handleRequest = async (
         const params = request.params ?? {};
         const style = await resolveTextStyle(params.styleId, params.styleName);
         const applied: Record<string, unknown> = {};
+        const variationSettings = parseVariationSettings(params.variationSettings);
 
         const wantsFontChange =
           typeof params.fontFamily === "string" ||
-          typeof params.fontStyle === "string";
+          typeof params.fontStyle === "string" ||
+          variationSettings !== undefined;
         const hasFontDependentPatch =
           typeof params.fontSize === "number" ||
           params.lineHeight !== undefined ||
@@ -2548,7 +2925,8 @@ const handleRequest = async (
           typeof params.paragraphSpacing === "number" ||
           typeof params.paragraphIndent === "number" ||
           isTextCase(params.textCase) ||
-          isTextDecoration(params.textDecoration);
+          isTextDecoration(params.textDecoration) ||
+          isTextWrapStyle(params.textWrapStyle);
         const hasMetadataPatch =
           (typeof params.newName === "string" && params.newName.length > 0) ||
           typeof params.description === "string";
@@ -2557,6 +2935,34 @@ const handleRequest = async (
           throw new Error(
             "At least one property to update is required for update_text_style"
           );
+        }
+
+        // The next font is resolved (axes validated, font loaded) before
+        // anything is applied, so a bad font, family or axis changes nothing.
+        // TextStyle.fontName takes a FontName, so the style stays explicit.
+        let nextFont: FontName | undefined;
+        if (wantsFontChange) {
+          const current = style.fontName;
+          const nextFamily =
+            typeof params.fontFamily === "string"
+              ? params.fontFamily
+              : current.family;
+          const nextStyle =
+            typeof params.fontStyle === "string"
+              ? params.fontStyle
+              : current.style;
+          const sameFont =
+            nextFamily === current.family && nextStyle === current.style;
+          // Repeating the style's own family/style without axes changes
+          // nothing, so no font is written and its custom axes survive.
+          if (!sameFont || variationSettings) {
+            // Same family and style: the given axes patch the current ones.
+            const nextAxes =
+              variationSettings && sameFont
+                ? { ...current.variationSettings, ...variationSettings }
+                : variationSettings;
+            nextFont = await ensureFont(nextFamily, nextStyle, nextAxes);
+          }
         }
 
         try {
@@ -2570,17 +2976,8 @@ const handleRequest = async (
           }
           applyTextStylePatches(style, params, applied);
 
-          if (wantsFontChange) {
-            const current = style.fontName;
-            const nextFamily =
-              typeof params.fontFamily === "string"
-                ? params.fontFamily
-                : current.family;
-            const nextStyle =
-              typeof params.fontStyle === "string"
-                ? params.fontStyle
-                : current.style;
-            style.fontName = await ensureFont(nextFamily, nextStyle);
+          if (nextFont) {
+            style.fontName = nextFont;
             applied.fontName = style.fontName;
           }
 
@@ -2730,6 +3127,14 @@ const handleRequest = async (
         };
 
         const serializeValue = async (value: VariableValue): Promise<unknown> => {
+          if (isComposedColorValue(value)) {
+            // Recurse so aliases nested in a composed color are resolved too.
+            return {
+              type: "COMPOSED_COLOR",
+              color: await serializeValue(value.color),
+              opacity: await serializeValue(value.opacity),
+            };
+          }
           if (
             typeof value === "object" &&
             value !== null &&
@@ -2863,7 +3268,7 @@ const handleRequest = async (
                   )) {
                     variable.setValueForMode(
                       modeId,
-                      parseVariableValue(variable.resolvedType, value)
+                      await parseVariableValueAsync(variable.resolvedType, value)
                     );
                   }
                 }
@@ -2882,7 +3287,7 @@ const handleRequest = async (
               if (!variable) throw new Error(`Variable not found: ${a.variableId}`);
               variable.setValueForMode(
                 a.modeId,
-                parseVariableValue(variable.resolvedType, a.value)
+                await parseVariableValueAsync(variable.resolvedType, a.value)
               );
               return { action: a.action, variableId: variable.id };
             }
@@ -4629,6 +5034,14 @@ const handleRequest = async (
             (val as { type?: string }).type === "VARIABLE_ALIAS"
           ) {
             return { alias: (val as { id: string }).id };
+          }
+          if (isComposedColorValue(val)) {
+            // Update 139 composed color: flat {color, opacity} with nested
+            // aliases as {alias: id}, so the server's alias graph sees them.
+            return {
+              color: serializeValue(val.color),
+              opacity: serializeValue(val.opacity),
+            };
           }
           return val;
         };

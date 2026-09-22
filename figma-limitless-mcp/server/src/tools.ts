@@ -248,7 +248,7 @@ export function registerTools(
 
   server.tool(
     "get_node",
-    "Get a specific Figma node by ID. Accepts top-level IDs like '4029:12345' and instance-child IDs like 'I12740:17806;12740:17793'. Never use hyphens. When multiple files are connected, specify fileKey.",
+    "Get a specific Figma node by ID. Accepts top-level IDs like '4029:12345' and instance-child IDs like 'I12740:17806;12740:17793'. Never use hyphens. Text nodes report textWrapStyle and, for variable fonts, fontVariationSettings ('mixed' when ranges differ only in axis values). When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_node.shape,
     async ({ nodeId, fileKey }): Promise<ToolResult> => {
       return renderResponse(() => node.send("get_node", [nodeId], fileKey));
@@ -277,7 +277,7 @@ export function registerTools(
 
   server.tool(
     "get_design_context",
-    "Get the design context for the current selection or page. Returns a summarized tree structure optimized for understanding the current design context. When multiple files are connected, specify fileKey.",
+    "Get the design context for the current selection or page. Returns a summarized tree structure optimized for understanding the current design context. Text nodes report textWrapStyle and, for variable fonts, fontVariationSettings. When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_design_context.shape,
     async ({ depth, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = {};
@@ -292,7 +292,7 @@ export function registerTools(
 
   server.tool(
     "get_variable_defs",
-    "Get all local variable definitions including variable collections, modes, and variable values. Variables are Figma's system for design tokens (colors, numbers, strings, booleans, easings, timings). When multiple files are connected, specify fileKey.",
+    "Get all local variable definitions including variable collections, modes, and variable values. Variables are Figma's system for design tokens (colors, numbers, strings, booleans, easings, timings). A COLOR value may be a composed color {type:'COMPOSED_COLOR', color, opacity (0-100 percent)} whose color and/or opacity is an alias (Figma Update 139). When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_variable_defs.shape,
     async ({ fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
@@ -345,7 +345,7 @@ export function registerTools(
 
   server.tool(
     "set_text_properties",
-    "Patch common text properties such as font family/style, size, alignment, auto-resize, line height, letter spacing, fill color, and bounds. When multiple files are connected, specify fileKey.",
+    "Patch common text properties such as font family/style, variable-font axes (variationSettings, e.g. {wght: 550} — tags from list_fonts variationAxes; they merge over the node's current axes, range by range when ranges differ only in axes, unless the family/style changes; repeating the current family/style without axes leaves the font untouched), size, alignment, auto-resize, text wrap style (AUTO/BALANCE/PRETTY), line height, letter spacing, fill color, and bounds. The font and axes are validated and loaded before anything on the node changes. When multiple files are connected, specify fileKey.",
     setTextPropertiesShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(setTextPropertiesInput, args);
@@ -436,7 +436,7 @@ export function registerTools(
 
   server.tool(
     "set_auto_layout",
-    "Configure auto-layout on a frame: direction, gap, padding, alignment, sizing modes, wrap. Set layoutMode='NONE' to disable auto-layout on the frame.",
+    "Configure auto-layout on a frame: direction, gap, padding, alignment (primary axis incl. SPACE_EVENLY/SPACE_AROUND), sizing modes, wrap. Set layoutMode='NONE' to disable auto-layout on the frame.",
     setAutoLayoutInput.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(toolInputSchemas.set_auto_layout, args);
@@ -464,7 +464,7 @@ export function registerTools(
 
   server.tool(
     "create_text",
-    "Create a new text node, optionally inside a specified parent. You can set its content, font, size, alignment, color, position, and bounds. When multiple files are connected, specify fileKey.",
+    "Create a new text node, optionally inside a specified parent. You can set its content, font (including variable-font axes via variationSettings — without fontStyle, Figma picks the closest named instance), size, alignment, text wrap style (AUTO/BALANCE/PRETTY), color, position, and bounds. The font is resolved before the node is created and the node is removed if a later step fails, so a failed call leaves nothing behind. Returns the resolved fontName. When multiple files are connected, specify fileKey.",
     createTextShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(createTextInput, args);
@@ -606,7 +606,7 @@ export function registerTools(
 
   server.tool(
     "list_fonts",
-    "List fonts available to Figma Desktop, INCLUDING locally-installed licensed fonts the Figma REST API and remote MCP cannot see. Returns families grouped with their exact style strings — always discover exact {family, style} strings here before loading fonts or creating text styles (style names like 'Semibold' vs 'Semi Bold' vary per font and must never be guessed). Unfiltered calls return family names only when more than 200 families match.",
+    "List fonts available to Figma Desktop, INCLUDING locally-installed licensed fonts the Figma REST API and remote MCP cannot see. Returns families grouped with their exact style strings — always discover exact {family, style} strings here before loading fonts or creating text styles (style names like 'Semibold' vs 'Semi Bold' vary per font and must never be guessed). Unfiltered calls return family names only when more than 200 families match. When styles are included, each family also reports `variationAxes`: its variable-font axis tags (e.g. ['slnt','wght']; null = static family) — the ONLY valid keys for variationSettings on create_text / set_text_properties / create_text_style / update_text_style.",
     listFontsInput.shape,
     async ({ filter, families, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = {};
@@ -620,7 +620,7 @@ export function registerTools(
 
   server.tool(
     "load_fonts",
-    "Load exact {family, style} font pairs into the Figma session and report per-font success. Works for locally-installed fonts because the plugin runs inside Figma Desktop. Use before text mutations, or as an availability check after discovering exact strings via list_fonts.",
+    "Load exact {family, style} font pairs into the Figma session and report per-font success. Omit style to load every style of the family in one call — needed before a variationSettings write that lets Figma pick the style; heavier for large families. Works for locally-installed fonts because the plugin runs inside Figma Desktop. Use before text mutations, or as an availability check after discovering exact strings via list_fonts.",
     loadFontsInput.shape,
     async ({ fonts, fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
@@ -631,7 +631,7 @@ export function registerTools(
 
   server.tool(
     "get_text_styles",
-    "Get all local text styles with full fidelity: id, name, description, fontName, fontSize, lineHeight, letterSpacing, paragraphSpacing, paragraphIndent, textCase, textDecoration, and variable bindings. Style names are not unique — target styles by id when possible.",
+    "Get all local text styles with full fidelity: id, name, description, fontName, fontSize, lineHeight, letterSpacing, paragraphSpacing, paragraphIndent, textCase, textDecoration, textWrapStyle, and variable bindings; fontName carries variationSettings (every axis) for variable fonts. Style names are not unique — target styles by id when possible.",
     toolInputSchemas.get_text_styles.shape,
     async ({ fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
@@ -642,7 +642,7 @@ export function registerTools(
 
   server.tool(
     "create_text_style",
-    "Create a local text style. Requires exact fontFamily/fontStyle strings (discover via list_fonts); the font is loaded before the style is configured. lineHeight must be {unit:'AUTO'} or {unit:'PIXELS'|'PERCENT', value} — bare numbers are rejected. Set skipIfExists to make repeated runs idempotent by name.",
+    "Create a local text style. Requires exact fontFamily/fontStyle strings (discover via list_fonts); the font is loaded before the style is configured. lineHeight must be {unit:'AUTO'} or {unit:'PIXELS'|'PERCENT', value} — bare numbers are rejected. Optional variationSettings sets variable-font axes (tags from list_fonts variationAxes; fontStyle is still required) and textWrapStyle sets AUTO/BALANCE/PRETTY paragraph wrapping. Set skipIfExists to make repeated runs idempotent by name.",
     createTextStyleInput.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(toolInputSchemas.create_text_style, args);
@@ -656,7 +656,7 @@ export function registerTools(
 
   server.tool(
     "update_text_style",
-    "Update an existing local text style in place (target by styleId or exact styleName). Changing fontFamily/fontStyle automatically loads the new font first, and every node bound to the style updates — this is the lever for swapping a placeholder font (e.g. Inter) to a real face across a design system in one call per style. Property patches apply before a font swap; if a later step fails, the error message lists the changes that were already applied (they are not rolled back).",
+    "Update an existing local text style in place (target by styleId or exact styleName). Changing fontFamily/fontStyle/variationSettings automatically loads the new font first, and every node bound to the style updates — this is the lever for swapping a placeholder font (e.g. Inter) to a real face across a design system in one call per style. variationSettings (variable-font axes, tags from list_fonts variationAxes) merges over the style's current axes when the family and style stay the same. textWrapStyle sets AUTO/BALANCE/PRETTY paragraph wrapping. The new font and axes are validated and loaded BEFORE anything changes, so a bad font, family or axis fails with nothing applied. Property patches then apply before the font swap; if a later step fails, the error message lists the changes that were already applied (they are not rolled back).",
     updateTextStyleShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(updateTextStyleInput, args);
@@ -871,7 +871,7 @@ export function registerTools(
 
   server.tool(
     "get_variables_deep",
-    "Full unthrottled variable dump the official MCP cannot produce: every local collection with ALL modes and per-mode values (not just defaults), scopes, descriptions, code syntax, and aliases resolved to {id, name, collection}. Filter to one collection by id or name. This is the ground truth for design-token work.",
+    "Full unthrottled variable dump the official MCP cannot produce: every local collection with ALL modes and per-mode values (not just defaults), scopes, descriptions, code syntax, and aliases resolved to {id, name, collection} (also inside composed colors {type:'COMPOSED_COLOR', color, opacity (0-100 percent)}, Figma Update 139). Filter to one collection by id or name. This is the ground truth for design-token work.",
     getVariablesDeepInput.shape,
     async ({ collectionId, collectionName, resolveAliases, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = {};
@@ -888,7 +888,7 @@ export function registerTools(
 
   server.tool(
     "write_variables",
-    "Author design tokens — the official MCP has NO variable-write surface. Sequential action batch: create_collection, rename_collection, delete_collection, add_mode, rename_mode, remove_mode, create_variable (with scopes/description/valuesByMode), rename_variable, update_variable (scopes/description/hiddenFromPublishing/codeSyntax), set_value, set_alias, bind_to_node (node fields or solid-paint colors), delete_variable. Later actions reference earlier results via '$N.<field>' (e.g. collectionId: '$0.collectionId'), so one call builds a whole collection. Stops at the first error by default and reports per-action outcomes.",
+    "Author design tokens — the official MCP has NO variable-write surface. Sequential action batch: create_collection, rename_collection, delete_collection, add_mode, rename_mode, remove_mode, create_variable (with scopes/description/valuesByMode), rename_variable, update_variable (scopes/description/hiddenFromPublishing/codeSyntax), set_value, set_alias (set_value/create_variable also take composed colors { color: hex|{r,g,b,a}|{alias}, opacity: 0-100|{alias} }), bind_to_node (node fields or solid-paint colors), delete_variable. Later actions reference earlier results via '$N.<field>' (e.g. collectionId: '$0.collectionId'), so one call builds a whole collection. Stops at the first error by default and reports per-action outcomes.",
     writeVariablesInput.shape,
     async ({ actions, stopOnError, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = { actions };
