@@ -436,7 +436,7 @@ export function registerTools(
 
   server.tool(
     "set_auto_layout",
-    "Configure auto-layout on a frame: direction, gap, padding, alignment, sizing modes, wrap. Set layoutMode='NONE' to disable auto-layout on the frame.",
+    "Configure auto-layout on a frame: direction, gap, padding, alignment (primary axis incl. SPACE_EVENLY/SPACE_AROUND), sizing modes, wrap. Set layoutMode='NONE' to disable auto-layout on the frame.",
     setAutoLayoutInput.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(toolInputSchemas.set_auto_layout, args);

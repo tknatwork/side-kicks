@@ -726,8 +726,8 @@ const variableAction = z.object({
       "create_variable: the variable type. Motion variables: EASING values are " +
       "{ type, easingFunctionCubicBezier?, easingFunctionSpring? } (type e.g. " +
       "EASE_IN_AND_OUT, CUSTOM_CUBIC_BEZIER, GENTLE, HOLD); TIMING values are " +
-      "plain numbers in ms. Motion variables are fixed to ALL_SCOPES — Figma " +
-      "rejects setting scopes on them."
+      "plain numbers in seconds (0.2 = 200 ms). Motion variables are fixed to " +
+      "ALL_SCOPES — Figma rejects setting scopes on them."
     ),
   scopes: z
     .array(z.string())
@@ -752,7 +752,9 @@ const variableAction = z.object({
   value: z
     .unknown()
     .optional()
-    .describe("set_value: matches resolvedType — COLOR accepts '#RRGGBB' or {r,g,b,a}"),
+    .describe(
+      "set_value: matches resolvedType — COLOR accepts '#RRGGBB' or {r,g,b,a}; TIMING is seconds (0.2 = 200 ms)"
+    ),
   valuesByMode: z
     .record(z.string(), z.unknown())
     .optional()
@@ -1480,9 +1482,13 @@ export const setAutoLayoutInput = z.object({
   paddingBottom: z.number().min(0).optional(),
   paddingLeft: z.number().min(0).optional(),
   primaryAxisAlignItems: z
-    .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN"])
+    .enum(["MIN", "MAX", "CENTER", "SPACE_BETWEEN", "SPACE_EVENLY", "SPACE_AROUND"])
     .optional()
-    .describe("Alignment along the primary axis"),
+    .describe(
+      "Alignment along the primary axis (CSS justify-content): MIN=flex-start, MAX=flex-end, " +
+      "CENTER=center, SPACE_BETWEEN=space-between, SPACE_EVENLY=space-evenly, " +
+      "SPACE_AROUND=space-around. SPACE_EVENLY/SPACE_AROUND need Figma Plugin API Update 137+."
+    ),
   counterAxisAlignItems: z
     .enum(["MIN", "MAX", "CENTER", "BASELINE"])
     .optional()

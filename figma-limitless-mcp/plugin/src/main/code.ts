@@ -791,9 +791,10 @@ const parseVariableValue = (
   if (resolvedType === "STRING" && typeof value === "string") return value;
   if (resolvedType === "BOOLEAN" && typeof value === "boolean") return value;
   if (resolvedType === "TIMING") {
-    // Measured: TIMING values are plain numbers (milliseconds).
+    // TIMING values are plain numbers in seconds, per Figma's VariableValue
+    // reference (the unit of every Motion duration in the API). Passed through.
     if (typeof value === "number" && isFinite(value) && value >= 0) return value;
-    throw new Error("TIMING value must be a non-negative number (milliseconds)");
+    throw new Error("TIMING value must be a non-negative number (seconds)");
   }
   if (resolvedType === "EASING") {
     // Measured: setValueForMode accepts {type} with optional bezier/spring params
@@ -999,6 +1000,21 @@ const requireMotionApi = (): MotionAPI => {
   }
   return figma.motion;
 };
+
+/** primaryAxisAlignItems values (typings 1.138.0; SPACE_EVENLY/SPACE_AROUND are
+ * Plugin API Update 137). set_auto_layout skips values missing from this list,
+ * so the type assertion below fails the build when the typings add one. */
+const PRIMARY_AXIS_ALIGN_ITEMS = [
+  "MIN", "MAX", "CENTER", "SPACE_BETWEEN", "SPACE_EVENLY", "SPACE_AROUND",
+] as const satisfies readonly FrameNode["primaryAxisAlignItems"][];
+
+type AssertNever<T extends never> = T;
+type _PrimaryAxisAlignExhaustive = AssertNever<
+  Exclude<FrameNode["primaryAxisAlignItems"], (typeof PRIMARY_AXIS_ALIGN_ITEMS)[number]>
+>;
+
+const isPrimaryAxisAlign = (v: unknown): v is FrameNode["primaryAxisAlignItems"] =>
+  typeof v === "string" && (PRIMARY_AXIS_ALIGN_ITEMS as readonly string[]).indexOf(v) !== -1;
 
 const EDIT_REQUEST_TYPES = new Set<RequestType>([
   "set_node_visibility",
@@ -1925,12 +1941,7 @@ const handleRequest = async (
           applied.paddingLeft = params.paddingLeft;
         }
 
-        if (
-          params.primaryAxisAlignItems === "MIN" ||
-          params.primaryAxisAlignItems === "MAX" ||
-          params.primaryAxisAlignItems === "CENTER" ||
-          params.primaryAxisAlignItems === "SPACE_BETWEEN"
-        ) {
+        if (isPrimaryAxisAlign(params.primaryAxisAlignItems)) {
           frame.primaryAxisAlignItems = params.primaryAxisAlignItems;
           applied.primaryAxisAlignItems = params.primaryAxisAlignItems;
         }
