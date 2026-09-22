@@ -5,7 +5,7 @@
 
 import type { Detector } from "../runner.js";
 import type { PartialFinding } from "./shared.js";
-import { analyze, roleSegment } from "./shared.js";
+import { analyze, isTyped, roleSegment } from "./shared.js";
 
 // True chromatic hues only — neutral/gray/slate/etc. are commonly used as
 // legitimate semantic role names, so they're excluded to avoid false positives.
@@ -59,7 +59,9 @@ const hueRampWordsPrimitivesOnly: Detector = (snap) => {
   const a = analyze(snap);
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
-    if (v.tier === "primitive") continue; // hue ramps belong in primitives
+    // Hue ramps belong in primitives; an unknown-tier collection (its tier
+    // hangs on library variables) may be one, unless it is provably typed.
+    if (!isTyped(a, v)) continue;
     const hue = v.name
       .toLowerCase()
       .split("/")
@@ -68,7 +70,7 @@ const hueRampWordsPrimitivesOnly: Detector = (snap) => {
       out.push({
         rule_id: "hue-ramp-words-primitives-only",
         variableId: v.id,
-        message: `${v.tier} token '${v.name}' names a hue ('${hue}'); semantic/component tokens should be role-named (bg/fg/brand), not colour-named — role names are what let a theme repaint them.`,
+        message: `${v.tier === "unknown" ? "typed" : v.tier} token '${v.name}' names a hue ('${hue}'); semantic/component tokens should be role-named (bg/fg/brand), not colour-named — role names are what let a theme repaint them.`,
       });
     }
   }

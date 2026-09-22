@@ -240,6 +240,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Checks:** Brand-collection tokens must alias primitives, and semantic accent/action tokens must alias brand/* tokens; a semantic token aliasing a brand-specific primitive directly (skipping the Brand layer) is flagged.
 - **Detect:** Resolve each alias target's collection via getVariableByIdAsync(...).variableCollectionId; warn when a semantic accent token's target is a primitive rather than a brand-layer variable.
 - **Fix:** Route accent/action semantics through a brand/* token so re-branding is a single-layer swap.
+- **Library variables:** a token whose chain reaches a library variable isn't reported: that variable may be, or route through, the brand layer.
 
 ## tokens
 
@@ -248,6 +249,7 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Detect:** figma.variables.getLocalVariableCollectionsAsync() -> classify each collection by name/convention into Primitive|Semantic|Component; getLocalVariablesAsync() then group by variableCollectionId and assert each variable maps to exactly one classified tier. Error if <2 tiers resolvable or any variable's collection is unclassifiable.
 - **Fix:** Create the missing collection(s) via write_variables and move stray variables into the correct tier; ensure collection names follow the Primitives/Semantic/Component convention the classifier keys on.
 - **Composed colors:** when a collection's tier is inferred from its references, the aliased color side of a composed color counts as an alias edge; the opacity side (a COLOR drawing on a FLOAT) does not, so a palette whose alpha variants take their opacity from a separate opacity collection stays primitive.
+- **Library variables:** a file whose variables alias team-library variables may take a tier from the library, so no tier is reported missing. A collection with no tier word in its name that aliases the library isn't inferred primitive (it aliases across collections) or semantic (a library target may be semantic): its tier is unknown and the tier rules skip it. One that also aliases another local collection is still semantic or component: component when a target is proven semantic or component, else unknown, and the typed-token rules (`no-all-scopes-on-typed-token`, the role-scope matches, `hue-ramp-words-primitives-only`) still check it. A target collection of unknown tier may be primitive, so it doesn't make a collection component.
 
 ### `no-node-binds-primitive` — ERROR
 - **Checks:** No node property or paint binds a variable whose collection is the Primitives tier - nodes bind Semantic/Component only.
@@ -283,12 +285,14 @@ Every rule is detectable locally via Figma Plugin API 1.130 (verified — 0 need
 - **Detect:** For each valuesByMode VARIABLE_ALIAS, await figma.variables.getVariableByIdAsync(value.id); error if it returns null/undefined (deleted or cross-file-unresolvable target).
 - **Fix:** Re-point the alias to a live variable or recreate the deleted target; never leave a broken alias id.
 - **Composed colors:** the color and opacity aliases of a composed color are checked too; a dangling one is reported as a dangling composed-color reference.
+- **Library variables:** `getLocalVariablesAsync()` leaves out imported team-library variables, so `lint_run` resolves each non-local target (plain aliases and composed-color sides) with `getVariableByIdAsync`. A target that resolves is a library variable and is not reported; only a target that resolves to nothing is. The lookup stops at 2,000 ids, and the report's `scope.externalRefScanTruncated` says so. A checked target that resolved to nothing is still reported past the cap; an unchecked one is not (it can't be proven dangling). A plugin build older than 0.5.1 doesn't look them up, so it reports every non-local target as dangling until it is rebuilt.
 
 ### `alias-graph-acyclic-max-depth-2` — ERROR
 - **Checks:** Following aliases from any variable must terminate at a raw primitive value within <=2 hops (Component->Semantic->raw) and must contain no cycles.
 - **Detect:** When following an alias into the target variable, evaluate the target's value in the target collection's own mode (single-mode primitive → its defaultModeId), not the source modeId, so cross-collection chains resolve correctly.
 - **Fix:** Flatten the extra indirection so the chain is at most Component->Semantic->Primitive; break any cycle by re-pointing one alias to a literal-backed primitive.
 - **Composed colors:** the walk follows both aliased sides of a composed color; the depth is the deepest side. A primitive's composed alpha variant adds no hop (component -> semantic -> alpha variant is 2 hops); the walk still goes through it to find cycles.
+- **Library variables:** a chain that reaches a library variable leads out of the file, where the walk stops, so it isn't reported.
 
 ### `primitive-hidden-from-publishing` — ERROR
 - **Checks:** Every Primitive variable hiddenFromPublishing===true; every Semantic and Component variable hiddenFromPublishing===false.

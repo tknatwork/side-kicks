@@ -74,6 +74,19 @@ test("golden clean DS produces zero findings across the full suite", () => {
   assert.equal(report.summary.warnings, 0);
 });
 
+test("golden clean DS stays at zero findings with a new plugin's library-scan fields", () => {
+  // A file with no library references: the new plugin reports an empty list.
+  const report = runLint(
+    { ...goldenSnapshot(), externalVariableIds: [], externalUnresolvedIds: [], externalRefScanTruncated: false },
+    { severity: "all" }
+  );
+  assert.equal(
+    report.findings.length,
+    0,
+    `expected 0 findings, got:\n${report.findings.map((f) => `  ${f.severity} ${f.rule_id}: ${f.message}`).join("\n")}`
+  );
+});
+
 test("every default-on implemented detector ran on the golden DS (no silent skips)", () => {
   const report = runLint(goldenSnapshot(), { severity: "all" });
   // Opt-in (defaultOn:false) rules don't run in a default lint, so the invariant

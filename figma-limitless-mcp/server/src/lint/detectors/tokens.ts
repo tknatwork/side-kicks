@@ -8,7 +8,9 @@ import {
   analyze,
   aliasTarget,
   composedColor,
+  isExternalRef,
   referenceTargets,
+  refStatus,
   resolveChain,
   TIER_RANK,
   type PartialFinding,
@@ -17,6 +19,12 @@ import {
 const threeTierCollectionsExist: Detector = (snap) => {
   const a = analyze(snap);
   if (!a.hasVariables) return [];
+  // A file that references library variables may take a tier from the
+  // library, so a tier missing locally can't be proven missing.
+  const usesLibrary = a.variables.some((v) =>
+    Object.values(v.valuesByMode).some((val) => referenceTargets(val).some((t) => isExternalRef(a, t)))
+  );
+  if (usesLibrary) return [];
   const tiers = new Set(a.collectionTier.values());
   const missing: string[] = [];
   if (!tiers.has("primitive")) missing.push("primitive");
@@ -97,7 +105,11 @@ const componentTokenMustAliasSemantic: Detector = (snap) => {
         });
         break;
       }
-      const target = refs.map((t) => a.byId.get(t)).find((t) => t && t.tier !== "semantic");
+      // A library target isn't in byId, and an unknown-tier one may be
+      // semantic: neither proves a skipped tier.
+      const target = refs
+        .map((t) => a.byId.get(t))
+        .find((t) => t && t.tier !== "semantic" && t.tier !== "unknown");
       if (target) {
         const verb = composedColor(val) ? "composes" : "aliases";
         out.push({
@@ -143,9 +155,10 @@ const aliasTargetResolves: Detector = (snap) => {
   const out: PartialFinding[] = [];
   for (const v of a.variables) {
     for (const [mode, val] of Object.entries(v.valuesByMode)) {
-      // Composed-colour references resolve against the same local variable set
-      // as plain aliases.
-      const t = referenceTargets(val).find((id) => !a.byId.has(id));
+      // Composed-colour references resolve like plain aliases. A library
+      // variable the plugin resolved is a live target; one its capped lookup
+      // never reached can't be proven dangling (see refStatus).
+      const t = referenceTargets(val).find((id) => refStatus(a, id) === "dangling");
       if (t !== undefined) {
         const kind = composedColor(val) ? "composed-color reference" : "alias";
         out.push({
@@ -167,7 +180,9 @@ const aliasGraphAcyclic: Detector = (snap) => {
     for (const [mode, val] of Object.entries(v.valuesByMode)) {
       if (referenceTargets(val).length === 0) continue;
       const { hops, cyclic, dangling } = resolveChain(a, val, mode);
-      if (dangling) continue; // reported by alias-target-resolves
+      // A dangling target is alias-target-resolves' finding; a library one
+      // leads out of the file, where the walk stops, so the chain isn't judged.
+      if (dangling) continue;
       if (cyclic) {
         out.push({
           rule_id: "alias-graph-acyclic-max-depth-2",

@@ -7,6 +7,7 @@ import {
   aliasInputId,
   isComposedColorInput,
   isComposedColorValue,
+  referencedVariableIds,
   type ComposedColorInput,
   type ComposedColorValue,
 } from "./figma-139-shim";
@@ -5063,6 +5064,43 @@ const handleRequest = async (
           ),
         }));
 
+        // Library-variable references. getLocalVariablesAsync() leaves out
+        // imported team-library variables, so an alias to one looks dangling
+        // against the local set. Resolve each distinct non-local id (plain
+        // aliases and composed-color sides): a library variable resolves, a
+        // deleted one is null, and a lookup that throws counts as null. Both
+        // outcomes ship, so a checked null stays provably dangling even when
+        // the scan is capped; past the cap the rest stay unchecked and the scan
+        // says so.
+        const MAX_EXTERNAL_REF_LOOKUPS = 2000;
+        const EXTERNAL_REF_BATCH = 50;
+        const localVariableIds = new Set(variables.map((vr) => vr.id));
+        const externalRefIds = new Set<string>();
+        for (const vr of variables) {
+          for (const val of Object.values(vr.valuesByMode)) {
+            for (const id of referencedVariableIds(val)) {
+              if (!localVariableIds.has(id)) externalRefIds.add(id);
+            }
+          }
+        }
+        const refsToCheck = [...externalRefIds].slice(0, MAX_EXTERNAL_REF_LOOKUPS);
+        const externalRefScanTruncated = externalRefIds.size > refsToCheck.length;
+        const externalVariableIds: string[] = [];
+        const externalUnresolvedIds: string[] = [];
+        for (let i = 0; i < refsToCheck.length; i += EXTERNAL_REF_BATCH) {
+          const batch = refsToCheck.slice(i, i + EXTERNAL_REF_BATCH);
+          const resolved = await Promise.all(
+            batch.map(async (id) => {
+              try {
+                return Boolean(await figma.variables.getVariableByIdAsync(id));
+              } catch {
+                return false;
+              }
+            })
+          );
+          batch.forEach((id, j) => (resolved[j] ? externalVariableIds : externalUnresolvedIds).push(id));
+        }
+
         const snapCollections = collections.map((c) => ({
           id: c.id,
           name: c.name,
@@ -5435,6 +5473,9 @@ const handleRequest = async (
             frameDupCandidates,
             frameDupScanTruncated,
             codeMappingScanTruncated,
+            externalVariableIds,
+            externalUnresolvedIds,
+            externalRefScanTruncated,
             meta: {
               pageCount: figma.root.children.length,
               scannedAllPages: true,

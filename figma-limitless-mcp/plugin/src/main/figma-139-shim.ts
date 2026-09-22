@@ -38,6 +38,17 @@ export const isComposedColorValue = (v: unknown): v is ComposedColorValue => {
   return colorOk && (typeof o.opacity === "number" || isVariableAlias(o.opacity));
 };
 
+/** Read side: the variable ids a live valuesByMode entry references — a plain
+ *  VARIABLE_ALIAS, or the aliased sides of a composed color. */
+export const referencedVariableIds = (v: unknown): string[] => {
+  if (isVariableAlias(v)) return [v.id];
+  if (!isComposedColorValue(v)) return [];
+  const ids: string[] = [];
+  if (isVariableAlias(v.color)) ids.push(v.color.id);
+  if (isVariableAlias(v.opacity)) ids.push(v.opacity.id);
+  return ids;
+};
+
 /** Write side: a write_variables value shaped like a composed color. The
  *  sides are validated when the value is built. `type: 'COMPOSED_COLOR'` is
  *  tolerated so get_variables_deep output can be written back as-is. */
