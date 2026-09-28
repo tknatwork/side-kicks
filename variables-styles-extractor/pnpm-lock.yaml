@@ -9,19 +9,19 @@ importers:
   .:
     devDependencies:
       '@figma/plugin-typings':
-        specifier: ^1.131.0
-        version: 1.131.0
+        specifier: ^1.139.0
+        version: 1.139.0
       terser:
-        specifier: ^5.49.0
-        version: 5.49.0
+        specifier: ^5.51.2
+        version: 5.51.2
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
 
 packages:
 
-  '@figma/plugin-typings@1.131.0':
-    resolution: {integrity: sha512-XBTPNGc65myupitMaeemyiF/ir1jn/EXXTdoGUCEVCfVB6KPQUy+gbfHbnC+QQiHxdw/Naikdx+9v/u4d49gfA==}
+  '@figma/plugin-typings@1.139.0':
+    resolution: {integrity: sha512-O1lUNRXpBsnODokqnIJW0AawVVrx4FUkm2ShDsLGsInWrxDYX0MIoy0yVKa+MXOy7Wfs3JE+utR+YTcxp6Yihw==}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -177,8 +177,8 @@ packages:
     resolution: {integrity: sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==}
     engines: {node: '>=0.10.0'}
 
-  terser@5.49.0:
-    resolution: {integrity: sha512-SNiDnXyHSrxVcIOtVbULzcTmniUiwcV7Nwdyj1twVubeTmbjoa8p69KKDpfkdoOavuM4/GRm1+ykI8qqnavHoA==}
+  terser@5.51.2:
+    resolution: {integrity: sha512-bWnjSNscmuI+GJze6ZupnHP8G/cTcsJF+bXCeQknk2SHQsgbNJnLrqiH9jZ2W4STPVXH2mDKKRX3iwPhc9Cn/Q==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -189,7 +189,7 @@ packages:
 
 snapshots:
 
-  '@figma/plugin-typings@1.131.0': {}
+  '@figma/plugin-typings@1.139.0': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -283,7 +283,7 @@ snapshots:
 
   source-map@0.6.1: {}
 
-  terser@5.49.0:
+  terser@5.51.2:
     dependencies:
       '@jridgewell/source-map': 0.3.11
       acorn: 8.15.0
