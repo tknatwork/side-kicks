@@ -6,6 +6,25 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Security
+
+- **Server: `@modelcontextprotocol/sdk` 1.30.0 → 1.32.1** (fixes GHSA-6qxp-vccf-f47h, high: the
+  OAuth client could send credentials to an authorization server chosen by the MCP server). The
+  lockfile now also resolves the SDK's own dependencies to patched releases: `proxy-addr` 2.0.8
+  (critical, GHSA-jqcg-44mw-7w3h), `fast-uri` 3.1.8 (five high, one moderate), `qs` 6.16.0,
+  `hono` 4.13.13, `ip-address` 10.7.3 via `express-rate-limit` 8.7.1. `pnpm audit`: 18 → 0.
+  No source changes; build and all 100 unit tests pass.
+- **Plugin (build tooling only, nothing here ships in the bundle):** `concurrently` 9.2.4 → 9.2.5,
+  the upstream backport whose only change is `shell-quote` 1.12.0 (critical,
+  GHSA-pqg4-j6r4-53mv). The lockfile refresh also moves `browserslist` 4.29.3, `baseline-browser-mapping`
+  2.11.28 and `source-map-js` 1.2.2 to patched releases. Typecheck and both Vite builds pass.
+  `pnpm audit`: 6 → 1.
+- **Known, not fixable upstream:** `braces` 3.0.3 (GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS on
+  deeply nested patterns) has no patched release. It is reached only through
+  `vite-plugin-singlefile` → `micromatch`, which `vite-plugin-singlefile` calls only when an
+  `inlinePattern` is configured; `vite.config.ts` passes none, so the code never runs, and only at
+  build time. Revisit when `braces` or `vite-plugin-singlefile` ships a fix.
+
 ## [0.5.1] — 2026-09-22
 
 ### Fixed
