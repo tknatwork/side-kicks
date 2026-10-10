@@ -4,6 +4,9 @@ Fusion's MCP server runs **inside the Fusion desktop app on your computer**. Cla
 it over `localhost` — a network address that only means "this same machine". That one fact
 explains most of the steps below.
 
+**This setup's port: `27182`** (confirmed by the owner, 2026-10-10). Every command and
+connector setting below uses it; if you ever change it in Fusion, change it here too.
+
 ## Last check from this repo
 
 | Date | Where the check ran | Result |
@@ -19,8 +22,8 @@ or open files for you, so with no active design its tools have nothing to work o
 
 ### 2. Turn on the MCP server inside Fusion
 
-`Preferences → General → API → Fusion MCP Server` → enable, then **note the port number**
-(the default is usually `27182`).
+`Preferences → General → API → Fusion MCP Server` → enable, and check the port reads
+`27182` (the default, and the one this setup uses).
 
 **Why:** the server is off by default, and the port is the "door number" Claude knocks on.
 If Fusion and Claude disagree about the port, they never meet.
@@ -39,8 +42,8 @@ Windows (PowerShell):
 netstat -ano | findstr :27182
 ```
 
-A line of output means Fusion is listening. No output means step 2 did not take effect
-(or the port is different — use the number you noted).
+A line of output means Fusion is listening. No output means step 2 did not take effect,
+or the port in Fusion is no longer `27182`.
 
 **Why this order:** it splits the problem in half. If nothing is listening, no amount of
 Claude configuration will help; fix Fusion first.
@@ -66,7 +69,7 @@ the active design?"* A correct design name means the whole chain works.
 |---------|--------------|-----|
 | Claude lists no Fusion tools | Connector not added/enabled for this chat | Enable it in the chat's connector menu |
 | Tools listed but calls fail | Fusion closed, or no design open | Open a design, retry |
-| Step 3 shows nothing | MCP server toggle off, or a different port | Re-check step 2 |
+| Step 3 shows nothing | MCP server toggle off, or the port was changed from `27182` | Re-check step 2 |
 | Works in Desktop, not on claude.ai/code | Expected — cloud can't reach `localhost` | Do Fusion work from Desktop or local Claude Code; commit results here |
 
 ## Related
