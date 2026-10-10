@@ -1,0 +1,6 @@
+# Fusion API scripts
+__pycache__/
+*.pyc
+
+# Local exports from Fusion (STEP/STL/F3D renders etc.) — keep out of git unless deliberately added
+out/

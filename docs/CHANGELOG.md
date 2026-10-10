@@ -9,6 +9,23 @@ This changelog tracks **folder-level structure changes only**.
 For project-specific changes, see the project's own changelog:
 - `variables-styles-extractor/docs/CHANGELOG.md`
 - `natural-scroll-switch/CHANGELOG.md`
+- `fusion-mcp/CHANGELOG.md`
+
+---
+
+## [Unreleased] - fusion-mcp added
+
+### Added
+- **`fusion-mcp/`** — a new project folder for work done in Autodesk Fusion through Fusion's local
+  MCP server: project `AGENTS.md` (invariants for driving Fusion over MCP), `CLAUDE.md` pointer,
+  README, MIT license, `scripts/` for Fusion API scripts, and `docs/CONNECTION.md` (enable the
+  server, check it is online, connect Claude Desktop).
+- Root `README.md` (project table + repository layout), `AGENTS.md` (project table + scope rules) and
+  `.github/copilot-instructions.md` (active-project list) updated.
+
+### Notes
+- No workflows, Dependabot ecosystems or CodeQL paths added: the project has no code or
+  dependencies yet.
 
 ---
 

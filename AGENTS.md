@@ -25,6 +25,7 @@ A workspace for Figma plugins and design tooling, led by **Limitless MCP for Fig
 | **Limitless MCP for Figma** (flagship) | [`figma-limitless-mcp/`](figma-limitless-mcp/) | Active (v0.5.1) — local Figma MCP server + Desktop plugin giving AI full, unthrottled Figma access across Design/Dev/FigJam/Slides/Buzz: local fonts, variable/component/prototype authoring, crash-safe orchestration, and a bundled **design-system knowledge layer + 57-rule structure linter** (build → lint → fix). **98 tools.** |
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published on Figma Community ([1584331992332668732](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)) |
 | Natural Scroll Switch | [`natural-scroll-switch/`](natural-scroll-switch/) | Active (v1.0.0) — macOS launchd utility + one-click app that switches natural scrolling by pointing device. Swift/SwiftPM, universal binary, no permissions, no network. |
+| Fusion MCP workspace | [`fusion-mcp/`](fusion-mcp/) | Scaffold (2026-10-10) — work done in Autodesk Fusion through its local MCP server: Fusion API scripts, connection docs. Fusion's MCP server is local-only, so the Fusion side runs from Claude Desktop / local Claude Code; see [`fusion-mcp/docs/CONNECTION.md`](fusion-mcp/docs/CONNECTION.md). |
 
 Local working copies may contain extra untracked folders (references,
 retired experiments). They are not part of the repo — ignore them.
@@ -59,6 +60,7 @@ banned without explicit user permission.
 |----------------|--------------------|--------------------|
 | `variables-styles-extractor/**` | Root `README.md`, `.github/` if it's a security/CI change you've been asked for | — |
 | `natural-scroll-switch/**` | Root `README.md`; `.github/workflows/natural-scroll-switch-*.yml` (they are copies of `natural-scroll-switch/ci/*` — edit the project copy and copy up, or CI fails on drift) | Other projects' source |
+| `fusion-mcp/**` | Root `README.md` | Other projects' source |
 | Workspace root files (this file, README, `.gcc/`) | The project's README if cross-cutting | Per-project source unless explicitly asked |
 
 If a future change spans more than one project folder (e.g. extracting

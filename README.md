@@ -30,6 +30,7 @@
 | figma-to-indesign | [`figma-to-indesign/`](figma-to-indesign/) | v0.1 (9 Aug 2026) · MCP toolset — Figma → editable InDesign (.indd/.idml) without PDF: original bitmaps, live text, CMYK/sRGB, PDF/X-1a, verified hand-off package. macOS only; pairs with Limitless MCP **≥ 0.4.0**. |
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.1.2 (first 17 Jan 2026) · Figma plugin — export/import Figma variables & styles as JSON (Figma · Tokens Studio · W3C). [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
 | Natural Scroll Switch | [`natural-scroll-switch/`](natural-scroll-switch/) | v1.0.0 (17 Aug 2026) · macOS utility — natural scrolling follows the device in your hand: OFF for a third-party mouse, ON for trackpads and Apple Magic devices. One-click app, universal binary (arm64 + x86_64), no permissions, no network. macOS 12+. |
+| Fusion MCP workspace | [`fusion-mcp/`](fusion-mcp/) | Scaffold (10 Oct 2026) · Work done in Autodesk Fusion through its local MCP server — Fusion API scripts and [connection docs](fusion-mcp/docs/CONNECTION.md). Needs Claude Desktop or local Claude Code; a cloud session can't reach Fusion. |
 
 ---
 
@@ -83,6 +84,14 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── scripts/e2e-live-test.mjs   ← Live end-to-end tool suite
 │   ├── docs/                       ← AI-GUIDE (operating rules for AI sessions)
 │   └── .gcc/                       ← Project session memory + build log
+├── fusion-mcp/                     ← Project: Autodesk Fusion via its local MCP server
+│   ├── AGENTS.md                   ← Project AI rules (canonical)
+│   ├── CLAUDE.md                   ← Pointer to project AGENTS.md
+│   ├── README.md                   ← What lives here + layout
+│   ├── LICENSE.md                  ← MIT
+│   ├── CHANGELOG.md                ← Keep a Changelog
+│   ├── docs/CONNECTION.md          ← Turn on the MCP server, check it is online
+│   └── scripts/                    ← Fusion API Python scripts worth keeping
 └── natural-scroll-switch/          ← Project: macOS natural-scrolling switcher (Swift)
     ├── AGENTS.md                   ← Project AI rules (canonical)
     ├── CLAUDE.md                   ← Pointer to project AGENTS.md
