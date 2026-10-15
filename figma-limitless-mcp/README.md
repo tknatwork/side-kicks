@@ -162,7 +162,7 @@ All session state lives in `~/.figma-limitless-mcp/` and survives restarts.
 
 ## Security & privacy
 
-- Everything is local: the plugin only talks to `ws://localhost:1994` (pinned in the manifest); the server binds localhost and never phones home.
+- Everything is local: the plugin only talks to `ws://localhost:1994` (pinned in the manifest), and the server never phones home. The :1994 server answers only this machine: requests from other devices are refused, `/rpc` (which can run any tool, `execute_code` included) refuses browser requests and anything that isn't a JSON POST, and `/ws` accepts only the Figma plugin's origin, so a web page you visit can't drive Figma through it.
 - No telemetry, no accounts, no tokens. State root: `~/.figma-limitless-mcp/`.
 - Write tools are rejected in Dev Mode; `delete_nodes` requires `confirm: true`; screenshot/image paths are jailed to the server's working directory; remote image fetches have SSRF guards.
 - The linter is **read-only** — it inspects and reports, never mutates your design system.

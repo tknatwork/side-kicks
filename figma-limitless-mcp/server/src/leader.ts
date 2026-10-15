@@ -1,5 +1,6 @@
 import http from "node:http";
 import type { Duplex } from "node:stream";
+import { isLoopbackAddress, rpcDenial, upgradeDenial } from "./access.js";
 import { Bridge } from "./bridge.js";
 import { validateRpc } from "./schema.js";
 import { executeSaveScreenshots } from "./tools.js";
@@ -186,6 +187,12 @@ export class Leader {
   start(): Promise<void> {
     return new Promise((resolve, reject) => {
       const server = http.createServer((req, res) => {
+        if (!isLoopbackAddress(req.socket.remoteAddress)) {
+          res.writeHead(403);
+          res.end("Forbidden: the leader only serves this machine");
+          return;
+        }
+
         if (req.url === "/ping" && req.method === "GET") {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ status: "ok", version: VERSION }));
@@ -193,6 +200,11 @@ export class Leader {
         }
 
         if (req.url === "/rpc" && req.method === "POST") {
+          const denied = rpcDenial(req);
+          if (denied) {
+            this.sendJSON(res, 403, { error: `Forbidden: ${denied}` });
+            return;
+          }
           this.handleRPC(req, res);
           return;
         }
@@ -205,11 +217,17 @@ export class Leader {
         "upgrade",
         (req: http.IncomingMessage, socket: Duplex, head: Buffer) => {
           const pathname = new URL(req.url ?? "", "http://localhost").pathname;
-          if (pathname === "/ws") {
-            this.bridge.handleUpgrade(req, socket, head);
-          } else {
+          if (pathname !== "/ws") {
             socket.destroy();
+            return;
           }
+          const denied = upgradeDenial(req);
+          if (denied) {
+            console.error(`Rejected plugin connection: ${denied}`);
+            socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+            return;
+          }
+          this.bridge.handleUpgrade(req, socket, head);
         }
       );
 

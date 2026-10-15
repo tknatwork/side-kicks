@@ -8,6 +8,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Security
 
+- **The :1994 server no longer accepts tool calls from other devices or from web pages.** It
+  listened on every network interface, and `/rpc` (which runs any tool, `execute_code` included)
+  had no checks. Anyone on the same network could drive the open Figma file, and so could a web page
+  in the user's browser, by sending a plain-text POST to localhost (no CORS preflight). Now:
+  - only loopback peers are served;
+  - `/rpc` refuses requests that carry an `Origin` header or aren't `application/json`;
+  - `/ws` accepts only the plugin's sandboxed-iframe origin (`null`), figma.com, or no origin.
+
+  Followers and the plugin are unaffected (tested).
+
 - **Server: `@modelcontextprotocol/sdk` 1.30.0 → 1.32.1** (fixes GHSA-6qxp-vccf-f47h, high: the
   OAuth client could send credentials to an authorization server chosen by the MCP server). The
   lockfile also moves the SDK's own dependencies to patched releases: `proxy-addr` 2.0.8

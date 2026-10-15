@@ -18,7 +18,7 @@ digests). AI operating rules: `docs/AI-GUIDE.md`.
 
 ## Architecture (2 packages)
 
-- `server/` — stdio MCP server (`node dist/index.js`), TypeScript → `tsc`. Leader binds HTTP+WS on **:1994** (`/ws` plugin, `/ping` health, `/rpc` followers); extra clients become followers and proxy via `/rpc`. Multi-file registry keyed by `fileKey`.
+- `server/` — stdio MCP server (`node dist/index.js`), TypeScript → `tsc`. Leader binds HTTP+WS on **:1994** (`/ws` plugin, `/ping` health, `/rpc` followers); extra clients become followers and proxy via `/rpc`. Multi-file registry keyed by `fileKey`. **Access (`server/src/access.ts`) is load-bearing:** `/rpc` runs any tool incl. `execute_code`, so only loopback peers are served, `/rpc` refuses any request with an `Origin` header or a non-JSON body (blocks cross-site browser requests), and `/ws` accepts only Origin `null` / figma.com / none (the plugin's sandboxed iframe). Never relax these.
 - `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.141.0** (Motion/Shaders/Slots/Grid APIs, video export, motion variables, text wrap style, SPACE_EVENLY/SPACE_AROUND, variable fonts, Update 139 composed colors + `COLOR_OPACITY`). Composed colors use the real `VariableComposedColor` type, a union that only admits shapes with at least one alias side; `src/main/composed-color.ts` holds the runtime guards for reading them and the `write_variables` input helpers, and `buildComposedColor` in `code.ts` branches per union shape so the compiler checks that rule (no casts).
 
 ## Orchestration layer (server/src/orchestration.ts)
