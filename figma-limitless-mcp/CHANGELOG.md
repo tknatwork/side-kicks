@@ -18,6 +18,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
   Followers and the plugin are unaffected (tested).
 
+- **The plugin socket now requires a pairing code.** The origin check above can't tell the plugin
+  from a web page: a sandboxed iframe on any site sends the same `null` origin, so a page open in
+  the browser could still connect to `/ws` as the plugin and receive (or answer) the AI's
+  requests. The server now keeps a pairing code in `~/.figma-limitless-mcp/pairing-token`
+  (created on first use, mode 0600), and the plugin must send it when it connects.
+  - **One-time setup:** the plugin window asks for the code. The AI gets it with the new
+    `get_pairing_code` tool, or the user reads it from the file. The plugin stores it in
+    `figma.clientStorage` (private to this Figma install, never in the document).
+  - A socket without the right code is held apart. It is never given requests, can't replace the
+    paired plugin for its file, and everything it sends is ignored. Tool errors say a plugin is
+    open but unpaired and how to fix it.
+  - `get_pairing_code {rotate: true}` issues a new code; `LIMITLESS_PAIRING=off` turns pairing
+    off. The code is compared in constant time and never logged.
+  - **Upgrading:** rebuild and re-run the plugin, then pair once. A plugin built before this
+    change can't pair.
+
 - **Server: `@modelcontextprotocol/sdk` 1.30.0 → 1.32.1** (fixes GHSA-6qxp-vccf-f47h, high: the
   OAuth client could send credentials to an authorization server chosen by the MCP server). The
   lockfile also moves the SDK's own dependencies to patched releases: `proxy-addr` 2.0.8

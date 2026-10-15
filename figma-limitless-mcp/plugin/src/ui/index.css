@@ -7,6 +7,10 @@
   --badge-text: #414651;
   --dot-connected: #17b26a;
   --dot-disconnected: #f04438;
+  --dot-unpaired: #f79009;
+  --input-bg: #1d293d;
+  --input-border: #45556c;
+  --accent: #6172f3;
   --text-white: #ffffff;
 }
 
@@ -92,6 +96,10 @@ body {
   background: var(--dot-disconnected);
 }
 
+.badge.unpaired .dot {
+  background: var(--dot-unpaired);
+}
+
 .badge .badge-text {
   color: var(--badge-text);
   font-weight: 500;
@@ -103,4 +111,69 @@ body {
   line-height: 1.4;
   text-align: right;
   opacity: 0.7;
+}
+
+.pairing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pairing-title {
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+.pairing-hint {
+  color: var(--text-label);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.pairing-hint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+}
+
+.pairing-row {
+  display: flex;
+  gap: 6px;
+}
+
+.pairing-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
+  color: var(--text-value);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pairing-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.pairing-button {
+  height: 28px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--text-white);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pairing-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

@@ -17,6 +17,7 @@ import {
 } from "./code-mapping.js";
 import { loadTemplates, nameFromFile, resolveTemplateRoot } from "./code-connect-loader.js";
 import { runTemplates, type TemplateLayer, type TemplateOutcome } from "./code-connect-runtime.js";
+import { getPairingCode, pairingDisabled, pairingTokenPath, rotatePairingCode } from "./pairing.js";
 import { listSkills, readSkill, getBuildRecipe } from "./skills.js";
 import { runLint, type LintSnapshot } from "./lint/index.js";
 import {
@@ -122,6 +123,7 @@ import {
   setCodeMappingInput,
   getCodeMappingsInput,
   loadCodeConnectTemplatesInput,
+  getPairingCodeInput,
   toolInputSchemas,
 } from "./schema.js";
 import type { BridgeResponse } from "./types.js";
@@ -284,6 +286,49 @@ export function registerTools(
               text: err instanceof Error ? err.message : String(err),
             },
           ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "get_pairing_code",
+    "Get the code that pairs the Limitless Figma plugin with this server. Call it when a tool says the plugin isn't paired (or the plugin window asks for a code): give the code to the user to type into the plugin window. Needed once per Figma install, and again only after rotate. The code proves the plugin is the user's and not a web page posing as it; it is also in ~/.figma-limitless-mcp/pairing-token. Pairing is off when the server runs with LIMITLESS_PAIRING=off.",
+    getPairingCodeInput.shape,
+    async ({ rotate }): Promise<ToolResult> => {
+      try {
+        if (pairingDisabled()) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  pairing: "off",
+                  note: "LIMITLESS_PAIRING=off: any plugin connection is accepted, no code needed.",
+                }),
+              },
+            ],
+          };
+        }
+        const code = rotate === true ? rotatePairingCode() : getPairingCode();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                code,
+                file: pairingTokenPath(),
+                ...(rotate === true ? { rotated: true } : {}),
+                howTo:
+                  "In Figma, run the Limitless plugin; its window asks for a pairing code. Type this code there and press Pair. It is remembered for this Figma install.",
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
           isError: true,
         };
       }

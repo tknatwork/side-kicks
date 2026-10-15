@@ -48,6 +48,10 @@ type PluginStatus = {
   fileName: string;
   fileKey: string;
   selectionCount: number;
+  /** The server's pairing code as the user typed it ("" = never paired). */
+  pairingToken: string;
+  /** False until the main thread has read the saved code. */
+  pairingLoaded: boolean;
 };
 
 const WS_BASE_URL = "ws://localhost:1994/ws";
@@ -60,17 +64,45 @@ export default function App() {
   const [status, setStatus] = useState<PluginStatus>({
     fileName: "Unknown file",
     fileKey: "",
-    selectionCount: 0
+    selectionCount: 0,
+    pairingToken: "",
+    pairingLoaded: false
   });
+  /** The server refused this plugin's code (or it had none). */
+  const [needsPairing, setNeedsPairing] = useState(false);
+  /** That refusal was of a code, not of a missing one. */
+  const [codeRejected, setCodeRejected] = useState(false);
+  const [codeInput, setCodeInput] = useState("");
+  const [checking, setChecking] = useState(false);
+  /** Bumped on every Pair press: reconnects even when the code didn't change. */
+  const [pairAttempt, setPairAttempt] = useState(0);
   const [served, setServed] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<number | null>(null);
   const outboxRef = useRef<string[]>([]);
 
   const statusLabel = useMemo(
-    () => (connected ? "Connected · :1994" : "Waiting for server · :1994"),
-    [connected]
+    () =>
+      !connected
+        ? "Waiting for server · :1994"
+        : needsPairing
+          ? "Not paired · :1994"
+          : "Connected · :1994",
+    [connected, needsPairing]
   );
+
+  // The window grows to fit the pairing form while it is shown.
+  useEffect(() => {
+    parent.postMessage({ pluginMessage: { type: "pairing-ui", visible: needsPairing } }, "*");
+  }, [needsPairing]);
+
+  const submitPairing = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!codeInput.trim()) return;
+    setChecking(true);
+    parent.postMessage({ pluginMessage: { type: "set-pairing-token", token: codeInput } }, "*");
+    setPairAttempt((n) => n + 1);
+  };
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -108,14 +140,17 @@ export default function App() {
     };
 
     window.addEventListener("message", handleMessage);
+    // Status posted before this listener existed is lost: ask again now.
+    parent.postMessage({ pluginMessage: { type: "status-request" } }, "*");
     return () => {
       window.removeEventListener("message", handleMessage);
     };
   }, []);
 
-  // Connect/reconnect WebSocket when fileKey changes
+  // Connect/reconnect WebSocket when the file or the pairing code changes
   useEffect(() => {
-    if (!status.fileKey) return;
+    // Wait for the saved code, so a paired plugin never connects without it.
+    if (!status.fileKey || !status.pairingLoaded) return;
 
     let disposed = false;
 
@@ -131,7 +166,13 @@ export default function App() {
         previousSocket.close();
       }
 
-      const wsUrl = `${WS_BASE_URL}?fileKey=${encodeURIComponent(status.fileKey)}&fileName=${encodeURIComponent(status.fileName)}`;
+      // Browsers can't set headers on a WebSocket, so the code rides in the
+      // query; the server never logs it.
+      const sentToken = status.pairingToken;
+      const wsUrl =
+        `${WS_BASE_URL}?fileKey=${encodeURIComponent(status.fileKey)}` +
+        `&fileName=${encodeURIComponent(status.fileName)}` +
+        `&token=${encodeURIComponent(sentToken)}`;
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
@@ -164,7 +205,21 @@ export default function App() {
 
       ws.onmessage = (event) => {
         if (disposed || socketRef.current !== ws) return;
-        const payload = JSON.parse(event.data) as ServerRequest;
+        const payload = JSON.parse(event.data) as ServerRequest | { type: "paired" | "pairing-required" };
+        // Pairing verdicts are for this window, not requests for the main thread.
+        if (payload.type === "pairing-required") {
+          setNeedsPairing(true);
+          setCodeRejected(sentToken !== "");
+          setChecking(false);
+          return;
+        }
+        if (payload.type === "paired") {
+          setNeedsPairing(false);
+          setCodeRejected(false);
+          setChecking(false);
+          setCodeInput("");
+          return;
+        }
         parent.postMessage({ pluginMessage: { type: "server-request", payload } }, "*");
       };
     };
@@ -187,7 +242,7 @@ export default function App() {
         socketRef.current = null;
       }
     };
-  }, [status.fileKey, status.fileName]);
+  }, [status.fileKey, status.fileName, status.pairingLoaded, status.pairingToken, pairAttempt]);
 
 
 
@@ -204,8 +259,36 @@ export default function App() {
         </div>
       </div>
 
+      {needsPairing && (
+        <form className="pairing" onSubmit={submitPairing}>
+          <div className="pairing-title">
+            {codeRejected ? "That code doesn't match this server" : "Pair with your AI's Limitless server"}
+          </div>
+          <div className="pairing-hint">
+            Ask your AI to run <code>get_pairing_code</code>, or open{" "}
+            <code>~/.figma-limitless-mcp/pairing-token</code>. Needed once.
+          </div>
+          <div className="pairing-row">
+            <input
+              className="pairing-input"
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              placeholder="XXXX-XXXX-XXXX-XXXX"
+              maxLength={32}
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Pairing code"
+            />
+            <button className="pairing-button" type="submit" disabled={checking || !codeInput.trim()}>
+              {checking ? "Checking…" : "Pair"}
+            </button>
+          </div>
+        </form>
+      )}
+
       <div className="footer">
-        <div className={`badge ${connected ? "connected" : "disconnected"}`}>
+        <div className={`badge ${!connected ? "disconnected" : needsPairing ? "unpaired" : "connected"}`}>
           <span className="dot" />
           <span className="badge-text">{statusLabel}</span>
         </div>

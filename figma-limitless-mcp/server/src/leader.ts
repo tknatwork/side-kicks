@@ -3,6 +3,7 @@ import type { Duplex } from "node:stream";
 import { isLoopbackAddress, rpcDenial, upgradeDenial } from "./access.js";
 import { Bridge } from "./bridge.js";
 import { callContext } from "./call-context.js";
+import { isValidPairingCode } from "./pairing.js";
 import { validateRpc } from "./schema.js";
 import { executeSaveScreenshots } from "./tools.js";
 import type { ExportFormat } from "./tools.js";
@@ -217,8 +218,8 @@ export class Leader {
       server.on(
         "upgrade",
         (req: http.IncomingMessage, socket: Duplex, head: Buffer) => {
-          const pathname = new URL(req.url ?? "", "http://localhost").pathname;
-          if (pathname !== "/ws") {
+          const url = new URL(req.url ?? "", "http://localhost");
+          if (url.pathname !== "/ws") {
             socket.destroy();
             return;
           }
@@ -228,7 +229,11 @@ export class Leader {
             socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
             return;
           }
-          this.bridge.handleUpgrade(req, socket, head);
+          // A wrong or missing code still connects, quarantined, so the
+          // plugin can show the pairing form. The code itself is never logged.
+          this.bridge.handleUpgrade(req, socket, head, {
+            paired: isValidPairingCode(url.searchParams.get("token")),
+          });
         }
       );
 

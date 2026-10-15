@@ -50,6 +50,8 @@ const MIN_RUN_BUDGET_MS = 60_000;
 /** How long in-flight requests survive a dropped plugin socket, waiting for it to reconnect. */
 const RECONNECT_GRACE_MS = 15_000;
 const PING_INTERVAL_MS = 30_000;
+/** Unpaired sockets held at once; the oldest is dropped past this. */
+const MAX_UNPAIRED = 8;
 
 export interface BridgeOptions {
   hardCapMs?: number;
@@ -60,6 +62,10 @@ export interface BridgeOptions {
 export class Bridge {
   private wss: WebSocketServer;
   private connections = new Map<string, ConnectionEntry>();
+  /** Plugin sockets that didn't present the pairing code: never routed to,
+   *  never replace a paired one, and everything they send is ignored. Kept
+   *  only so callers learn a plugin is open but unpaired. */
+  private unpaired = new Map<WebSocket, { fileKey: string; fileName: string }>();
   private pending = new Map<string, PendingRequest>();
   private counter = 0;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
@@ -91,7 +97,13 @@ export class Bridge {
     }, options.pingIntervalMs ?? PING_INTERVAL_MS);
   }
 
-  handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+  /** `paired: false` quarantines the socket (see `unpaired`). */
+  handleUpgrade(
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+    { paired = true }: { paired?: boolean } = {}
+  ): void {
     if (request.url == undefined) {
       console.error("Plugin connected without url, rejecting");
       socket.destroy();
@@ -109,9 +121,54 @@ export class Bridge {
       return;
     }
 
+    // Only plugins that know about pairing send a token, so only they are
+    // told it was accepted (older builds would take it for a request).
+    const presentedToken = url.searchParams.has("token");
     this.wss.handleUpgrade(request, socket, head, (ws) => {
+      if (!paired) {
+        this.holdUnpaired(ws, fileKey, fileName);
+        return;
+      }
       this.handleConnection(ws, fileKey, fileName);
+      if (presentedToken) {
+        ws.send(JSON.stringify({ type: "paired" }), () => {
+          /* best-effort */
+        });
+      }
     });
+  }
+
+  private holdUnpaired(ws: WebSocket, fileKey: string, fileName: string): void {
+    if (this.unpaired.size >= MAX_UNPAIRED) {
+      const oldest = this.unpaired.keys().next().value;
+      oldest?.close();
+      if (oldest) this.unpaired.delete(oldest);
+    }
+    this.unpaired.set(ws, { fileKey, fileName });
+    console.error(`Unpaired plugin connection: ${fileName} (${fileKey})`);
+    const forget = () => this.unpaired.delete(ws);
+    ws.on("close", forget);
+    ws.on("error", forget);
+    // Tells a current plugin to ask the user for the code. An older build
+    // can't act on it, and its reply is ignored like everything from here.
+    ws.send(JSON.stringify({ type: "pairing-required" }), () => {
+      /* best-effort */
+    });
+  }
+
+  /** Why an unpaired plugin isn't used, for errors; empty when there is none. */
+  private unpairedHint(fileKey?: string): string {
+    const names = new Set(
+      [...this.unpaired.values()]
+        .filter((u) => !fileKey || u.fileKey === fileKey)
+        .map((u) => `"${u.fileName}"`)
+    );
+    if (names.size === 0) return "";
+    return (
+      ` A Limitless plugin is open on ${[...names].join(", ")} but isn't paired with this server:` +
+      ` call get_pairing_code and have the user type the code into the plugin window (once per Figma install).` +
+      ` A plugin built before pairing existed can't pair — rebuild the plugin and re-run it.`
+    );
   }
 
   private handleConnection(
@@ -276,14 +333,14 @@ export class Bridge {
           available.length > 0
             ? ` Connected files: ${available.map((f) => `"${f.fileName}" (fileKey: ${f.fileKey})`).join(", ")}`
             : " No files are currently connected.";
-        throw new Error(`No plugin connected for fileKey "${fileKey}".${hint}`);
+        throw new Error(`No plugin connected for fileKey "${fileKey}".${hint}${this.unpairedHint(fileKey)}`);
       }
       return entry;
     }
 
     if (this.connections.size === 0) {
       throw new Error(
-        "No plugin connected. Open a Figma file and run the bridge plugin."
+        `No plugin connected. Open a Figma file and run the bridge plugin.${this.unpairedHint()}`
       );
     }
 
@@ -447,6 +504,8 @@ export class Bridge {
       entry.ws.close();
     }
     this.connections.clear();
+    for (const ws of this.unpaired.keys()) ws.close();
+    this.unpaired.clear();
     this.wss.close();
   }
 }

@@ -24,6 +24,7 @@ most Figma failures are ordering failures.
 | Delete gate | `delete_nodes` and `manage_pages` `delete` require `confirm: true` | Confirm deliberately, never by default |
 | Result cap | `execute_code` returns ≤1MB JSON | Return narrow slices, never nodes |
 | Multi-file | With 2+ files connected every call needs `fileKey` | `list_files` first, thread `fileKey` through |
+| Plugin pairing | The plugin is only used once it presents the server's pairing code (keeps web pages from posing as it). An unpaired plugin never shows up in `list_files` | On "isn't paired": `get_pairing_code`, give the user the code to type into the plugin window (once per Figma install). Never `rotate` unless the user asks or the code leaked |
 | Journal | Every mutation is logged with your agent identity | `get_journal` is the source of truth after any failure |
 
 ## Fonts
@@ -132,6 +133,7 @@ next run.
 | Error | Meaning | Action |
 |---|---|---|
 | "No plugin connected" | Plugin not running in Figma | Ask the user to run Plugins → Development → Limitless MCP for Figma |
+| "…is open on "X" but isn't paired with this server" | The plugin runs but hasn't been given the pairing code (first run, or the code was rotated) | `get_pairing_code` → tell the user the code and to type it into the plugin window and press Pair; then retry. If they see no code box, their plugin predates pairing: ask them to rebuild it (`pnpm build` in `plugin/`) and re-run it |
 | "Multiple files connected…" | Ambiguous target | `list_files`, pass `fileKey` |
 | "Cannot write to node with unloaded font" | Font not loaded (execute_code path) | `load_fonts` with exact strings first |
 | "Axis … is not defined by …" | Wrong axis tag for that family | Use the tags `list_fonts` reports in `variationAxes` |

@@ -239,6 +239,18 @@ const getFileKey = (): string => {
   return key;
 };
 
+/** The server's pairing code, as the user typed it once. clientStorage is this
+ *  Figma install's private store: unlike plugin data it never travels with the
+ *  document to other people, and unlike the UI iframe it survives restarts. */
+const PAIRING_STORAGE_KEY = "limitless.pairingToken";
+let pairingToken = "";
+/** False until clientStorage answers: the UI connects only after, so a paired
+ *  plugin never shows the pairing form for a moment on startup. */
+let pairingLoaded = false;
+/** Pairing form open: the window grows to fit it. */
+const UI_HEIGHT = 180;
+const UI_HEIGHT_PAIRING = 276;
+
 const sendStatus = () => {
   figma.ui.postMessage({
     type: "plugin-status",
@@ -246,6 +258,8 @@ const sendStatus = () => {
       fileName: figma.root.name,
       fileKey: getFileKey(),
       selectionCount: figma.currentPage.selection.length,
+      pairingToken,
+      pairingLoaded,
     },
   });
 };
@@ -5851,8 +5865,20 @@ const handleRequest = async (
   }
 };
 
-figma.showUI(__html__, { width: 320, height: 180 });
+figma.showUI(__html__, { width: 320, height: UI_HEIGHT });
 sendStatus();
+figma.clientStorage
+  .getAsync(PAIRING_STORAGE_KEY)
+  .then((stored: unknown) => {
+    if (typeof stored === "string") pairingToken = stored;
+  })
+  .catch(() => {
+    /* unreadable: the UI asks for the code again */
+  })
+  .then(() => {
+    pairingLoaded = true;
+    sendStatus();
+  });
 
 figma.on("selectionchange", () => {
   sendStatus();
@@ -5999,6 +6025,28 @@ figma.ui.onmessage = async (message) => {
   if (message.type === "ui-ready") {
     sendStatus();
     postHeartbeat(true);
+    return;
+  }
+
+  if (message.type === "status-request") {
+    sendStatus();
+    return;
+  }
+
+  if (message.type === "set-pairing-token") {
+    // Kept as typed minus separators; the server compares case-insensitively.
+    pairingToken = String(message.token ?? "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+    try {
+      await figma.clientStorage.setAsync(PAIRING_STORAGE_KEY, pairingToken);
+    } catch {
+      /* not persisted: works until the plugin closes */
+    }
+    sendStatus();
+    return;
+  }
+
+  if (message.type === "pairing-ui") {
+    figma.ui.resize(320, message.visible === true ? UI_HEIGHT_PAIRING : UI_HEIGHT);
     return;
   }
 

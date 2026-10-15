@@ -1574,6 +1574,15 @@ export const loadCodeConnectTemplatesInput = z.object({
   fileKey: fileKeyField,
 });
 
+export const getPairingCodeInput = z.object({
+  rotate: z
+    .boolean()
+    .optional()
+    .describe(
+      "Replace the code with a new one. Every plugin paired with the old code must be paired again; use only if the code leaked"
+    ),
+});
+
 export const getCodeMappingsInput = z.object({
   targets: z
     .array(z.string())

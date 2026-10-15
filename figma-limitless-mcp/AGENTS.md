@@ -5,7 +5,7 @@
 ## What this is
 
 A local Figma MCP server + Figma Desktop plugin. No REST calls, so no REST
-rate limits — it uses the Figma Plugin API locally. **103 tools** across
+rate limits — it uses the Figma Plugin API locally. **104 tools** across
 Design, Dev Mode, FigJam, Slides & Buzz: local
 fonts, text/paint/effect styles, variable authoring, grid layout, master
 components, instances, prototyping, annotations, dev resources, Motion/shaders
@@ -18,7 +18,7 @@ digests). AI operating rules: `docs/AI-GUIDE.md`.
 
 ## Architecture (2 packages)
 
-- `server/` — stdio MCP server (`node dist/index.js`), TypeScript → `tsc`. Leader binds HTTP+WS on **:1994** (`/ws` plugin, `/ping` health, `/rpc` followers); extra clients become followers and proxy via `/rpc`. Multi-file registry keyed by `fileKey`. **Access (`server/src/access.ts`) is load-bearing:** `/rpc` runs any tool incl. `execute_code`, so only loopback peers are served, `/rpc` refuses any request with an `Origin` header or a non-JSON body (blocks cross-site browser requests), and `/ws` accepts only Origin `null` / figma.com / none (the plugin's sandboxed iframe). Never relax these.
+- `server/` — stdio MCP server (`node dist/index.js`), TypeScript → `tsc`. Leader binds HTTP+WS on **:1994** (`/ws` plugin, `/ping` health, `/rpc` followers); extra clients become followers and proxy via `/rpc`. Multi-file registry keyed by `fileKey`. **Access (`server/src/access.ts`) is load-bearing:** `/rpc` runs any tool incl. `execute_code`, so only loopback peers are served, `/rpc` refuses any request with an `Origin` header or a non-JSON body (blocks cross-site browser requests), and `/ws` accepts only Origin `null` / figma.com / none (the plugin's sandboxed iframe). Origin `null` is also what any page's sandboxed iframe sends, so `/ws` additionally requires the **pairing code** (`server/src/pairing.ts`, `~/.figma-limitless-mcp/pairing-token`, 0600): the plugin sends it as `?token=`, a socket without it is quarantined in `Bridge.unpaired` (never routed to, never replaces a paired socket, its messages ignored) and gets `{type:"pairing-required"}`; a valid one gets `{type:"paired"}`. The user gets the code via the `get_pairing_code` tool and types it into the plugin once (stored in `figma.clientStorage`, never in the document). Never log the token or relax any of these; `LIMITLESS_PAIRING=off` is the only opt-out.
 - `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.141.0** (Motion/Shaders/Slots/Grid APIs, video export, motion variables, text wrap style, SPACE_EVENLY/SPACE_AROUND, variable fonts, Update 139 composed colors + `COLOR_OPACITY`). Composed colors use the real `VariableComposedColor` type, a union that only admits shapes with at least one alias side; `src/main/composed-color.ts` holds the runtime guards for reading them and the `write_variables` input helpers, and `buildComposedColor` in `code.ts` branches per union shape so the compiler checks that rule (no casts).
 
 ## Request lifecycle (server/src/bridge.ts ↔ plugin)
@@ -180,7 +180,8 @@ Three layers:
 - **Unit** — `cd server && pnpm test` (builds, then `node --test test/*.test.mjs`).
   Also covers the request lifecycle against a fake plugin socket
   (`bridge-lifecycle`), MCP progress/cancel through the real SDK
-  (`call-context`), the :1994 access rules (`leader-access`) and code mappings.
+  (`call-context`), the :1994 access rules (`leader-access`), plugin pairing
+  (`pairing`) and code mappings.
   Runs against compiled `dist/`, no Figma needed — the lint detectors are pure
   functions. Covers the a11y contrast regression (on-`X` pairing, same-colour
   skip, suffix-only non-pairing) and the **golden clean-file fixture** (a correct
