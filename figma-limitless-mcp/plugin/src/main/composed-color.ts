@@ -1,23 +1,9 @@
-// Figma Plugin API Update 139 composed color variable values
-// (VariableComposedColor), which no published @figma/plugin-typings declares
-// yet (1.138.0 is the latest). VariableValue is a global type ALIAS, so it
-// can't be declaration-merged; the names here are distinct on purpose and
-// shadow nothing once the real types land.
-//
-// Only ComposedColorValue is a typings stand-in: when @figma/plugin-typings
-// >= 1.139 ships VariableComposedColor, replace it with the real type (and
-// drop the VariableValue cast in code.ts's parseVariableValueAsync). The
-// runtime guards and write_variables input helpers below are this plugin's
-// own code and stay.
-// The COLOR_OPACITY scope needs no stand-in: code.ts casts scope strings to
-// VariableScope, which carries the new value through until the typings list it.
-
-/** A COLOR variable value made of a color plus a separate opacity PERCENTAGE
- *  (60 = 60%). Figma requires the color and/or the opacity to be an alias. */
-export interface ComposedColorValue {
-  color: RGB | RGBA | VariableAlias;
-  opacity: number | VariableAlias;
-}
+// Figma Plugin API Update 139 composed color variable values: a COLOR value
+// made of a color plus a separate opacity PERCENTAGE (60 = 60%), where the
+// color and/or the opacity is a variable alias. The type, VariableComposedColor,
+// comes from @figma/plugin-typings (>= 1.139). This file holds the plugin's own
+// runtime guards for reading those values and the write_variables input helpers
+// for building them.
 
 export const isVariableAlias = (v: unknown): v is VariableAlias =>
   typeof v === "object" &&
@@ -25,17 +11,19 @@ export const isVariableAlias = (v: unknown): v is VariableAlias =>
   (v as { type?: unknown }).type === "VARIABLE_ALIAS" &&
   typeof (v as { id?: unknown }).id === "string";
 
-/** Read side: is a live valuesByMode entry a composed color? The typings
- *  can't narrow it, so detect the shape at runtime. */
-export const isComposedColorValue = (v: unknown): v is ComposedColorValue => {
+/** Read side: is a live valuesByMode entry a composed color? VariableValue has
+ *  no tag field to narrow on, so detect the shape at runtime. The check accepts
+ *  exactly VariableComposedColor's two shapes: an aliased color with a number or
+ *  aliased opacity, or a raw color with an aliased opacity. */
+export const isComposedColorValue = (v: unknown): v is VariableComposedColor => {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
   const o = v as Record<string, unknown>;
   if (!("color" in o) || !("opacity" in o) || "r" in o) return false;
   const c = o.color;
-  const colorOk =
-    isVariableAlias(c) ||
-    (typeof c === "object" && c !== null && typeof (c as { r?: unknown }).r === "number");
-  return colorOk && (typeof o.opacity === "number" || isVariableAlias(o.opacity));
+  if (isVariableAlias(c)) return typeof o.opacity === "number" || isVariableAlias(o.opacity);
+  const rawColor =
+    typeof c === "object" && c !== null && typeof (c as { r?: unknown }).r === "number";
+  return rawColor && isVariableAlias(o.opacity);
 };
 
 /** Read side: the variable ids a live valuesByMode entry references — a plain

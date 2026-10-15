@@ -17,11 +17,14 @@ most Figma failures are ordering failures.
 |---|---|---|
 | Heavy-read cap | `get_document` / `get_node` / `get_selection` / `get_design_context` error if the response exceeds ~1.5MB | Use `get_file_digest`, lower `depth`, or target a smaller subtree |
 | Write serialization | Mutations (incl. `execute_code`) run one-at-a-time in the plugin; reads run in parallel | Send reads freely; don't parallelize writes — they queue anyway |
-| Request timeout | Default 30s; `execute_code` accepts `timeoutMs` up to 300s; `save_screenshots` video items get 120s | On timeout: the op may still have landed — READ before retrying |
+| Request timeout | Measures SILENCE, not duration: a request fails after 30s (or its `timeoutMs`, ≤300s) with no response and no plugin heartbeat. Long jobs, and edits queued behind them, keep going while the plugin reports progress, up to a 30-minute cap; a request may RUN 4× its window (≥1 min) before the plugin treats it as stuck and frees the edit queue. On timeout or client cancel, a still-queued edit is skipped | On timeout: a started op may still have landed — READ before retrying |
+| Plugin reconnect | A dropped plugin socket keeps in-flight requests for 15s; if the plugin reconnects still running them, they complete normally | "Plugin reconnected without this request" → read state before retrying |
+| Undo | Every edit tool call is its own undo step in Figma | The user can Cmd+Z one bad step without losing the session |
 | Dev Mode | All write tools rejected with a clear error | Switch Figma to the design editor |
-| Delete gate | `delete_nodes` requires `confirm: true` | Confirm deliberately, never by default |
+| Delete gate | `delete_nodes` and `manage_pages` `delete` require `confirm: true` | Confirm deliberately, never by default |
 | Result cap | `execute_code` returns ≤1MB JSON | Return narrow slices, never nodes |
 | Multi-file | With 2+ files connected every call needs `fileKey` | `list_files` first, thread `fileKey` through |
+| Plugin pairing | The plugin is only used once it presents the server's pairing code (keeps web pages from posing as it). An unpaired plugin never shows up in `list_files` | On "isn't paired": `get_pairing_code`, give the user the code to type into the plugin window (once per Figma install). Never `rotate` unless the user asks or the code leaked |
 | Journal | Every mutation is logged with your agent identity | `get_journal` is the source of truth after any failure |
 
 ## Fonts
@@ -56,7 +59,7 @@ Build order:
 3. `create_component_from_node` on each.
 4. `combine_as_variants` — the set is auto-arranged and resized.
 5. `add_component_property` (TEXT / BOOLEAN / INSTANCE_SWAP). Use the returned `#`-suffixed key verbatim.
-6. Icons: one INSTANCE_SWAP property + `preferredValues`. Never a variant per icon.
+6. Icons: one INSTANCE_SWAP property + `preferredValues`. Never a variant per icon. Bring icon artwork in with `create_svg` (check `layerCount`); combine shapes with `boolean_operation` rather than hand-drawn paths.
 7. Slots: `create_slot` — its SLOT property is created automatically (key returned). Don't add a second one.
 8. Cap variant matrices at ~30 combinations.
 
@@ -80,6 +83,7 @@ Build order:
 ## Heavy files — context discipline
 
 - Orient with `get_file_digest`, drill with `get_node` on specific ids. Never bulk-read.
+- Reads see the current page. To work on another page: page ids from `get_metadata` → `switch_page` → read. Create, rename, reorder or delete pages with `manage_pages`.
 - `get_variables_deep`: filter by `collectionName` on large token libraries (unfiltered dumps over 4000 variables are refused).
 - `get_file_digest` `scope: "all-pages"` is slow the first time — use only when you need the full component inventory.
 - Fine detail you discovered (node ids, property keys, exact font strings) goes into `save_checkpoint` — never re-discover what a ledger already holds.
@@ -118,14 +122,18 @@ next run.
 
 ## Design → code
 
-- Before writing code for a component: `get_code_mappings`. If a mapping exists, use it.
-- After implementing a component: `set_code_mapping` (target, source path, snippet) so the next session reuses it.
+- `get_design_context` reports each instance's `component` (name, variant, keys, current property values). Instances with a mapping come back with a `code` block — a snippet for their current values plus imports — and their layers collapsed: use that snippet, don't rebuild the component. `codeMappings.unmapped` lists the used components that have no mapping yet.
+- After implementing a component: `set_code_mapping` with `target` = the component-set key (or key / name from `component`), `source`, `component`, `imports`, and `props` mapping Figma properties to code props (`{Size: {prop: 'size', values: {Small: 'sm'}}, Disabled: {prop: 'disabled'}}`), plus `children` for a label property. Every later read renders it for free.
+- `get_code_mappings` lists all mappings; a static `snippet` without `props` still surfaces in `code`.
+- If the repo has Code Connect templates (`*.figma.ts`), `load_code_connect_templates {dir}` once (and after edits): `get_design_context` then renders those components with their real templates (`code.template` names the file). Prefer templates over `props` mappings: they handle nested instances, slots and text layers. `templateError` means the template failed and the props/static mapping stood in. Parser-based `.figma.tsx` files are skipped; `figma connect migrate` converts them.
+- FigJam reads carry board content: sticky/shape `text`, `connector` endpoints (`nodeId`/`magnet`/`position`) and label, `codeBlock`, and `table` cell text (first 400 cells).
 
 ## Error playbook
 
 | Error | Meaning | Action |
 |---|---|---|
 | "No plugin connected" | Plugin not running in Figma | Ask the user to run Plugins → Development → Limitless MCP for Figma |
+| "…is open on "X" but isn't paired with this server" | The plugin runs but hasn't been given the pairing code (first run, or the code was rotated) | `get_pairing_code` → tell the user the code and to type it into the plugin window and press Pair; then retry. If they see no code box, their plugin predates pairing: ask them to rebuild it (`pnpm build` in `plugin/`) and re-run it |
 | "Multiple files connected…" | Ambiguous target | `list_files`, pass `fileKey` |
 | "Cannot write to node with unloaded font" | Font not loaded (execute_code path) | `load_fonts` with exact strings first |
 | "Axis … is not defined by …" | Wrong axis tag for that family | Use the tags `list_fonts` reports in `variationAxes` |
@@ -133,7 +141,8 @@ next run.
 | "…requires Figma with Plugin API Update 134+ / 138+" | Figma Desktop predates that API | Ask the user to update Figma; skip that field meanwhile |
 | "…requires the design editor (Dev Mode is read-only)" | Figma is in Dev Mode | Ask the user to switch modes |
 | "Response too large" | Heavy-read cap hit | Narrow the read (depth, subtree, digest) |
-| "Request timed out… may still be executing" | Slow op | Read state before retrying; use `timeoutMs` for long `execute_code` |
+| "Request timed out…: no response or progress from the plugin" | The plugin's main thread froze (a long sync loop) or a handler hung past its run budget | Read state before retrying; yield inside long `execute_code` loops; raise `timeoutMs` for genuinely long work |
+| "Plugin reconnected without this request" / "did not reconnect within" | The plugin restarted or was closed mid-request | Read state before retrying; ask the user to re-run the plugin if it is closed |
 | "acquired: false" | Another agent holds the lock | Work elsewhere or wait for TTL expiry |
 | "Motion/Shader API unavailable" | Figma build predates the beta | Skip those tools; everything else works |
 | "Leader returned status 400" or "Invalid enum value" for a documented value, right after an upgrade | An older server process validates with its old schemas (a stale :1994 leader, or this session) | `get_workspace_status` → `server.version`; ask the user to restart every MCP client session |

@@ -9,8 +9,8 @@ import {
   isComposedColorValue,
   referencedVariableIds,
   type ComposedColorInput,
-  type ComposedColorValue,
-} from "./figma-139-shim";
+} from "./composed-color";
+import { movePageTo } from "./pages";
 
 type RequestType =
   | "get_document"
@@ -37,6 +37,13 @@ type RequestType =
   | "duplicate_nodes"
   | "reparent_nodes"
   | "group_nodes"
+  | "manage_pages"
+  | "switch_page"
+  // Internal reads for Code Connect templates (not MCP tools).
+  | "describe_instance_trees"
+  | "resolve_components"
+  | "create_svg"
+  | "boolean_operation"
   | "ungroup_node"
   | "set_selection"
   | "scroll_and_zoom_into_view"
@@ -125,6 +132,8 @@ type ServerRequest = {
   requestId: string;
   nodeIds?: string[];
   params?: ServerRequestParams;
+  /** How long this may RUN before it counts as stuck (see the request lifecycle below). */
+  budgetMs?: number;
 };
 
 type PluginResponse = {
@@ -230,6 +239,20 @@ const getFileKey = (): string => {
   return key;
 };
 
+/** The server's pairing code, as the user typed it once. clientStorage is this
+ *  Figma install's private store: unlike plugin data it never travels with the
+ *  document to other people, and unlike the UI iframe it survives restarts. */
+const PAIRING_STORAGE_KEY = "limitless.pairingToken";
+let pairingToken = "";
+/** False until clientStorage answers: the UI connects only after, so a paired
+ *  plugin never shows the pairing form for a moment on startup. */
+let pairingLoaded = false;
+/** A small strip over the canvas. The UI reports its content height and the
+ *  window follows (see "resize"); this height is only the first frame. */
+const UI_WIDTH = 240;
+const UI_INITIAL_HEIGHT = 48;
+const UI_MAX_HEIGHT = 400;
+
 const sendStatus = () => {
   figma.ui.postMessage({
     type: "plugin-status",
@@ -237,6 +260,8 @@ const sendStatus = () => {
       fileName: figma.root.name,
       fileKey: getFileKey(),
       selectionCount: figma.currentPage.selection.length,
+      pairingToken,
+      pairingLoaded,
     },
   });
 };
@@ -607,7 +632,7 @@ const ensureNodeFont = async (
   return { family, variationSettings };
 };
 
-// Typings 1.138 still declare the node setter as FontName, although Figma
+// Typings 1.141 still declare the node setter as FontName, although Figma
 // documents it accepting a FontNameInput (style omitted). The one cast lives here.
 const assignNodeFontName = (node: TextNode, font: FontNameInput): void => {
   (node as { fontName: FontNameInput }).fontName = font;
@@ -978,16 +1003,9 @@ const parseVariableValue = (
  */
 const buildComposedColor = async (
   input: ComposedColorInput
-): Promise<ComposedColorValue> => {
+): Promise<VariableComposedColor> => {
   const colorId = aliasInputId(input.color);
   const opacityId = aliasInputId(input.opacity);
-  if (colorId === null && opacityId === null) {
-    // Figma: either the color or the opacity must be an alias, or both.
-    throw new Error(
-      "A composed color needs its color and/or opacity as an alias ({alias: variableId}); " +
-        "for two raw values set a plain {r,g,b,a} instead"
-    );
-  }
   const aliasTo = async (
     id: string,
     want: VariableResolvedDataType,
@@ -1003,11 +1021,36 @@ const buildComposedColor = async (
     return figma.variables.createVariableAlias(target);
   };
 
-  let color: RGB | RGBA | VariableAlias;
-  const rawColor = input.color as { r?: unknown; g?: unknown; b?: unknown; a?: unknown };
+  // One branch per VariableComposedColor shape, so the compiler checks Figma's
+  // rule: an aliased color takes a raw or aliased opacity; a raw color needs an
+  // aliased opacity.
   if (colorId !== null) {
-    color = await aliasTo(colorId, "COLOR", "color");
-  } else if (typeof input.color === "string") {
+    const color = await aliasTo(colorId, "COLOR", "color");
+    if (opacityId !== null) {
+      return { color, opacity: await aliasTo(opacityId, "FLOAT", "opacity") };
+    }
+    if (
+      typeof input.opacity === "number" &&
+      isFinite(input.opacity) &&
+      input.opacity >= 0 &&
+      input.opacity <= 100
+    ) {
+      return { color, opacity: input.opacity };
+    }
+    throw new Error(
+      "composed color.opacity must be a percentage 0-100 (60 = 60%) or {alias: floatVariableId}"
+    );
+  }
+  if (opacityId === null) {
+    // Figma: either the color or the opacity must be an alias, or both.
+    throw new Error(
+      "A composed color needs its color and/or opacity as an alias ({alias: variableId}); " +
+        "for two raw values set a plain {r,g,b,a} instead"
+    );
+  }
+  let color: RGB | RGBA;
+  const rawColor = input.color as { r?: unknown; g?: unknown; b?: unknown; a?: unknown };
+  if (typeof input.color === "string") {
     color = parseHexColor(input.color);
   } else if (
     rawColor &&
@@ -1025,23 +1068,7 @@ const buildComposedColor = async (
       "composed color.color must be '#RRGGBB', {r,g,b,a?}, or {alias: colorVariableId}"
     );
   }
-
-  let opacity: number | VariableAlias;
-  if (opacityId !== null) {
-    opacity = await aliasTo(opacityId, "FLOAT", "opacity");
-  } else if (
-    typeof input.opacity === "number" &&
-    isFinite(input.opacity) &&
-    input.opacity >= 0 &&
-    input.opacity <= 100
-  ) {
-    opacity = input.opacity;
-  } else {
-    throw new Error(
-      "composed color.opacity must be a percentage 0-100 (60 = 60%) or {alias: floatVariableId}"
-    );
-  }
-  return { color, opacity };
+  return { color, opacity: await aliasTo(opacityId, "FLOAT", "opacity") };
 };
 
 /** parseVariableValue plus the Update 139 composed color, whose alias sides
@@ -1056,8 +1083,7 @@ const parseVariableValueAsync = async (
         `A composed {color, opacity} value is only valid on COLOR variables, not ${resolvedType}`
       );
     }
-    // Cast: VariableComposedColor isn't in typings 1.138 (see figma-139-shim.ts).
-    return (await buildComposedColor(value)) as unknown as VariableValue;
+    return buildComposedColor(value);
   }
   return parseVariableValue(resolvedType, value);
 };
@@ -1265,7 +1291,7 @@ const requireMotionApi = (): MotionAPI => {
   return figma.motion;
 };
 
-/** primaryAxisAlignItems values (typings 1.138.0; SPACE_EVENLY/SPACE_AROUND are
+/** primaryAxisAlignItems values (typings 1.141.0; SPACE_EVENLY/SPACE_AROUND are
  * Plugin API Update 137). set_auto_layout skips values missing from this list,
  * so the type assertion below fails `pnpm typecheck` — and `pnpm build`, which
  * type-checks first — when the typings add one. */
@@ -1300,6 +1326,10 @@ const EDIT_REQUEST_TYPES = new Set<RequestType>([
   "group_nodes",
   "ungroup_node",
   "delete_nodes",
+  "manage_pages",
+  "create_svg",
+  "boolean_operation",
+  // switch_page deliberately NOT gated: navigation, like set_selection.
   "create_text_style",
   "update_text_style",
   "apply_text_style",
@@ -1419,6 +1449,117 @@ const setSublayerText = async (
   sublayer.characters = text;
 };
 
+/** A serialized node as describeInstances reads and extends it. */
+type DescribedNode = {
+  id: string;
+  type: string;
+  children?: DescribedNode[];
+  component?: Record<string, unknown>;
+};
+
+/**
+ * Adds `component` to every INSTANCE in a serialized tree: which component it
+ * is (set name + variant for variants), its keys, and its current property
+ * values with the `#id` suffix dropped from non-variant names. Code generation
+ * needs this to use the real component, and the server matches code mappings
+ * on it. Main components are fetched async (dynamic-page documents).
+ */
+/** A component property name without its `#id` suffix (variant names have none). */
+const shortPropertyName = (name: string): string => name.replace(/#[^#]*$/, "");
+
+/** Which component an instance is, and its current property values (short
+ *  names). `withTypes` adds each property's type, for Code Connect templates. */
+const describeComponent = async (
+  node: InstanceNode,
+  withTypes = false
+): Promise<Record<string, unknown>> => {
+  const main = await node.getMainComponentAsync();
+  const properties: Record<string, string | boolean> = {};
+  const types: Record<string, string> = {};
+  for (const [name, prop] of Object.entries(node.componentProperties)) {
+    const short = shortPropertyName(name);
+    const key = short in properties ? name : short;
+    properties[key] = prop.value;
+    types[key] = prop.type;
+  }
+  const set = main?.parent?.type === "COMPONENT_SET" ? main.parent : null;
+  return {
+    name: set ? set.name : main?.name ?? null,
+    ...(set && main ? { variant: main.name } : {}),
+    key: main?.key ?? null,
+    ...(set ? { setKey: set.key } : {}),
+    remote: main?.remote ?? false,
+    properties,
+    ...(withTypes ? { types } : {}),
+  };
+};
+
+const describeInstances = async (roots: DescribedNode[]): Promise<void> => {
+  const instances: DescribedNode[] = [];
+  const walk = (n: DescribedNode): void => {
+    if (n.type === "INSTANCE") instances.push(n);
+    n.children?.forEach(walk);
+  };
+  roots.forEach(walk);
+  await Promise.all(
+    instances.map(async (serialized) => {
+      try {
+        const node = await figma.getNodeByIdAsync(serialized.id);
+        if (!node || node.type !== "INSTANCE") return;
+        serialized.component = await describeComponent(node);
+      } catch {
+        /* missing or inaccessible main component: leave the node as is */
+      }
+    })
+  );
+};
+
+/** A layer as Code Connect templates see it (describe_instance_trees). */
+type TemplateLayer = {
+  id: string;
+  type: string;
+  name: string;
+  characters?: string;
+  component?: Record<string, unknown>;
+  /** This instance fills the parent instance's INSTANCE_SWAP property of this name. */
+  swapProp?: string;
+  children?: TemplateLayer[];
+};
+
+/** Layers per tree, so one huge instance can't stall the read. */
+const MAX_TEMPLATE_LAYERS = 1500;
+
+/** The visible layers of an instance with what templates read: text content,
+ *  nested instances' component identity, property values and types, and which
+ *  parent property swaps them. */
+const describeTemplateLayers = async (root: InstanceNode): Promise<TemplateLayer> => {
+  let budget = MAX_TEMPLATE_LAYERS;
+  const visit = async (node: SceneNode): Promise<TemplateLayer> => {
+    budget--;
+    const layer: TemplateLayer = { id: node.id, type: node.type, name: node.name };
+    if (node.type === "TEXT") layer.characters = node.characters;
+    if (node.type === "INSTANCE") {
+      try {
+        layer.component = await describeComponent(node, true);
+      } catch {
+        /* inaccessible main component: the template sees no properties */
+      }
+    }
+    const swap = node.componentPropertyReferences?.mainComponent;
+    if (swap) layer.swapProp = shortPropertyName(swap);
+    if ("children" in node && budget > 0) {
+      const children: TemplateLayer[] = [];
+      for (const child of node.children) {
+        if (child.visible === false || budget <= 0) continue;
+        children.push(await visit(child));
+      }
+      layer.children = children;
+    }
+    return layer;
+  };
+  return visit(root);
+};
+
 const handleRequest = async (
   request: ServerRequest
 ): Promise<PluginResponse> => {
@@ -1522,56 +1663,14 @@ const handleRequest = async (
       case "get_design_context": {
         const depth =
           typeof request.params?.depth === "number" ? request.params.depth : 2;
-        const serializeWithDepth = async (
-          node: SerializableNode,
-          currentDepth: number
-        ): Promise<ReturnType<typeof serializeNode>> => {
-          const serialized = serializeNode(node);
-          if (currentDepth >= depth && serialized.children) {
-            // Truncate children at depth limit, but show count
-            return {
-              ...serialized,
-              children: undefined,
-              childCount:
-                (node as ChildrenMixin & SceneNode).children?.filter(
-                  (c) => c.visible !== false
-                ).length ?? 0,
-            } as ReturnType<typeof serializeNode> & { childCount: number };
-          }
-          if (serialized.children) {
-            const childNodes = await Promise.all(
-              serialized.children.map((child) =>
-                figma.getNodeByIdAsync(child.id)
-              )
-            );
-            const serializedChildren = await Promise.all(
-              childNodes
-                .filter(
-                  (n): n is SceneNode =>
-                    n !== null &&
-                    n.type !== "DOCUMENT" &&
-                    "visible" in n &&
-                    n.visible !== false
-                )
-                .map((n) => serializeWithDepth(n, currentDepth + 1))
-            );
-            return {
-              ...serialized,
-              children: serializedChildren,
-            };
-          }
-          return serialized;
-        };
-
+        // Depth-bounded in one pass: nodes past `depth` report childCount and
+        // are never serialized, so a shallow read of a huge page stays cheap.
         const selection = figma.currentPage.selection;
         const contextNodes =
           selection.length > 0
-            ? await Promise.all(
-                selection.map((node) => serializeWithDepth(node, 0))
-              )
-            : [
-                await serializeWithDepth(figma.currentPage, 0),
-              ];
+            ? selection.map((node) => serializeNode(node, depth))
+            : [serializeNode(figma.currentPage, depth)];
+        await describeInstances(contextNodes as DescribedNode[]);
 
         return {
           type: request.type,
@@ -1586,6 +1685,38 @@ const handleRequest = async (
             context: contextNodes,
           },
         };
+      }
+      case "describe_instance_trees": {
+        const trees: Record<string, TemplateLayer> = {};
+        for (const id of request.nodeIds ?? []) {
+          const node = await figma.getNodeByIdAsync(id);
+          if (node?.type === "INSTANCE") trees[id] = await describeTemplateLayers(node);
+        }
+        return { type: request.type, requestId: request.requestId, data: { trees } };
+      }
+      case "resolve_components": {
+        // A Code Connect url= node id → the component (set) key that instances
+        // anywhere carry. Only meaningful in the library file that owns the ids.
+        const components: Record<string, unknown> = {};
+        for (const id of request.nodeIds ?? []) {
+          const node = await figma.getNodeByIdAsync(id);
+          const component =
+            node?.type === "INSTANCE" ? await node.getMainComponentAsync() : node;
+          if (component?.type === "COMPONENT_SET") {
+            components[id] = { type: component.type, name: component.name, key: component.key };
+          } else if (component?.type === "COMPONENT") {
+            const set = component.parent?.type === "COMPONENT_SET" ? component.parent : null;
+            components[id] = {
+              type: component.type,
+              name: set ? set.name : component.name,
+              key: component.key,
+              ...(set ? { setKey: set.key } : {}),
+            };
+          } else {
+            components[id] = { error: node ? `not a component (${node.type})` : "not found" };
+          }
+        }
+        return { type: request.type, requestId: request.requestId, data: { components } };
       }
       case "get_variable_defs": {
         const collections =
@@ -2732,6 +2863,185 @@ const handleRequest = async (
           data: {
             framedCount: nodes.length,
             framedIds: nodes.map((n) => n.id),
+          },
+        };
+      }
+      case "manage_pages": {
+        const params = request.params ?? {};
+        const action = params.action;
+        const pages = (): readonly PageNode[] => figma.root.children;
+        const describePage = (page: PageNode) => ({
+          pageId: page.id,
+          name: page.name,
+          index: pages().indexOf(page),
+        });
+        const findPage = async (): Promise<PageNode> => {
+          const id = params.pageId;
+          if (typeof id !== "string") throw new Error(`manage_pages ${String(action)} requires pageId`);
+          const node = await figma.getNodeByIdAsync(id);
+          if (!node || node.type !== "PAGE") throw new Error(`Page not found: ${id}`);
+          return node;
+        };
+        let data: Record<string, unknown>;
+        switch (action) {
+          case "create": {
+            const page = figma.createPage();
+            if (typeof params.name === "string") page.name = params.name;
+            if (typeof params.index === "number") movePageTo(figma.root, page, params.index);
+            data = { action, ...describePage(page) };
+            break;
+          }
+          case "rename": {
+            const page = await findPage();
+            if (typeof params.name !== "string" || params.name === "") {
+              throw new Error("manage_pages rename requires name");
+            }
+            page.name = params.name;
+            data = { action, ...describePage(page) };
+            break;
+          }
+          case "move": {
+            const page = await findPage();
+            if (typeof params.index !== "number") throw new Error("manage_pages move requires index");
+            movePageTo(figma.root, page, params.index);
+            data = { action, ...describePage(page) };
+            break;
+          }
+          case "delete": {
+            if (params.confirm !== true) throw new Error("manage_pages delete requires confirm: true");
+            const page = await findPage();
+            if (pages().length <= 1) throw new Error("Cannot delete the only page");
+            let switchedTo: { pageId: string; name: string } | undefined;
+            if (figma.currentPage.id === page.id) {
+              const fallback = pages().find((p) => p.id !== page.id)!;
+              await figma.setCurrentPageAsync(fallback);
+              switchedTo = { pageId: fallback.id, name: fallback.name };
+            }
+            const deleted = { pageId: page.id, name: page.name };
+            await page.loadAsync();
+            page.remove();
+            data = { action, deleted, ...(switchedTo ? { switchedTo } : {}) };
+            break;
+          }
+          default:
+            throw new Error(`Unknown manage_pages action: ${String(action)}`);
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { ...data, pageCount: pages().length },
+        };
+      }
+      case "switch_page": {
+        const params = request.params ?? {};
+        const pages = figma.root.children;
+        let page: PageNode | undefined;
+        if (typeof params.pageId === "string") {
+          page = pages.find((p) => p.id === params.pageId);
+        } else if (typeof params.name === "string") {
+          const matches = pages.filter((p) => p.name === params.name);
+          if (matches.length > 1) {
+            throw new Error(
+              `Several pages are named "${params.name}" (${matches.map((p) => p.id).join(", ")}); pass pageId`
+            );
+          }
+          page = matches[0];
+        }
+        if (!page) {
+          throw new Error(
+            `Page not found. Pages: ${pages.map((p) => `"${p.name}" (${p.id})`).join(", ")}`
+          );
+        }
+        await figma.setCurrentPageAsync(page);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { pageId: page.id, name: page.name, index: pages.indexOf(page) },
+        };
+      }
+      case "create_svg": {
+        const params = request.params ?? {};
+        if (typeof params.svg !== "string" || params.svg.trim() === "") {
+          throw new Error("create_svg requires svg markup");
+        }
+        const frame = figma.createNodeFromSvg(params.svg);
+        await appendToParentIfProvided(frame, params.parentId);
+        if (typeof params.x === "number") frame.x = params.x;
+        if (typeof params.y === "number") frame.y = params.y;
+        if (typeof params.name === "string") frame.name = params.name;
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: frame.id,
+            nodeName: frame.name,
+            parentId: frame.parent?.id,
+            width: frame.width,
+            height: frame.height,
+            // Imported layers, so the caller can verify nothing was dropped.
+            layerCount: frame.findAll(() => true).length,
+          },
+        };
+      }
+      case "boolean_operation": {
+        const params = request.params ?? {};
+        const operation = params.operation;
+        if (!request.nodeIds || request.nodeIds.length === 0) {
+          throw new Error("nodeIds is required for boolean_operation");
+        }
+        if (operation !== "FLATTEN" && request.nodeIds.length < 2) {
+          throw new Error(`${String(operation)} needs at least 2 nodes`);
+        }
+        const nodes = await Promise.all(request.nodeIds.map((id) => getSceneNodeById(id)));
+        let parent: BaseNode & ChildrenMixin;
+        if (typeof params.parentId === "string") {
+          parent = await getParentNodeById(params.parentId);
+        } else {
+          const parents = new Set(nodes.map((n) => n.parent?.id));
+          const shared = nodes[0].parent;
+          if (parents.size !== 1 || !shared || !supportsChildren(shared)) {
+            throw new Error(
+              "boolean_operation requires all nodes to share a parent, or pass parentId explicitly"
+            );
+          }
+          parent = shared;
+        }
+        // Put the result where the layers were: at the lowest of their positions.
+        const positions = nodes.map((n) => parent.children.indexOf(n));
+        const index = positions.every((i) => i >= 0) ? Math.min(...positions) : undefined;
+        let result: BooleanOperationNode | VectorNode;
+        switch (operation) {
+          case "UNION":
+            result = figma.union(nodes, parent, index);
+            break;
+          case "SUBTRACT":
+            result = figma.subtract(nodes, parent, index);
+            break;
+          case "INTERSECT":
+            result = figma.intersect(nodes, parent, index);
+            break;
+          case "EXCLUDE":
+            result = figma.exclude(nodes, parent, index);
+            break;
+          case "FLATTEN":
+            result = figma.flatten(nodes, parent, index);
+            break;
+          default:
+            throw new Error(`Unknown boolean_operation: ${String(operation)}`);
+        }
+        if (typeof params.name === "string") result.name = params.name;
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: result.id,
+            nodeName: result.name,
+            type: result.type,
+            operation,
+            parentId: result.parent?.id,
+            ...(result.type === "BOOLEAN_OPERATION"
+              ? { childIds: result.children.map((c) => c.id) }
+              : {}),
           },
         };
       }
@@ -5557,8 +5867,20 @@ const handleRequest = async (
   }
 };
 
-figma.showUI(__html__, { width: 320, height: 180 });
+figma.showUI(__html__, { width: UI_WIDTH, height: UI_INITIAL_HEIGHT });
 sendStatus();
+figma.clientStorage
+  .getAsync(PAIRING_STORAGE_KEY)
+  .then((stored: unknown) => {
+    if (typeof stored === "string") pairingToken = stored;
+  })
+  .catch(() => {
+    /* unreadable: the UI asks for the code again */
+  })
+  .then(() => {
+    pairingLoaded = true;
+    sendStatus();
+  });
 
 figma.on("selectionchange", () => {
   sendStatus();
@@ -5659,35 +5981,148 @@ const applyReadCap = (
 // fully parallel.
 let mutationChain: Promise<void> = Promise.resolve();
 
+// ---- request lifecycle: heartbeats + cancellation ---------------------------
+// The server's timeout measures SILENCE, not duration: every request still
+// queued or running is listed in a heartbeat every HEARTBEAT_MS, so a long job
+// (and the edits queued behind it) is not timed out while it makes progress.
+// The heartbeat runs on this thread's timer, so it also stops while a sync
+// loop freezes the thread — the stall the server should catch.
+// A hung await (a Figma promise that never settles) does NOT freeze the
+// thread, so heartbeats alone would keep it alive until the server's hard cap
+// and hold the edit queue all that time. Each request therefore has a run
+// budget from the server: past it, it leaves the heartbeat (the server times
+// it out) and the edit queue moves on without it.
+const HEARTBEAT_MS = 2_000;
+const DEFAULT_RUN_BUDGET_MS = 5 * 60_000;
+type LiveRequest = { cancelled: boolean; budgetMs: number; runningSince: number | null };
+const liveRequests = new Map<string, LiveRequest>();
+let heartbeatTimer: number | null = null;
+
+const withinBudget = (live: LiveRequest): boolean =>
+  live.runningSince === null || Date.now() - live.runningSince < live.budgetMs;
+
+/** `sync` marks the first heartbeat after a (re)connect: it lists every live
+ *  request, so the server can re-adopt the ones in flight when the socket dropped. */
+const postHeartbeat = (sync = false): void => {
+  const requestIds = [...liveRequests.entries()]
+    .filter(([, live]) => withinBudget(live))
+    .map(([id]) => id);
+  if (!sync && requestIds.length === 0) return;
+  figma.ui.postMessage({
+    type: "progress",
+    payload: { requestIds, ...(sync ? { sync: true } : {}) },
+  });
+};
+
+const scheduleHeartbeat = (): void => {
+  if (heartbeatTimer !== null || ![...liveRequests.values()].some(withinBudget)) return;
+  heartbeatTimer = setTimeout(() => {
+    heartbeatTimer = null;
+    postHeartbeat();
+    scheduleHeartbeat();
+  }, HEARTBEAT_MS);
+};
+
 figma.ui.onmessage = async (message) => {
   if (message.type === "ui-ready") {
+    sendStatus();
+    postHeartbeat(true);
+    return;
+  }
+
+  if (message.type === "status-request") {
     sendStatus();
     return;
   }
 
-  if (message.type === "server-request") {
-    const request = message.payload as ServerRequest;
-    const run = async (): Promise<void> => {
-      const response = applyReadCap(request, await handleRequest(request));
-      try {
-        figma.ui.postMessage(response);
-      } catch (err) {
-        figma.ui.postMessage({
-          type: response.type,
-          requestId: response.requestId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    };
+  if (message.type === "set-pairing-token") {
+    // Kept as typed minus separators; the server compares case-insensitively.
+    pairingToken = String(message.token ?? "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+    try {
+      await figma.clientStorage.setAsync(PAIRING_STORAGE_KEY, pairingToken);
+    } catch {
+      /* not persisted: works until the plugin closes */
+    }
+    sendStatus();
+    return;
+  }
 
-    if (
+  if (message.type === "resize") {
+    const height = Number(message.height);
+    if (Number.isFinite(height) && height > 0) {
+      figma.ui.resize(UI_WIDTH, Math.min(UI_MAX_HEIGHT, Math.ceil(height)));
+    }
+    return;
+  }
+
+  if (message.type === "server-request") {
+    const control = message.payload as { type: string; requestId: string };
+    if (control.type === "cancel") {
+      // The server gave up on this request. Still queued → it is skipped
+      // below; already running → it finishes (no safe point to stop it).
+      const target = liveRequests.get(control.requestId);
+      if (target) target.cancelled = true;
+      return;
+    }
+    const request = message.payload as ServerRequest;
+    const mutates =
       EDIT_REQUEST_TYPES.has(request.type) ||
       FIGJAM_REQUEST_TYPES.has(request.type) ||
       SLIDES_REQUEST_TYPES.has(request.type) ||
       BUZZ_REQUEST_TYPES.has(request.type) ||
-      request.type === "execute_code"
-    ) {
-      mutationChain = mutationChain.then(run, run);
+      request.type === "execute_code";
+    const live: LiveRequest = {
+      cancelled: false,
+      budgetMs:
+        typeof request.budgetMs === "number" && request.budgetMs > 0
+          ? request.budgetMs
+          : DEFAULT_RUN_BUDGET_MS,
+      runningSince: null,
+    };
+    liveRequests.set(request.requestId, live);
+    scheduleHeartbeat();
+    const run = async (): Promise<void> => {
+      try {
+        // A timed-out edit must never land late: the caller may already be retrying it.
+        if (live.cancelled) return;
+        live.runningSince = Date.now();
+        const response = applyReadCap(request, await handleRequest(request));
+        // Plugin actions share ONE undo step until committed, and this plugin
+        // stays open all session: commit after each edit so a user's Cmd+Z
+        // reverts the last tool call, not everything the agent ever did.
+        if (mutates) {
+          try {
+            figma.commitUndo();
+          } catch {
+            /* best-effort */
+          }
+        }
+        try {
+          figma.ui.postMessage(response);
+        } catch (err) {
+          figma.ui.postMessage({
+            type: response.type,
+            requestId: response.requestId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } finally {
+        liveRequests.delete(request.requestId);
+      }
+    };
+
+    if (mutates) {
+      // The queue waits for this edit at most its run budget: a hung one is
+      // left running in the background instead of blocking every later edit.
+      const runWithinBudget = (): Promise<void> =>
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, live.budgetMs);
+          void run().finally(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      mutationChain = mutationChain.then(runWithinBudget, runWithinBudget);
     } else {
       void run();
     }

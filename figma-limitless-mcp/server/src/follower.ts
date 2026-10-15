@@ -1,3 +1,5 @@
+import { HARD_CAP_MS } from "./bridge.js";
+import { callContext } from "./call-context.js";
 import type { BridgeResponse, ConnectedFile, RPCRequest, RPCResponse, SendOpts } from "./types.js";
 
 /**
@@ -28,13 +30,24 @@ export class Follower {
     if (opts?.agent) rpcReq.agent = opts.agent;
     if (opts?.timeoutMs) rpcReq.timeoutMs = opts.timeoutMs;
 
-    // The leader enforces its own cap; give the HTTP layer headroom past it.
-    const httpTimeout = (opts?.timeoutMs && opts.timeoutMs > 0 ? Math.min(opts.timeoutMs, 300_000) : 30_000) + 5_000;
+    // timeoutMs is a stall window on the leader: a plugin that keeps sending
+    // heartbeats can run until the leader's hard cap, so the HTTP layer waits
+    // for that (the leader always answers by then) plus headroom.
+    const httpTimeout = HARD_CAP_MS + 5_000;
+    // A cancel from this follower's MCP client hangs up on the leader, which
+    // passes it on to the plugin as a cancel.
+    const timeoutSignal = AbortSignal.timeout(httpTimeout);
+    const clientSignal = callContext.getStore()?.signal;
     const response = await fetch(`${this.leaderUrl}/rpc`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(rpcReq),
-      signal: AbortSignal.timeout(httpTimeout),
+      // AbortSignal.any needs Node 20.3+; engines allow 20.0, which then just
+      // loses cancel passthrough.
+      signal:
+        clientSignal && typeof AbortSignal.any === "function"
+          ? AbortSignal.any([clientSignal, timeoutSignal])
+          : timeoutSignal,
     });
 
     if (!response.ok) {

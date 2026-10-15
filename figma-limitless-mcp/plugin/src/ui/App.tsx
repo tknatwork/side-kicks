@@ -48,25 +48,72 @@ type PluginStatus = {
   fileName: string;
   fileKey: string;
   selectionCount: number;
+  /** The server's pairing code as the user typed it ("" = never paired). */
+  pairingToken: string;
+  /** False until the main thread has read the saved code. */
+  pairingLoaded: boolean;
 };
 
 const WS_BASE_URL = "ws://localhost:1994/ws";
+/** Responses held while the socket is down; the server keeps their requests
+ *  waiting for a short reconnect window, so delivering them late still counts. */
+const MAX_OUTBOX = 200;
 
 export default function App() {
   const [connected, setConnected] = useState(false);
   const [status, setStatus] = useState<PluginStatus>({
     fileName: "Unknown file",
     fileKey: "",
-    selectionCount: 0
+    selectionCount: 0,
+    pairingToken: "",
+    pairingLoaded: false
   });
+  /** The server refused this plugin's code (or it had none). */
+  const [needsPairing, setNeedsPairing] = useState(false);
+  /** That refusal was of a code, not of a missing one. */
+  const [codeRejected, setCodeRejected] = useState(false);
+  const [codeInput, setCodeInput] = useState("");
+  const [checking, setChecking] = useState(false);
+  /** Bumped on every Pair press: reconnects even when the code didn't change. */
+  const [pairAttempt, setPairAttempt] = useState(0);
   const [served, setServed] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<number | null>(null);
+  const outboxRef = useRef<string[]>([]);
 
+  const connection = !connected ? "disconnected" : needsPairing ? "unpaired" : "connected";
   const statusLabel = useMemo(
-    () => (connected ? "Connected · :1994" : "Waiting for server · :1994"),
-    [connected]
+    () =>
+      ({ disconnected: "Waiting for server", unpaired: "Not paired", connected: "Connected" })[connection],
+    [connection]
   );
+
+  // The window is as tall as its content, so it covers as little of the
+  // canvas as possible and still fits the pairing form or a long file name.
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    let last = 0;
+    const report = () => {
+      const height = Math.ceil(el.getBoundingClientRect().height);
+      if (height === last) return;
+      last = height;
+      parent.postMessage({ pluginMessage: { type: "resize", height } }, "*");
+    };
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    report();
+    return () => observer.disconnect();
+  }, []);
+
+  const submitPairing = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!codeInput.trim()) return;
+    setChecking(true);
+    parent.postMessage({ pluginMessage: { type: "set-pairing-token", token: codeInput } }, "*");
+    setPairAttempt((n) => n + 1);
+  };
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
@@ -78,9 +125,10 @@ export default function App() {
         return;
       }
 
-      if (msg.type === "doc-event") {
-        // Plugin-initiated change notification — forward without a requestId
-        // so the server can invalidate its digest cache.
+      if (msg.type === "doc-event" || msg.type === "progress") {
+        // Plugin-initiated notification (digest invalidation, request
+        // heartbeat) — forward without a requestId. Stale ones aren't worth
+        // buffering: a reconnect drops the digest cache and resyncs requests.
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
           socketRef.current.send(JSON.stringify(msg));
         }
@@ -91,22 +139,29 @@ export default function App() {
         return;
       }
 
+      const wire = JSON.stringify(msg);
       if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+        const outbox = outboxRef.current;
+        outbox.push(wire);
+        if (outbox.length > MAX_OUTBOX) outbox.shift();
         return;
       }
-      socketRef.current.send(JSON.stringify(msg));
+      socketRef.current.send(wire);
       setServed((n) => n + 1);
     };
 
     window.addEventListener("message", handleMessage);
+    // Status posted before this listener existed is lost: ask again now.
+    parent.postMessage({ pluginMessage: { type: "status-request" } }, "*");
     return () => {
       window.removeEventListener("message", handleMessage);
     };
   }, []);
 
-  // Connect/reconnect WebSocket when fileKey changes
+  // Connect/reconnect WebSocket when the file or the pairing code changes
   useEffect(() => {
-    if (!status.fileKey) return;
+    // Wait for the saved code, so a paired plugin never connects without it.
+    if (!status.fileKey || !status.pairingLoaded) return;
 
     let disposed = false;
 
@@ -122,12 +177,24 @@ export default function App() {
         previousSocket.close();
       }
 
-      const wsUrl = `${WS_BASE_URL}?fileKey=${encodeURIComponent(status.fileKey)}&fileName=${encodeURIComponent(status.fileName)}`;
+      // Browsers can't set headers on a WebSocket, so the code rides in the
+      // query; the server never logs it.
+      const sentToken = status.pairingToken;
+      const wsUrl =
+        `${WS_BASE_URL}?fileKey=${encodeURIComponent(status.fileKey)}` +
+        `&fileName=${encodeURIComponent(status.fileName)}` +
+        `&token=${encodeURIComponent(sentToken)}`;
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
       ws.onopen = () => {
         setConnected(true);
+        // Buffered responses go first, so they settle their requests before
+        // the sync heartbeat (sent on ui-ready) reconciles what is still live.
+        const outbox = outboxRef.current;
+        outboxRef.current = [];
+        for (const wire of outbox) ws.send(wire);
+        if (outbox.length > 0) setServed((n) => n + outbox.length);
         parent.postMessage({ pluginMessage: { type: "ui-ready" } }, "*");
       };
 
@@ -149,7 +216,21 @@ export default function App() {
 
       ws.onmessage = (event) => {
         if (disposed || socketRef.current !== ws) return;
-        const payload = JSON.parse(event.data) as ServerRequest;
+        const payload = JSON.parse(event.data) as ServerRequest | { type: "paired" | "pairing-required" };
+        // Pairing verdicts are for this window, not requests for the main thread.
+        if (payload.type === "pairing-required") {
+          setNeedsPairing(true);
+          setCodeRejected(sentToken !== "");
+          setChecking(false);
+          return;
+        }
+        if (payload.type === "paired") {
+          setNeedsPairing(false);
+          setCodeRejected(false);
+          setChecking(false);
+          setCodeInput("");
+          return;
+        }
         parent.postMessage({ pluginMessage: { type: "server-request", payload } }, "*");
       };
     };
@@ -172,32 +253,46 @@ export default function App() {
         socketRef.current = null;
       }
     };
-  }, [status.fileKey, status.fileName]);
-
-
+  }, [status.fileKey, status.fileName, status.pairingLoaded, status.pairingToken, pairAttempt]);
 
   return (
-    <div className="container">
-      <div className="info-section">
-        <div className="info-row">
-          <span className="info-label">File:</span>
-          <span className="info-value">{status.fileName}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Selection:</span>
-          <span className="info-value">{status.selectionCount} node(s)</span>
-        </div>
+    <div className="container" ref={containerRef}>
+      <div className="status-row">
+        <span className={`dot ${connection}`} />
+        <span className="status-label" title="ws://localhost:1994">
+          {statusLabel}
+        </span>
+        {served > 0 && <span className="served">{served} served</span>}
+      </div>
+      <div className="file-row" title={status.fileName}>
+        <span className="file-name">{status.fileName}</span>
+        <span className="selection">· {status.selectionCount} selected</span>
       </div>
 
-      <div className="footer">
-        <div className={`badge ${connected ? "connected" : "disconnected"}`}>
-          <span className="dot" />
-          <span className="badge-text">{statusLabel}</span>
-        </div>
-        <span className="served-counter">
-          {served > 0 ? `${served} request${served === 1 ? "" : "s"} served` : "Limitless MCP for Figma"}
-        </span>
-      </div>
+      {needsPairing && (
+        <form className="pairing" onSubmit={submitPairing}>
+          <div className="pairing-hint" title="Also in ~/.figma-limitless-mcp/pairing-token">
+            {codeRejected ? "Code doesn't match. " : "Enter the pairing code. "}
+            Ask your AI for <code>get_pairing_code</code> (needed once).
+          </div>
+          <div className="pairing-row">
+            <input
+              className="pairing-input"
+              value={codeInput}
+              onChange={(e) => setCodeInput(e.target.value)}
+              placeholder="XXXX-XXXX-XXXX-XXXX"
+              maxLength={32}
+              autoFocus
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Pairing code"
+            />
+            <button className="pairing-button" type="submit" disabled={checking || !codeInput.trim()}>
+              {checking ? "…" : "Pair"}
+            </button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

@@ -7,18 +7,19 @@
   "scripts": {
     "dev": "concurrently \"vite build --watch\" \"vite build --watch -c vite.config.main.ts\"",
     "build": "tsc --noEmit -p tsconfig.json && vite build && vite build -c vite.config.main.ts && node scripts/sync-extras.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --no-warnings --test test/*.test.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@figma/plugin-typings": "1.138.0",
+    "@figma/plugin-typings": "1.141.0",
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.2",
-    "concurrently": "^9.2.1",
+    "concurrently": "^9.2.5",
     "typescript": "^7.0.2",
     "vite": "^6.4.3",
     "vite-plugin-singlefile": "^2.3.0"

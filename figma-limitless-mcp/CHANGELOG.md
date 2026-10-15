@@ -6,6 +6,176 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Security
+
+- **The :1994 server no longer accepts tool calls from other devices or from web pages.** It
+  listened on every network interface, and `/rpc` (which runs any tool, `execute_code` included)
+  had no checks. Anyone on the same network could drive the open Figma file, and so could a web page
+  in the user's browser, by sending a plain-text POST to localhost (no CORS preflight). Now:
+  - only loopback peers are served;
+  - `/rpc` refuses requests that carry an `Origin` header or aren't `application/json`;
+  - `/ws` accepts only the plugin's sandboxed-iframe origin (`null`), figma.com, or no origin.
+
+  Followers and the plugin are unaffected (tested).
+
+- **The plugin socket now requires a pairing code.** The origin check above can't tell the plugin
+  from a web page: a sandboxed iframe on any site sends the same `null` origin, so a page open in
+  the browser could still connect to `/ws` as the plugin and receive (or answer) the AI's
+  requests. The server now keeps a pairing code in `~/.figma-limitless-mcp/pairing-token`
+  (created on first use, mode 0600), and the plugin must send it when it connects.
+  - **One-time setup:** the plugin window asks for the code. The AI gets it with the new
+    `get_pairing_code` tool, or the user reads it from the file. The plugin stores it in
+    `figma.clientStorage` (private to this Figma install, never in the document).
+  - A socket without the right code is held apart. It is never given requests, can't replace the
+    paired plugin for its file, and everything it sends is ignored. Tool errors say a plugin is
+    open but unpaired and how to fix it.
+  - `get_pairing_code {rotate: true}` issues a new code; `LIMITLESS_PAIRING=off` turns pairing
+    off. The code is compared in constant time and never logged.
+  - **Upgrading:** rebuild and re-run the plugin, then pair once. A plugin built before this
+    change can't pair.
+
+- **Server: `@modelcontextprotocol/sdk` 1.30.0 → 1.32.1** (fixes GHSA-6qxp-vccf-f47h, high: the
+  OAuth client could send credentials to an authorization server chosen by the MCP server). The
+  lockfile also moves the SDK's own dependencies to patched releases: `proxy-addr` 2.0.8
+  (critical, GHSA-jqcg-44mw-7w3h), `fast-uri` 3.1.8 (five high, one moderate), `qs` 6.16.1,
+  `hono` 4.13.13, and `ip-address` 10.7.4 via `express-rate-limit` 8.7.1. `pnpm audit`: 18 → 0.
+  No source changes; the build and all 100 unit tests pass.
+- **Plugin (build tooling only; none of it ships in the bundle):** `concurrently` 9.2.4 → 9.2.5,
+  the upstream backport whose only change is `shell-quote` 1.12.0 (critical,
+  GHSA-pqg4-j6r4-53mv). It stays on major 9. The lockfile also moves `browserslist` 4.29.3,
+  `baseline-browser-mapping` 2.11.29 and `source-map-js` 1.2.2 to patched releases. Typecheck and
+  both Vite builds pass. `pnpm audit`: 6 → 1.
+- **Known, not fixable upstream:** `braces` 3.0.3 (GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS on
+  deeply nested patterns) has no patched release. The only path to it is `vite-plugin-singlefile` →
+  `micromatch`, and `vite-plugin-singlefile` calls `micromatch.isMatch` only when `inlinePattern`
+  is non-empty. `vite.config.ts` calls `viteSingleFile()` with no options, so the code never runs,
+  and it would only run at build time. Revisit when `braces` or `vite-plugin-singlefile` ships a fix.
+
+### Added — long tasks no longer break
+
+- **Timeouts measure silence, not duration.** The plugin sends a heartbeat every 2 s listing each
+  request it has queued or running, and each heartbeat restarts that request's timeout window (30 s,
+  or `timeoutMs`). Long jobs, and edits queued behind them, keep going while the plugin works, up to
+  a 30-minute cap. Before, the clock started at send, so edits queued behind a slow one timed out
+  while still waiting, then ran anyway after the agent had moved on or retried.
+- **A timeout or a client cancel cancels the request in the plugin.** An edit still queued is
+  skipped, so it can't land late; one already running finishes. Cancelling a tool call in the MCP
+  client (or a follower hanging up) is passed through the same way.
+- **Run budget.** A request may run 4× its timeout window (at least 1 minute). Past that, the plugin
+  treats it as stuck, stops reporting it (so it times out), and frees the edit queue. A hung Figma
+  call no longer blocks every later edit until the plugin is reloaded.
+- **Reconnect grace.** If the plugin's socket drops, in-flight requests wait up to 15 s for it to
+  come back. The plugin UI keeps responses that finish while disconnected and sends them on
+  reconnect; before, they were dropped. A request the reconnected plugin no longer knows about fails
+  at once with a clear message.
+- **MCP progress notifications.** If the client sent a progress token, heartbeats are forwarded as
+  `notifications/progress`, so clients that reset their timeout on progress keep waiting through
+  long Figma jobs. This applies on the leader only.
+- **One undo step per tool call.** The plugin calls `figma.commitUndo()` after each edit. Before,
+  every edit in the plugin session was a single undo step, so one Cmd+Z could revert an entire agent
+  session.
+
+### Added — Code Connect templates, run locally (102 → 103 tools)
+
+- **`load_code_connect_templates`** loads Figma Code Connect template files (`*.figma.ts` /
+  `*.figma.js`, the parserless format of Code Connect CLI v2) from a folder in the repo. From then
+  on, `get_design_context` renders each matching instance with its real template, for its current
+  property values. No Figma Org/Enterprise plan and no publishing are needed, and the same files
+  still publish to real Code Connect.
+  - **Bundling.** esbuild bundles each template. A template may import only `figma` and relative
+    helpers, and nothing outside the loaded folder (symlinks resolved). The folder must be inside
+    the server's working directory. Parser-based `.figma.tsx` files are skipped, with a pointer to
+    `figma connect migrate`.
+  - **Matching.** When the `// url=` points into a connected file, the plugin resolves it to the
+    component (set) key, so instances match exactly in any file. Otherwise the template is keyed by
+    its file name (`Button.figma.ts` → `Button`).
+  - **Runtime.**
+    - `figma.selectedInstance`: `getString`, `getBoolean`, `getEnum`, `getInstanceSwap`, `getSlot`,
+      `getPropertyValue`, the `find*` methods (`path` and `traverseInstances` included),
+      `executeTemplate`, `codeConnectId` and `hasCodeConnect`.
+    - The `figma.code` / `tsx` / `html` / `swift` / `kotlin` tags, `figma.properties`, and
+      approximate `figma.helpers`.
+    - Nested instances render with their own template, or their props mapping, and their imports
+      are merged.
+  - **Sandbox.** Templates run in a `vm` context that holds no host object: the runtime is
+    serialized into it, data goes in as JSON, and only strings come out. Code generation from
+    strings is off and each render has a 1 s timeout. A failing template falls back to the mapping's
+    props or static snippet and reports `templateError`.
+  - **Mappings.** `get_code_mappings` shows a template's file and hash but not its code, and
+    `set_code_mapping` keeps a mapping's template when other fields change.
+- New server dependency: `esbuild` ^0.28.2. It's used only by this tool, loaded on first use, and
+  `pnpm audit` is clean.
+
+### Added — pages, SVG import, boolean operations (98 → 102 tools)
+
+- **`manage_pages`** creates, renames, moves and deletes pages. `index` is the final position.
+  Delete requires `confirm: true`, refuses to delete the only page, and switches away first when
+  the page being deleted is the current one. Figma's typings don't say whether a move later in the
+  list counts the page's old slot, so the move checks where the page landed and corrects once; a
+  test passes every move under both behaviours.
+- **`switch_page`** takes a `pageId` or an exact name. It is navigation (like `set_selection`), so
+  it works in Dev Mode and isn't journaled. Reads only see the current page, and until now no tool
+  could change it without `execute_code`.
+- **`create_svg`** imports SVG markup as editable vector layers inside a new frame (Figma's own SVG
+  import). It returns `layerCount`, so the caller can check that nothing was dropped.
+- **`boolean_operation`** does `UNION`, `SUBTRACT`, `INTERSECT` and `EXCLUDE` (an editable boolean
+  group) and `FLATTEN` (a single vector). The result takes the layers' place in their shared parent.
+- The three edits are Dev-Mode-gated, journaled, run in the edit queue, and are one undo step each.
+
+### Added — design to code, FigJam reads
+
+- **`get_design_context` reports what each instance is:** a `component` object with the set name,
+  variant, keys and current property values (`#id` suffix dropped).
+- **Code-Connect-style mappings.**
+  - `set_code_mapping` takes `component`, `imports`, `props` (Figma property → code prop, with value
+    translation) and `children`.
+  - `get_design_context` then gives each mapped instance a `code` block with a snippet for its
+    current values, e.g. `<Button size="sm" disabled>Save</Button>` (JSX for tsx/jsx; resolved props
+    for other languages).
+  - A mapped instance's layers collapse to `childCount`; `expandMapped: true` keeps them.
+  - `codeMappings` lists the components in use that still have no mapping.
+  - Mappings are matched by component key, then component-set key, then name. Existing static
+    mappings keep working and now appear in `code` too.
+- **FigJam boards are readable.** Reads now include sticky and shape text, connector endpoints and
+  labels, code-block code, and table cell text (first 400 cells). None of this lives in TEXT nodes,
+  so a board used to read as empty shapes.
+- **`pnpm test` in `plugin/`.** Serializer and composed-color tests run on the sources (Node ≥ 22.6).
+
+### Fixed
+
+- **`get_design_context` cost scaled with the whole subtree, not the requested depth.** It fully
+  serialized every node's descendants and then dropped those below `depth`, and it re-fetched and
+  re-serialized each level. A shallow read of a large page did several times the work of a full
+  read, in one blocking step. It is now one depth-bounded pass, and an equivalence test over 150
+  tree/depth pairs gave byte-identical output.
+
+### Changed
+
+- **The plugin window is a small strip now: 240×50 px instead of 320×180**, so it covers far less
+  of the canvas. It shows the connection state on one line and the file and selection count on the
+  next (long file names are cut with "…"). The window is sized to its content, so it grows only
+  while the one-time pairing form is open (240×116) and shrinks back once paired.
+
+- **Plugin: `@figma/plugin-typings` 1.138.0 → 1.141.0, and composed colors use the real
+  `VariableComposedColor` type.** The local `ComposedColorValue` stand-in is gone, along with the
+  `as unknown as VariableValue` cast that hid it from the compiler. The real type only admits the two
+  shapes Figma accepts (an aliased color with a raw or aliased opacity, or a raw color with an
+  aliased opacity), so `buildComposedColor` now has one branch per shape and the compiler checks
+  the rule. Its checks, their order and its error messages are unchanged. `figma-139-shim.ts` is
+  renamed `composed-color.ts`, since it now holds only the plugin's own runtime guards and
+  `write_variables` helpers. The read guard `isComposedColorValue` now matches the type exactly, so
+  it no longer accepts a raw color with a raw opacity (Figma never stores one). No change to tool
+  inputs or outputs.
+
+### Note for the operator
+
+- `dist/` is untracked, so these fixes take effect only after a rebuild: `pnpm --dir
+  figma-limitless-mcp/server build` and `pnpm --dir figma-limitless-mcp/plugin build`, then re-run
+  the plugin in Figma and restart every MCP client session.
+- Mixed versions are safe. An old plugin with the new server sends no heartbeats, so it keeps the
+  old absolute timeouts and ignores `cancel`. A new plugin with an old server has its heartbeats
+  ignored.
+
 ## [0.5.1] — 2026-09-22
 
 ### Fixed

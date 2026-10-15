@@ -5,6 +5,19 @@ import { isIP } from "node:net";
 import path from "node:path";
 import type { z } from "zod";
 import type { Node } from "./node.js";
+import { callContext, type CallContext } from "./call-context.js";
+import {
+  applyCodeMappings,
+  buildTemplateJob,
+  hasDescribedInstances,
+  templateTargets,
+  type CodeMapping,
+  type ContextNode,
+  type MappingCoverage,
+} from "./code-mapping.js";
+import { loadTemplates, nameFromFile, resolveTemplateRoot } from "./code-connect-loader.js";
+import { runTemplates, type TemplateLayer, type TemplateOutcome } from "./code-connect-runtime.js";
+import { getPairingCode, pairingDisabled, pairingTokenPath, rotatePairingCode } from "./pairing.js";
 import { listSkills, readSkill, getBuildRecipe } from "./skills.js";
 import { runLint, type LintSnapshot } from "./lint/index.js";
 import {
@@ -24,6 +37,13 @@ import {
   setSelectionInput,
   scrollAndZoomIntoViewInput,
   groupNodesInput,
+  managePagesShape,
+  managePagesInput,
+  switchPageShape,
+  switchPageInput,
+  createSvgInput,
+  booleanOperationShape,
+  booleanOperationInput,
   ungroupNodeInput,
   setTextPropertiesShape,
   setTextPropertiesInput,
@@ -102,6 +122,8 @@ import {
   setCodeMappingShape,
   setCodeMappingInput,
   getCodeMappingsInput,
+  loadCodeConnectTemplatesInput,
+  getPairingCodeInput,
   toolInputSchemas,
 } from "./schema.js";
 import type { BridgeResponse } from "./types.js";
@@ -180,11 +202,57 @@ interface SaveScreenshotItemResult {
  * @param node - The node coordinator for leader/follower routing.
  * @param port - The port used for follower-to-leader HTTP calls.
  */
+/** The parts of the SDK's per-request `extra` the call context uses. */
+type ToolCallExtra = {
+  signal?: AbortSignal;
+  _meta?: { progressToken?: string | number };
+  sendNotification?: (notification: {
+    method: "notifications/progress";
+    params: { progressToken: string | number; progress: number; message?: string };
+  }) => Promise<void>;
+};
+
+/** Plugin heartbeats become MCP progress notifications when the client asked
+ *  for progress, so clients that reset their timeout on progress keep waiting
+ *  through long Figma jobs; the client's cancel signal reaches the bridge. */
+const contextFor = (extra: ToolCallExtra | undefined): CallContext => {
+  const token = extra?._meta?.progressToken;
+  const send = extra?.sendNotification;
+  let progress = 0;
+  return {
+    signal: extra?.signal,
+    onProgress:
+      token === undefined || !send
+        ? undefined
+        : () => {
+            progress += 1;
+            send({
+              method: "notifications/progress",
+              params: { progressToken: token, progress, message: "Figma plugin is still working" },
+            }).catch(() => {
+              /* best-effort */
+            });
+          },
+  };
+};
+
 export function registerTools(
   server: McpServer,
   node: Node,
   port: number
 ): void {
+  // Every tool callback runs inside a CallContext built from its request's
+  // `extra`, which the SDK always passes as the callback's last argument.
+  const registerTool = server.tool.bind(server) as (...args: unknown[]) => unknown;
+  (server as unknown as { tool: (...args: unknown[]) => unknown }).tool = (...args) => {
+    const callback = args[args.length - 1] as (...cbArgs: unknown[]) => unknown;
+    args[args.length - 1] = (...cbArgs: unknown[]) =>
+      callContext.run(contextFor(cbArgs[cbArgs.length - 1] as ToolCallExtra | undefined), () =>
+        callback(...cbArgs)
+      );
+    return registerTool(...args);
+  };
+
   // Journal every op under the connecting client's identity (best-effort:
   // clientInfo is available once the MCP handshake completes).
   node.agentSupplier = () => {
@@ -218,6 +286,49 @@ export function registerTools(
               text: err instanceof Error ? err.message : String(err),
             },
           ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "get_pairing_code",
+    "Get the code that pairs the Limitless Figma plugin with this server. Call it when a tool says the plugin isn't paired (or the plugin window asks for a code): give the code to the user to type into the plugin window. Needed once per Figma install, and again only after rotate. The code proves the plugin is the user's and not a web page posing as it; it is also in ~/.figma-limitless-mcp/pairing-token. Pairing is off when the server runs with LIMITLESS_PAIRING=off.",
+    getPairingCodeInput.shape,
+    async ({ rotate }): Promise<ToolResult> => {
+      try {
+        if (pairingDisabled()) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: JSON.stringify({
+                  pairing: "off",
+                  note: "LIMITLESS_PAIRING=off: any plugin connection is accepted, no code needed.",
+                }),
+              },
+            ],
+          };
+        }
+        const code = rotate === true ? rotatePairingCode() : getPairingCode();
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                code,
+                file: pairingTokenPath(),
+                ...(rotate === true ? { rotated: true } : {}),
+                howTo:
+                  "In Figma, run the Limitless plugin; its window asks for a pairing code. Type this code there and press Pair. It is remembered for this Figma install.",
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
           isError: true,
         };
       }
@@ -277,16 +388,144 @@ export function registerTools(
 
   server.tool(
     "get_design_context",
-    "Get the design context for the current selection or page. Returns a summarized tree structure optimized for understanding the current design context. Text nodes report textWrapStyle and, for variable fonts, fontVariationSettings. When multiple files are connected, specify fileKey.",
+    "Get the design context for the current selection or page. Returns a summarized tree structure optimized for understanding the current design context. Text nodes report textWrapStyle and, for variable fonts, fontVariationSettings. Instances report `component` (name, variant, keys, current property values). Instances with a code mapping (set_code_mapping) get a `code` block with a snippet for their current values, and their layers are collapsed unless expandMapped; `codeMappings` lists used components that have no mapping yet. When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_design_context.shape,
-    async ({ depth, fileKey }): Promise<ToolResult> => {
+    async ({ depth, expandMapped, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = {};
       if (depth !== undefined && depth > 0) {
         params.depth = depth;
       }
-      return renderResponse(() =>
-        node.sendWithParams("get_design_context", undefined, params, fileKey)
+      return renderResponse(async () => {
+        const resp = await node.sendWithParams("get_design_context", undefined, params, fileKey);
+        if (!resp.error) await attachCodeMappings(resp.data, fileKey, expandMapped === true);
+        return resp;
+      });
+    }
+  );
+
+  /** Resolves code mappings into a get_design_context result (in place).
+   *  Best-effort: a failed mapping lookup leaves the design context as is. */
+  const attachCodeMappings = async (
+    data: unknown,
+    fileKey: string | undefined,
+    expandMapped: boolean
+  ): Promise<void> => {
+    const result = data as { context?: ContextNode[]; codeMappings?: MappingCoverage } | undefined;
+    if (!result || !Array.isArray(result.context)) return;
+    const roots = result.context;
+    if (!hasDescribedInstances(roots)) return;
+    try {
+      const resp = await node.sendWithParams(
+        "get_code_mappings",
+        undefined,
+        { includeTemplates: true },
+        fileKey
       );
+      const mappings = (resp.data as { mappings?: Record<string, CodeMapping> } | undefined)?.mappings ?? {};
+      // Code Connect templates need the instances' own layers: fetched only
+      // for instances that have one, then rendered in the sandbox.
+      let rendered: Record<string, TemplateOutcome> = {};
+      const targets = templateTargets(roots, mappings);
+      if (targets.length > 0) {
+        try {
+          const treesResp = await node.sendWithParams("describe_instance_trees", targets, undefined, fileKey);
+          const trees = (treesResp.data as { trees?: Record<string, TemplateLayer> } | undefined)?.trees ?? {};
+          rendered = runTemplates(
+            buildTemplateJob(trees, mappings),
+            targets.filter((id) => id in trees)
+          );
+        } catch (err) {
+          const error = `template layers unavailable: ${err instanceof Error ? err.message : String(err)}`;
+          rendered = Object.fromEntries(targets.map((id) => [id, { error }]));
+        }
+      }
+      result.codeMappings = applyCodeMappings(roots, mappings, expandMapped, rendered);
+    } catch {
+      /* mappings unavailable: return the plain design context */
+    }
+  };
+
+  server.tool(
+    "load_code_connect_templates",
+    "Load Figma Code Connect templates (*.figma.ts / *.figma.js, the parserless format of Code Connect CLI v2) from a directory in this repo, so get_design_context renders each instance with its real template locally: no Figma Org/Enterprise plan, no publishing. A template whose `// url=` points into a connected file is keyed by that component's key; otherwise by its file name (Button.figma.ts → 'Button'). Templates run sandboxed (no Node APIs, 1s per render) and may import only 'figma' and relative files. Reload after editing them. Returns what was loaded, skipped and why.",
+    loadCodeConnectTemplatesInput.shape,
+    async ({ dir, fileKey }): Promise<ToolResult> => {
+      try {
+        const root = await resolveTemplateRoot(dir ?? ".", process.cwd());
+        const loaded = await loadTemplates(root);
+
+        // Resolve url= node ids to component keys where the url's file is connected.
+        let files = node.listConnectedFiles();
+        if (files === undefined) {
+          files = await new Follower(`http://localhost:${port}`).listConnectedFiles().catch(() => []);
+        }
+        const connected = new Set(files.map((f) => f.fileKey));
+        const resolved = new Map<string, { key?: string; setKey?: string }>();
+        const byFile = new Map<string, string[]>();
+        for (const t of loaded.templates) {
+          if (t.fileKey && t.nodeId && connected.has(t.fileKey)) {
+            byFile.set(t.fileKey, [...(byFile.get(t.fileKey) ?? []), t.nodeId]);
+          }
+        }
+        for (const [key, nodeIds] of byFile) {
+          try {
+            const resp = await node.sendWithParams("resolve_components", nodeIds, undefined, key);
+            const components = (resp.data as { components?: Record<string, { key?: string; setKey?: string }> })
+              ?.components ?? {};
+            for (const [nodeId, info] of Object.entries(components)) resolved.set(`${key}|${nodeId}`, info);
+          } catch {
+            /* unresolved: those templates fall back to their file name */
+          }
+        }
+
+        const targets = new Map<string, string>();
+        const conflicts: Array<{ file: string; target: string; keptFile: string }> = [];
+        const entries = [];
+        const summary = [];
+        for (const t of loaded.templates) {
+          const info = t.fileKey && t.nodeId ? resolved.get(`${t.fileKey}|${t.nodeId}`) : undefined;
+          const target = info?.setKey ?? info?.key ?? nameFromFile(t.file);
+          const matchedBy = info?.setKey ? "component set key" : info?.key ? "component key" : "file name";
+          const kept = targets.get(target);
+          if (kept) {
+            conflicts.push({ file: t.file, target, keptFile: kept });
+            continue;
+          }
+          targets.set(target, t.file);
+          entries.push({
+            target,
+            file: t.file,
+            ...(t.header.url ? { url: t.header.url } : {}),
+            ...(t.header.source ? { source: t.header.source } : {}),
+            ...(t.header.component ? { component: t.header.component } : {}),
+            bundle: t.bundle,
+            hash: t.hash,
+          });
+          summary.push({ file: t.file, target, matchedBy, ...(t.header.component ? { component: t.header.component } : {}) });
+        }
+        if (entries.length > 0) {
+          await node.sendWithParams("store_code_templates", undefined, { templates: entries }, fileKey);
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                root,
+                loaded: summary,
+                ...(conflicts.length ? { conflicts } : {}),
+                ...(loaded.skipped.length ? { skipped: loaded.skipped } : {}),
+                ...(loaded.errors.length ? { errors: loaded.errors } : {}),
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
+          isError: true,
+        };
+      }
     }
   );
 
@@ -562,6 +801,59 @@ export function registerTools(
     async ({ nodeId, fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
         node.sendWithParams("ungroup_node", [nodeId], undefined, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "manage_pages",
+    "Create, rename, move or delete a page. delete requires confirm: true and removes everything on the page; deleting the current page first switches to another one. `index` is the final position (0 = first). Page ids come from get_metadata. Returns the page's id, name and final index.",
+    managePagesShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(managePagesInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("manage_pages", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "switch_page",
+    "Switch Figma to another page, by pageId or exact name. Reads like get_document and get_design_context work on the current page, so switch first to work across pages. Navigation only: allowed in Dev Mode, not journaled.",
+    switchPageShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(switchPageInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("switch_page", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_svg",
+    "Import SVG markup as editable vector layers (Figma's own SVG import), inside a new frame. Returns the frame's id, size and layerCount: check layerCount against what the SVG should contain.",
+    createSvgInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_svg", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "boolean_operation",
+    "Combine layers with UNION, SUBTRACT, INTERSECT or EXCLUDE (an editable boolean group; SUBTRACT cuts the upper layers out of the bottom-most one), or FLATTEN them into a single vector. The result takes the layers' place in their shared parent. Returns the result's id and type.",
+    booleanOperationShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(booleanOperationInput, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeIds, fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("boolean_operation", nodeIds, params, fileKey)
       );
     }
   );
@@ -1443,7 +1735,7 @@ export function registerTools(
 
   server.tool(
     "set_code_mapping",
-    "Local Code-Connect equivalent (Figma gates Code Connect to Org/Enterprise): durably map a component/node to its source code (path + snippet + language), stored server-side per file. Any agent then resolves design→code via get_code_mappings. Independent tooling — does not touch Figma's Code Connect service.",
+    "Local Code-Connect equivalent (Figma gates Code Connect to Org/Enterprise): durably map a component to its source code, stored server-side per file. Target the component key, component-set key or component name that get_design_context reports in an instance's `component`. Add `component` + `props` (+ `children`, `imports`) and get_design_context renders every instance of it as a snippet for its current property values (e.g. <Button size=\"sm\" disabled>Save</Button>) instead of its layers. Independent tooling — does not touch Figma's Code Connect service.",
     setCodeMappingShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(setCodeMappingInput, args);

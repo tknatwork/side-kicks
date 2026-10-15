@@ -1,13 +1,24 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import { callContext } from "./call-context.js";
 import type { BridgeRequest, BridgeResponse, ConnectedFile } from "./types.js";
 
 interface PendingRequest {
   resolve: (resp: BridgeResponse) => void;
   reject: (err: Error) => void;
+  /** Stall timer: refreshed by every plugin heartbeat that lists this request. */
   timeout: ReturnType<typeof setTimeout>;
   ws: WebSocket;
+  fileKey: string;
+  startedAt: number;
+  /** Forwards heartbeats to the MCP client as progress (see call-context.ts). */
+  onProgress?: () => void;
+  /** Detaches the MCP-client cancel listener. */
+  detachAbort?: () => void;
+  /** Set while the plugin's socket is gone; a reconnected plugin that still
+   *  lists the request (sync heartbeat) clears it and re-adopts the request. */
+  orphanTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface ConnectionEntry {
@@ -17,21 +28,57 @@ interface ConnectionEntry {
   isAlive: boolean;
 }
 
+/** Plugin heartbeat: the requests it is still working on (queued or running).
+ *  `sync` marks the first one after a (re)connect: it lists EVERYTHING the
+ *  plugin knows about, so an orphaned request missing from it was lost. */
+interface ProgressPayload {
+  requestIds?: unknown;
+  sync?: unknown;
+}
+
+/** Silence allowed before a request fails: no response and no heartbeat. */
 const DEFAULT_TIMEOUT_MS = 30_000;
+/** Cap on a caller-provided silence window. */
 const MAX_TIMEOUT_MS = 300_000;
+/** Absolute ceiling for one request, however long the plugin keeps reporting progress. */
+export const HARD_CAP_MS = 30 * 60_000;
+/** A request may run this many times its silence window before the plugin
+ *  treats it as stuck — a hung await still lets heartbeats fire, so without a
+ *  budget it would hold the edit queue until the hard cap. */
+const RUN_BUDGET_FACTOR = 4;
+const MIN_RUN_BUDGET_MS = 60_000;
+/** How long in-flight requests survive a dropped plugin socket, waiting for it to reconnect. */
+const RECONNECT_GRACE_MS = 15_000;
+const PING_INTERVAL_MS = 30_000;
+/** Unpaired sockets held at once; the oldest is dropped past this. */
+const MAX_UNPAIRED = 8;
+
+export interface BridgeOptions {
+  hardCapMs?: number;
+  reconnectGraceMs?: number;
+  pingIntervalMs?: number;
+}
 
 export class Bridge {
   private wss: WebSocketServer;
   private connections = new Map<string, ConnectionEntry>();
+  /** Plugin sockets that didn't present the pairing code: never routed to,
+   *  never replace a paired one, and everything they send is ignored. Kept
+   *  only so callers learn a plugin is open but unpaired. */
+  private unpaired = new Map<WebSocket, { fileKey: string; fileName: string }>();
   private pending = new Map<string, PendingRequest>();
   private counter = 0;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly hardCapMs: number;
+  private readonly reconnectGraceMs: number;
   /** Invoked for plugin-initiated events (no requestId), e.g. doc-event. */
   onPluginEvent: ((fileKey: string, type: string, payload: Record<string, unknown>) => void) | null = null;
   /** Invoked when a plugin connection is established or lost for a fileKey. */
   onConnectionChange: ((fileKey: string, connected: boolean) => void) | null = null;
 
-  constructor() {
+  constructor(options: BridgeOptions = {}) {
+    this.hardCapMs = options.hardCapMs ?? HARD_CAP_MS;
+    this.reconnectGraceMs = options.reconnectGraceMs ?? RECONNECT_GRACE_MS;
     this.wss = new WebSocketServer({ noServer: true });
 
     this.pingTimer = setInterval(() => {
@@ -47,10 +94,16 @@ export class Bridge {
         entry.isAlive = false;
         entry.ws.ping();
       }
-    }, 30_000);
+    }, options.pingIntervalMs ?? PING_INTERVAL_MS);
   }
 
-  handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+  /** `paired: false` quarantines the socket (see `unpaired`). */
+  handleUpgrade(
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+    { paired = true }: { paired?: boolean } = {}
+  ): void {
     if (request.url == undefined) {
       console.error("Plugin connected without url, rejecting");
       socket.destroy();
@@ -68,9 +121,54 @@ export class Bridge {
       return;
     }
 
+    // Only plugins that know about pairing send a token, so only they are
+    // told it was accepted (older builds would take it for a request).
+    const presentedToken = url.searchParams.has("token");
     this.wss.handleUpgrade(request, socket, head, (ws) => {
+      if (!paired) {
+        this.holdUnpaired(ws, fileKey, fileName);
+        return;
+      }
       this.handleConnection(ws, fileKey, fileName);
+      if (presentedToken) {
+        ws.send(JSON.stringify({ type: "paired" }), () => {
+          /* best-effort */
+        });
+      }
     });
+  }
+
+  private holdUnpaired(ws: WebSocket, fileKey: string, fileName: string): void {
+    if (this.unpaired.size >= MAX_UNPAIRED) {
+      const oldest = this.unpaired.keys().next().value;
+      oldest?.close();
+      if (oldest) this.unpaired.delete(oldest);
+    }
+    this.unpaired.set(ws, { fileKey, fileName });
+    console.error(`Unpaired plugin connection: ${fileName} (${fileKey})`);
+    const forget = () => this.unpaired.delete(ws);
+    ws.on("close", forget);
+    ws.on("error", forget);
+    // Tells a current plugin to ask the user for the code. An older build
+    // can't act on it, and its reply is ignored like everything from here.
+    ws.send(JSON.stringify({ type: "pairing-required" }), () => {
+      /* best-effort */
+    });
+  }
+
+  /** Why an unpaired plugin isn't used, for errors; empty when there is none. */
+  private unpairedHint(fileKey?: string): string {
+    const names = new Set(
+      [...this.unpaired.values()]
+        .filter((u) => !fileKey || u.fileKey === fileKey)
+        .map((u) => `"${u.fileName}"`)
+    );
+    if (names.size === 0) return "";
+    return (
+      ` A Limitless plugin is open on ${[...names].join(", ")} but isn't paired with this server:` +
+      ` call get_pairing_code and have the user type the code into the plugin window (once per Figma install).` +
+      ` A plugin built before pairing existed can't pair — rebuild the plugin and re-run it.`
+    );
   }
 
   private handleConnection(
@@ -102,15 +200,20 @@ export class Bridge {
         const resp = JSON.parse(data.toString()) as BridgeResponse & {
           payload?: Record<string, unknown>;
         };
+        if (!resp.requestId && resp.type === "progress") {
+          this.handleProgress(ws, fileKey, resp.payload ?? {});
+          return;
+        }
         if (!resp.requestId && resp.type && this.onPluginEvent) {
           // Plugin-initiated event (doc-event, etc.) — no pending request.
           this.onPluginEvent(fileKey, resp.type, resp.payload ?? {});
           return;
         }
+        // Matched by id, not by socket: a response the plugin buffered while
+        // disconnected arrives on its new socket and still settles the request.
         const pending = this.pending.get(resp.requestId);
         if (pending) {
-          clearTimeout(pending.timeout);
-          this.pending.delete(resp.requestId);
+          this.settle(resp.requestId, pending);
           pending.resolve(resp);
         }
       } catch {
@@ -125,7 +228,7 @@ export class Bridge {
         console.error(`Plugin disconnected: ${fileName} (${fileKey})`);
         this.onConnectionChange?.(fileKey, false);
       }
-      this.rejectPendingForSocket(
+      this.orphanPendingForSocket(
         ws,
         `Plugin disconnected: ${fileName} (${fileKey})`
       );
@@ -138,21 +241,81 @@ export class Bridge {
         this.connections.delete(fileKey);
         this.onConnectionChange?.(fileKey, false);
       }
-      this.rejectPendingForSocket(
+      this.orphanPendingForSocket(
         ws,
         `Plugin connection error (${fileName}): ${err.message}`
       );
     });
   }
 
-  private rejectPendingForSocket(ws: WebSocket, reason: string): void {
-    for (const [id, p] of this.pending) {
-      if (p.ws === ws) {
-        clearTimeout(p.timeout);
-        this.pending.delete(id);
-        p.reject(new Error(reason));
+  /** A heartbeat keeps every request it lists alive; a sync heartbeat also
+   *  re-adopts orphaned requests the plugin still has and fails the rest. */
+  private handleProgress(
+    ws: WebSocket,
+    fileKey: string,
+    payload: ProgressPayload
+  ): void {
+    const ids = Array.isArray(payload.requestIds)
+      ? payload.requestIds.filter((id): id is string => typeof id === "string")
+      : [];
+    const live = new Set(ids);
+    for (const id of live) {
+      const p = this.pending.get(id);
+      if (!p || p.fileKey !== fileKey) continue;
+      if (p.orphanTimer) {
+        clearTimeout(p.orphanTimer);
+        p.orphanTimer = null;
+        p.ws = ws;
       }
+      if (Date.now() - p.startedAt < this.hardCapMs) p.timeout.refresh();
+      p.onProgress?.();
     }
+    if (payload.sync !== true) return;
+    for (const [id, p] of this.pending) {
+      if (p.fileKey !== fileKey || !p.orphanTimer || live.has(id)) continue;
+      this.settle(id, p);
+      p.reject(
+        new Error(
+          `Plugin reconnected without this request: it was never delivered, or the plugin restarted while running it. ` +
+            `Verify with a read before retrying a mutation.`
+        )
+      );
+    }
+  }
+
+  /** Keeps a dead socket's requests for a grace period instead of failing
+   *  them at once, so a plugin that reconnects can still finish them. */
+  private orphanPendingForSocket(ws: WebSocket, reason: string): void {
+    for (const [id, p] of this.pending) {
+      if (p.ws !== ws || p.orphanTimer) continue;
+      p.orphanTimer = setTimeout(() => {
+        if (this.pending.get(id) !== p) return;
+        this.settle(id, p);
+        p.reject(
+          new Error(
+            `${reason}, and it did not reconnect within ${this.reconnectGraceMs}ms. ` +
+              `The request may or may not have run — verify with a read before retrying a mutation.`
+          )
+        );
+      }, this.reconnectGraceMs);
+    }
+  }
+
+  private settle(id: string, p: PendingRequest): void {
+    clearTimeout(p.timeout);
+    if (p.orphanTimer) clearTimeout(p.orphanTimer);
+    p.detachAbort?.();
+    this.pending.delete(id);
+  }
+
+  /** Tells the plugin to drop a request the server gave up on. One still
+   *  queued behind other edits is skipped; one already running finishes. */
+  private sendCancel(p: PendingRequest, requestId: string): void {
+    const conn = this.connections.get(p.fileKey)?.ws;
+    if (!conn || conn.readyState !== WebSocket.OPEN) return;
+    conn.send(JSON.stringify({ type: "cancel", requestId }), () => {
+      /* best-effort */
+    });
   }
 
   /**
@@ -161,7 +324,7 @@ export class Bridge {
    * - If only one file is connected and no fileKey given, use it (backward compat).
    * - If multiple files connected and no fileKey, throw with a helpful message.
    */
-  private resolveConnection(fileKey?: string): WebSocket {
+  private resolveConnection(fileKey?: string): ConnectionEntry {
     if (fileKey) {
       const entry = this.connections.get(fileKey);
       if (!entry) {
@@ -170,20 +333,19 @@ export class Bridge {
           available.length > 0
             ? ` Connected files: ${available.map((f) => `"${f.fileName}" (fileKey: ${f.fileKey})`).join(", ")}`
             : " No files are currently connected.";
-        throw new Error(`No plugin connected for fileKey "${fileKey}".${hint}`);
+        throw new Error(`No plugin connected for fileKey "${fileKey}".${hint}${this.unpairedHint(fileKey)}`);
       }
-      return entry.ws;
+      return entry;
     }
 
     if (this.connections.size === 0) {
       throw new Error(
-        "No plugin connected. Open a Figma file and run the bridge plugin."
+        `No plugin connected. Open a Figma file and run the bridge plugin.${this.unpairedHint()}`
       );
     }
 
     if (this.connections.size === 1) {
-      const entry = this.connections.values().next().value!;
-      return entry.ws;
+      return this.connections.values().next().value!;
     }
 
     const files = this.listConnectedFiles();
@@ -211,6 +373,12 @@ export class Bridge {
     return this.sendWithParams(requestType, nodeIds, undefined, fileKey);
   }
 
+  /**
+   * `timeoutMs` is a STALL window, not a total deadline: the request fails
+   * only after that long with neither a response nor a plugin heartbeat
+   * listing it. A plugin that keeps reporting progress can run up to the hard
+   * cap. Plugin builds without heartbeats get the old absolute timeout.
+   */
   sendWithParams(
     requestType: string,
     nodeIds?: string[],
@@ -219,16 +387,22 @@ export class Bridge {
     timeoutMs?: number
   ): Promise<BridgeResponse> {
     return new Promise((resolve, reject) => {
-      let conn: WebSocket;
+      let entry: ConnectionEntry;
       try {
-        conn = this.resolveConnection(fileKey);
+        entry = this.resolveConnection(fileKey);
       } catch (err) {
         reject(err);
         return;
       }
+      const conn = entry.ws;
 
       if (conn.readyState !== WebSocket.OPEN) {
         reject(new Error("Plugin not connected"));
+        return;
+      }
+      const ctx = callContext.getStore();
+      if (ctx?.signal?.aborted) {
+        reject(new Error("Cancelled by the MCP client before it was sent to the plugin."));
         return;
       }
 
@@ -244,25 +418,61 @@ export class Bridge {
         request.params = params;
       }
 
-      const effectiveTimeout = Math.min(
+      const stallMs = Math.min(
         timeoutMs && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS,
         MAX_TIMEOUT_MS
       );
+      request.budgetMs = Math.max(MIN_RUN_BUDGET_MS, stallMs * RUN_BUDGET_FACTOR);
       const timeout = setTimeout(() => {
-        this.pending.delete(requestId);
+        const p = this.pending.get(requestId);
+        if (!p) return;
+        this.settle(requestId, p);
+        this.sendCancel(p, requestId);
+        const elapsed = Date.now() - p.startedAt;
+        const why =
+          elapsed >= this.hardCapMs
+            ? `it ran past the ${this.hardCapMs}ms hard cap`
+            : `no response or progress from the plugin for ${stallMs}ms`;
         reject(
           new Error(
-            `Request timed out after ${effectiveTimeout}ms. NOTE: the plugin may still be executing — verify with a read before retrying a mutation.`
+            `Request timed out after ${elapsed}ms: ${why}. A cancel was sent — if it was still queued behind other edits it will not run, ` +
+              `but if it had started it may still finish. Verify with a read before retrying a mutation.`
           )
         );
-      }, effectiveTimeout);
+      }, stallMs);
 
-      this.pending.set(requestId, { resolve, reject, timeout, ws: conn });
+      const pendingRequest: PendingRequest = {
+        resolve,
+        reject,
+        timeout,
+        ws: conn,
+        fileKey: entry.fileKey,
+        startedAt: Date.now(),
+        onProgress: ctx?.onProgress,
+        orphanTimer: null,
+      };
+      const signal = ctx?.signal;
+      if (signal) {
+        const onAbort = () => {
+          if (this.pending.get(requestId) !== pendingRequest) return;
+          this.settle(requestId, pendingRequest);
+          this.sendCancel(pendingRequest, requestId);
+          reject(
+            new Error(
+              "Cancelled by the MCP client. A cancel was sent — if it was still queued behind other edits it will not run, " +
+                "but if it had started it may still finish. Verify with a read before retrying a mutation."
+            )
+          );
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        pendingRequest.detachAbort = () => signal.removeEventListener("abort", onAbort);
+      }
+      this.pending.set(requestId, pendingRequest);
 
       conn.send(JSON.stringify(request), (err) => {
         if (err) {
-          clearTimeout(timeout);
-          this.pending.delete(requestId);
+          const p = this.pending.get(requestId);
+          if (p) this.settle(requestId, p);
           reject(err);
         }
       });
@@ -285,16 +495,17 @@ export class Bridge {
     }
 
     // Reject all pending requests
-    for (const [id, { reject, timeout }] of this.pending) {
-      clearTimeout(timeout);
-      reject(new Error("Bridge closed"));
+    for (const [id, p] of this.pending) {
+      this.settle(id, p);
+      p.reject(new Error("Bridge closed"));
     }
-    this.pending.clear();
 
     for (const [, entry] of this.connections) {
       entry.ws.close();
     }
     this.connections.clear();
+    for (const ws of this.unpaired.keys()) ws.close();
+    this.unpaired.clear();
     this.wss.close();
   }
 }

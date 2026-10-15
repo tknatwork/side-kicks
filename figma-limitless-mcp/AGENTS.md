@@ -5,7 +5,7 @@
 ## What this is
 
 A local Figma MCP server + Figma Desktop plugin. No REST calls, so no REST
-rate limits — it uses the Figma Plugin API locally. **98 tools** across
+rate limits — it uses the Figma Plugin API locally. **104 tools** across
 Design, Dev Mode, FigJam, Slides & Buzz: local
 fonts, text/paint/effect styles, variable authoring, grid layout, master
 components, instances, prototyping, annotations, dev resources, Motion/shaders
@@ -18,8 +18,62 @@ digests). AI operating rules: `docs/AI-GUIDE.md`.
 
 ## Architecture (2 packages)
 
-- `server/` — stdio MCP server (`node dist/index.js`), TypeScript → `tsc`. Leader binds HTTP+WS on **:1994** (`/ws` plugin, `/ping` health, `/rpc` followers); extra clients become followers and proxy via `/rpc`. Multi-file registry keyed by `fileKey`.
-- `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.138.0** (Motion/Shaders/Slots/Grid APIs, video export, motion variables, text wrap style, SPACE_EVENLY/SPACE_AROUND, variable fonts). Update 139 (composed colors, `COLOR_OPACITY`) isn't published yet: `src/main/figma-139-shim.ts` holds the `ComposedColorValue` stand-in (swap it for the real `VariableComposedColor` once typings ≥ 1.139 ship it) next to the composed-color runtime guards and `write_variables` input helpers, which stay; `COLOR_OPACITY` rides the existing `VariableScope` casts.
+- `server/` — stdio MCP server (`node dist/index.js`), TypeScript → `tsc`. Leader binds HTTP+WS on **:1994** (`/ws` plugin, `/ping` health, `/rpc` followers); extra clients become followers and proxy via `/rpc`. Multi-file registry keyed by `fileKey`. **Access (`server/src/access.ts`) is load-bearing:** `/rpc` runs any tool incl. `execute_code`, so only loopback peers are served, `/rpc` refuses any request with an `Origin` header or a non-JSON body (blocks cross-site browser requests), and `/ws` accepts only Origin `null` / figma.com / none (the plugin's sandboxed iframe). Origin `null` is also what any page's sandboxed iframe sends, so `/ws` additionally requires the **pairing code** (`server/src/pairing.ts`, `~/.figma-limitless-mcp/pairing-token`, 0600): the plugin sends it as `?token=`, a socket without it is quarantined in `Bridge.unpaired` (never routed to, never replaces a paired socket, its messages ignored) and gets `{type:"pairing-required"}`; a valid one gets `{type:"paired"}`. The user gets the code via the `get_pairing_code` tool and types it into the plugin once (stored in `figma.clientStorage`, never in the document). Never log the token or relax any of these; `LIMITLESS_PAIRING=off` is the only opt-out.
+- `plugin/` — Figma plugin. `src/main/code.ts` (sandbox: request handlers) + `src/ui/` (React iframe: owns the WebSocket). Built with vite → `dist/code.js` + `dist/index.html`; `manifest.json` points at both. Typings pinned `@figma/plugin-typings` **1.141.0** (Motion/Shaders/Slots/Grid APIs, video export, motion variables, text wrap style, SPACE_EVENLY/SPACE_AROUND, variable fonts, Update 139 composed colors + `COLOR_OPACITY`). Composed colors use the real `VariableComposedColor` type, a union that only admits shapes with at least one alias side; `src/main/composed-color.ts` holds the runtime guards for reading them and the `write_variables` input helpers, and `buildComposedColor` in `code.ts` branches per union shape so the compiler checks that rule (no casts).
+
+## Request lifecycle (server/src/bridge.ts ↔ plugin)
+
+Built so long tasks don't break and a timed-out edit never lands late:
+
+- **Timeouts measure silence.** `timeoutMs` (default 30s, ≤300s) is a stall
+  window: the plugin's main thread lists every queued/running request in a
+  `progress` heartbeat every 2s, and each heartbeat refreshes it, up to a
+  30-minute hard cap. The heartbeat runs on the main thread's timer, so a
+  frozen thread (long sync loop) goes silent and is caught.
+- **Run budget.** A hung await still lets heartbeats fire, so each request
+  carries `budgetMs` (4× its window, ≥1 min): past it the plugin drops it from
+  heartbeats (the server times it out) and the edit queue moves on.
+- **Cancel.** On timeout, MCP-client cancel (`extra.signal`), or a follower
+  hanging up, the server sends `{type:'cancel'}`; a still-queued edit is skipped.
+- **Reconnect grace.** A dropped socket keeps its requests for 15s; the UI
+  buffers responses while disconnected and flushes them first on reconnect,
+  then the first (`sync`) heartbeat re-adopts what the plugin still runs and
+  fails the rest.
+- **MCP progress.** `call-context.ts` (AsyncLocalStorage, set by a wrapper
+  around `server.tool` in `registerTools`) forwards heartbeats as
+  `notifications/progress` when the client sent a progress token. Leader-only:
+  a follower's HTTP call gets no progress.
+- **Undo steps.** The plugin calls `figma.commitUndo()` after each edit, so each
+  tool call is one undo step (otherwise the whole session is one).
+
+## Code mappings (server/src/code-mapping.ts)
+
+`get_design_context` enriches every INSTANCE with `component` (set name +
+variant, keys, current property values; `describeInstances` in `code.ts`). The
+tool handler then resolves `set_code_mapping` entries (matched by component key →
+set key → name): `component` + `props` render a snippet for the instance's
+current values (JSX for tsx/jsx), its children collapse to `childCount` unless
+`expandMapped`, and `codeMappings` reports coverage. Code layers and Figma's own
+Code Connect have no Plugin API surface — this is the local equivalent.
+
+**Code Connect templates** (`code-connect-loader.ts`, `code-connect-runtime.ts`).
+`load_code_connect_templates` bundles `*.figma.ts` / `*.figma.js` with esbuild
+(only `figma` + relative imports, nothing outside the loaded dir, which must be
+inside the server's cwd; symlinks resolved). It keys each template by the
+component (set) key its `url=` resolves to through the plugin's internal
+`resolve_components` read, when that file is connected, else by file name, and
+stores the bundle on the mapping via the internal `store_code_templates` meta
+tool. `get_code_mappings` hides bundles unless the server passes
+`includeTemplates`, and `set_code_mapping` keeps a mapping's template. On
+`get_design_context`, instances with a template get their layers from the
+internal `describe_instance_trees` read and render in a `vm` sandbox:
+- no host object enters it (the runtime is serialized with `toString()`, data
+  goes in as a JSON literal, only strings come out);
+- string codegen is off, and there's a 1s timeout per render;
+- on failure the props/static mapping stands in, with `templateError`.
+
+`getSlot` pairs slot layers with SLOT properties by name, then by order (the
+Plugin API has no link between them). `figma.helpers` are approximations.
 
 ## Orchestration layer (server/src/orchestration.ts)
 
@@ -119,9 +173,15 @@ case to `server/test/` and, if it belongs to a build step, wire it into
 
 ## Testing
 
-Two layers:
+Three layers:
 
+- **Plugin unit** — `cd plugin && pnpm test`: runs `serializer.ts` /
+  `composed-color.ts` sources directly (Node ≥ 22.6 type stripping), no Figma.
 - **Unit** — `cd server && pnpm test` (builds, then `node --test test/*.test.mjs`).
+  Also covers the request lifecycle against a fake plugin socket
+  (`bridge-lifecycle`), MCP progress/cancel through the real SDK
+  (`call-context`), the :1994 access rules (`leader-access`), plugin pairing
+  (`pairing`) and code mappings.
   Runs against compiled `dist/`, no Figma needed — the lint detectors are pure
   functions. Covers the a11y contrast regression (on-`X` pairing, same-colour
   skip, suffix-only non-pairing) and the **golden clean-file fixture** (a correct
