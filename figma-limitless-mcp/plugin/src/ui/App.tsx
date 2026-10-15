@@ -81,20 +81,31 @@ export default function App() {
   const reconnectTimer = useRef<number | null>(null);
   const outboxRef = useRef<string[]>([]);
 
+  const connection = !connected ? "disconnected" : needsPairing ? "unpaired" : "connected";
   const statusLabel = useMemo(
     () =>
-      !connected
-        ? "Waiting for server · :1994"
-        : needsPairing
-          ? "Not paired · :1994"
-          : "Connected · :1994",
-    [connected, needsPairing]
+      ({ disconnected: "Waiting for server", unpaired: "Not paired", connected: "Connected" })[connection],
+    [connection]
   );
 
-  // The window grows to fit the pairing form while it is shown.
+  // The window is as tall as its content, so it covers as little of the
+  // canvas as possible and still fits the pairing form or a long file name.
+  const containerRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    parent.postMessage({ pluginMessage: { type: "pairing-ui", visible: needsPairing } }, "*");
-  }, [needsPairing]);
+    const el = containerRef.current;
+    if (!el) return;
+    let last = 0;
+    const report = () => {
+      const height = Math.ceil(el.getBoundingClientRect().height);
+      if (height === last) return;
+      last = height;
+      parent.postMessage({ pluginMessage: { type: "resize", height } }, "*");
+    };
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    report();
+    return () => observer.disconnect();
+  }, []);
 
   const submitPairing = (event: React.FormEvent) => {
     event.preventDefault();
@@ -244,29 +255,25 @@ export default function App() {
     };
   }, [status.fileKey, status.fileName, status.pairingLoaded, status.pairingToken, pairAttempt]);
 
-
-
   return (
-    <div className="container">
-      <div className="info-section">
-        <div className="info-row">
-          <span className="info-label">File:</span>
-          <span className="info-value">{status.fileName}</span>
-        </div>
-        <div className="info-row">
-          <span className="info-label">Selection:</span>
-          <span className="info-value">{status.selectionCount} node(s)</span>
-        </div>
+    <div className="container" ref={containerRef}>
+      <div className="status-row">
+        <span className={`dot ${connection}`} />
+        <span className="status-label" title="ws://localhost:1994">
+          {statusLabel}
+        </span>
+        {served > 0 && <span className="served">{served} served</span>}
+      </div>
+      <div className="file-row" title={status.fileName}>
+        <span className="file-name">{status.fileName}</span>
+        <span className="selection">· {status.selectionCount} selected</span>
       </div>
 
       {needsPairing && (
         <form className="pairing" onSubmit={submitPairing}>
-          <div className="pairing-title">
-            {codeRejected ? "That code doesn't match this server" : "Pair with your AI's Limitless server"}
-          </div>
-          <div className="pairing-hint">
-            Ask your AI to run <code>get_pairing_code</code>, or open{" "}
-            <code>~/.figma-limitless-mcp/pairing-token</code>. Needed once.
+          <div className="pairing-hint" title="Also in ~/.figma-limitless-mcp/pairing-token">
+            {codeRejected ? "Code doesn't match. " : "Enter the pairing code. "}
+            Ask your AI for <code>get_pairing_code</code> (needed once).
           </div>
           <div className="pairing-row">
             <input
@@ -281,21 +288,11 @@ export default function App() {
               aria-label="Pairing code"
             />
             <button className="pairing-button" type="submit" disabled={checking || !codeInput.trim()}>
-              {checking ? "Checking…" : "Pair"}
+              {checking ? "…" : "Pair"}
             </button>
           </div>
         </form>
       )}
-
-      <div className="footer">
-        <div className={`badge ${!connected ? "disconnected" : needsPairing ? "unpaired" : "connected"}`}>
-          <span className="dot" />
-          <span className="badge-text">{statusLabel}</span>
-        </div>
-        <span className="served-counter">
-          {served > 0 ? `${served} request${served === 1 ? "" : "s"} served` : "Limitless MCP for Figma"}
-        </span>
-      </div>
     </div>
   );
 }

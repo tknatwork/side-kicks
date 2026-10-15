@@ -151,6 +151,11 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- **The plugin window is a small strip now: 240×50 px instead of 320×180**, so it covers far less
+  of the canvas. It shows the connection state on one line and the file and selection count on the
+  next (long file names are cut with "…"). The window is sized to its content, so it grows only
+  while the one-time pairing form is open (240×116) and shrinks back once paired.
+
 - **Plugin: `@figma/plugin-typings` 1.138.0 → 1.141.0, and composed colors use the real
   `VariableComposedColor` type.** The local `ComposedColorValue` stand-in is gone, along with the
   `as unknown as VariableValue` cast that hid it from the compiler. The real type only admits the two

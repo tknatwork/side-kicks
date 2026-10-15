@@ -247,9 +247,11 @@ let pairingToken = "";
 /** False until clientStorage answers: the UI connects only after, so a paired
  *  plugin never shows the pairing form for a moment on startup. */
 let pairingLoaded = false;
-/** Pairing form open: the window grows to fit it. */
-const UI_HEIGHT = 180;
-const UI_HEIGHT_PAIRING = 276;
+/** A small strip over the canvas. The UI reports its content height and the
+ *  window follows (see "resize"); this height is only the first frame. */
+const UI_WIDTH = 240;
+const UI_INITIAL_HEIGHT = 48;
+const UI_MAX_HEIGHT = 400;
 
 const sendStatus = () => {
   figma.ui.postMessage({
@@ -5865,7 +5867,7 @@ const handleRequest = async (
   }
 };
 
-figma.showUI(__html__, { width: 320, height: UI_HEIGHT });
+figma.showUI(__html__, { width: UI_WIDTH, height: UI_INITIAL_HEIGHT });
 sendStatus();
 figma.clientStorage
   .getAsync(PAIRING_STORAGE_KEY)
@@ -6045,8 +6047,11 @@ figma.ui.onmessage = async (message) => {
     return;
   }
 
-  if (message.type === "pairing-ui") {
-    figma.ui.resize(320, message.visible === true ? UI_HEIGHT_PAIRING : UI_HEIGHT);
+  if (message.type === "resize") {
+    const height = Number(message.height);
+    if (Number.isFinite(height) && height > 0) {
+      figma.ui.resize(UI_WIDTH, Math.min(UI_MAX_HEIGHT, Math.ceil(height)));
+    }
     return;
   }
 

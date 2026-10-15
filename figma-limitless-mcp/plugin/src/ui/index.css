@@ -2,9 +2,6 @@
   --bg-primary: #0f172b;
   --text-label: #cad5e2;
   --text-value: #f1f5f9;
-  --badge-bg: #ffffff;
-  --badge-border: #d5d7da;
-  --badge-text: #414651;
   --dot-connected: #17b26a;
   --dot-disconnected: #f04438;
   --dot-unpaired: #f79009;
@@ -20,139 +17,118 @@
   padding: 0;
 }
 
+/* No fixed height anywhere: the plugin sizes its window to .container. */
 body {
   margin: 0;
+  overflow: hidden;
   font-family:
     Inter,
     system-ui,
     -apple-system,
     sans-serif;
+  font-size: 11px;
+  line-height: 16px;
   background: var(--bg-primary);
   color: var(--text-value);
 }
 
 .container {
-  padding: 14px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  height: 100vh;
+  gap: 2px;
 }
 
-.info-section {
+.status-row {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.info-row {
-  display: flex;
-  align-items: baseline;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.info-label {
-  color: var(--text-label);
-  width: 82px;
-  flex-shrink: 0;
-}
-
-.info-value {
-  color: var(--text-value);
-}
-
-.footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-}
-
-.badge {
-  display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: var(--badge-bg);
-  border: 1px solid var(--badge-border);
-  font-size: 12px;
-  line-height: 18px;
-  white-space: nowrap;
+  gap: 6px;
+  font-weight: 600;
 }
 
-.badge .dot {
-  width: 8px;
-  height: 8px;
+.dot {
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
-.badge.connected .dot {
+.dot.connected {
   background: var(--dot-connected);
 }
 
-.badge.disconnected .dot {
+.dot.disconnected {
   background: var(--dot-disconnected);
 }
 
-.badge.unpaired .dot {
+.dot.unpaired {
   background: var(--dot-unpaired);
 }
 
-.badge .badge-text {
-  color: var(--badge-text);
-  font-weight: 500;
+.served {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-label);
 }
 
-.served-counter {
-  color: var(--text-white);
-  font-size: 10px;
-  line-height: 1.4;
-  text-align: right;
-  opacity: 0.7;
+.file-row {
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 13px;
+  color: var(--text-label);
+}
+
+.file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-value);
+}
+
+.selection {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .pairing {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.pairing-title {
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 600;
+  margin-top: 6px;
 }
 
 .pairing-hint {
   color: var(--text-label);
-  font-size: 11px;
-  line-height: 16px;
+  font-size: 10.5px;
+  line-height: 14px;
 }
 
 .pairing-hint code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 10.5px;
+  font-size: 10px;
+  color: var(--text-value);
 }
 
 .pairing-row {
   display: flex;
-  gap: 6px;
+  gap: 4px;
 }
 
 .pairing-input {
   flex: 1;
   min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  border-radius: 6px;
+  height: 24px;
+  padding: 0 6px;
+  border-radius: 5px;
   border: 1px solid var(--input-border);
   background: var(--input-bg);
   color: var(--text-value);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-  letter-spacing: 0.04em;
+  font-size: 11px;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
@@ -162,13 +138,14 @@ body {
 }
 
 .pairing-button {
-  height: 28px;
-  padding: 0 12px;
+  height: 24px;
+  min-width: 40px;
+  padding: 0 10px;
   border: none;
-  border-radius: 6px;
+  border-radius: 5px;
   background: var(--accent);
   color: var(--text-white);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
   cursor: pointer;
 }

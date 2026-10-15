@@ -97,7 +97,7 @@ claude mcp add figma-limitless-mcp -s user -- node "$(pwd)/server/dist/index.js"
 ```
 </details>
 
-**Use it:** open a Figma file, run **Plugins → Development → Limitless MCP for Figma**, and ask your AI to work in Figma. The plugin window shows the connection state. Health check: `curl http://localhost:1994/ping`.
+**Use it:** open a Figma file, run **Plugins → Development → Limitless MCP for Figma**, and ask your AI to work in Figma. The plugin opens as a small strip (240×50 px) showing the connection state, the file, and the selection count. Health check: `curl http://localhost:1994/ping`.
 
 **First run only — pair the plugin:** the plugin window asks for a pairing code. Ask your AI to run `get_pairing_code` (or open `~/.figma-limitless-mcp/pairing-token`), type the code in, and press **Pair**. Figma remembers it, so you won't be asked again unless the code is rotated. The code is how the server knows the connection really is your plugin and not a web page pretending to be it.
 
