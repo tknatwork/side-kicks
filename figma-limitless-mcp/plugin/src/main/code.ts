@@ -124,6 +124,8 @@ type ServerRequest = {
   requestId: string;
   nodeIds?: string[];
   params?: ServerRequestParams;
+  /** How long this may RUN before it counts as stuck (see the request lifecycle below). */
+  budgetMs?: number;
 };
 
 type PluginResponse = {
@@ -1419,6 +1421,55 @@ const setSublayerText = async (
   sublayer.characters = text;
 };
 
+/** A serialized node as describeInstances reads and extends it. */
+type DescribedNode = {
+  id: string;
+  type: string;
+  children?: DescribedNode[];
+  component?: Record<string, unknown>;
+};
+
+/**
+ * Adds `component` to every INSTANCE in a serialized tree: which component it
+ * is (set name + variant for variants), its keys, and its current property
+ * values with the `#id` suffix dropped from non-variant names. Code generation
+ * needs this to use the real component, and the server matches code mappings
+ * on it. Main components are fetched async (dynamic-page documents).
+ */
+const describeInstances = async (roots: DescribedNode[]): Promise<void> => {
+  const instances: DescribedNode[] = [];
+  const walk = (n: DescribedNode): void => {
+    if (n.type === "INSTANCE") instances.push(n);
+    n.children?.forEach(walk);
+  };
+  roots.forEach(walk);
+  await Promise.all(
+    instances.map(async (serialized) => {
+      try {
+        const node = await figma.getNodeByIdAsync(serialized.id);
+        if (!node || node.type !== "INSTANCE") return;
+        const main = await node.getMainComponentAsync();
+        const properties: Record<string, string | boolean> = {};
+        for (const [name, prop] of Object.entries(node.componentProperties)) {
+          const short = name.replace(/#[^#]*$/, "");
+          properties[short in properties ? name : short] = prop.value;
+        }
+        const set = main?.parent?.type === "COMPONENT_SET" ? main.parent : null;
+        serialized.component = {
+          name: set ? set.name : main?.name ?? null,
+          ...(set && main ? { variant: main.name } : {}),
+          key: main?.key ?? null,
+          ...(set ? { setKey: set.key } : {}),
+          remote: main?.remote ?? false,
+          properties,
+        };
+      } catch {
+        /* missing or inaccessible main component: leave the node as is */
+      }
+    })
+  );
+};
+
 const handleRequest = async (
   request: ServerRequest
 ): Promise<PluginResponse> => {
@@ -1522,56 +1573,14 @@ const handleRequest = async (
       case "get_design_context": {
         const depth =
           typeof request.params?.depth === "number" ? request.params.depth : 2;
-        const serializeWithDepth = async (
-          node: SerializableNode,
-          currentDepth: number
-        ): Promise<ReturnType<typeof serializeNode>> => {
-          const serialized = serializeNode(node);
-          if (currentDepth >= depth && serialized.children) {
-            // Truncate children at depth limit, but show count
-            return {
-              ...serialized,
-              children: undefined,
-              childCount:
-                (node as ChildrenMixin & SceneNode).children?.filter(
-                  (c) => c.visible !== false
-                ).length ?? 0,
-            } as ReturnType<typeof serializeNode> & { childCount: number };
-          }
-          if (serialized.children) {
-            const childNodes = await Promise.all(
-              serialized.children.map((child) =>
-                figma.getNodeByIdAsync(child.id)
-              )
-            );
-            const serializedChildren = await Promise.all(
-              childNodes
-                .filter(
-                  (n): n is SceneNode =>
-                    n !== null &&
-                    n.type !== "DOCUMENT" &&
-                    "visible" in n &&
-                    n.visible !== false
-                )
-                .map((n) => serializeWithDepth(n, currentDepth + 1))
-            );
-            return {
-              ...serialized,
-              children: serializedChildren,
-            };
-          }
-          return serialized;
-        };
-
+        // Depth-bounded in one pass: nodes past `depth` report childCount and
+        // are never serialized, so a shallow read of a huge page stays cheap.
         const selection = figma.currentPage.selection;
         const contextNodes =
           selection.length > 0
-            ? await Promise.all(
-                selection.map((node) => serializeWithDepth(node, 0))
-              )
-            : [
-                await serializeWithDepth(figma.currentPage, 0),
-              ];
+            ? selection.map((node) => serializeNode(node, depth))
+            : [serializeNode(figma.currentPage, depth)];
+        await describeInstances(contextNodes as DescribedNode[]);
 
         return {
           type: request.type,
@@ -5659,35 +5668,123 @@ const applyReadCap = (
 // fully parallel.
 let mutationChain: Promise<void> = Promise.resolve();
 
+// ---- request lifecycle: heartbeats + cancellation ---------------------------
+// The server's timeout measures SILENCE, not duration: every request still
+// queued or running is listed in a heartbeat every HEARTBEAT_MS, so a long job
+// (and the edits queued behind it) is not timed out while it makes progress.
+// The heartbeat runs on this thread's timer, so it also stops while a sync
+// loop freezes the thread — the stall the server should catch.
+// A hung await (a Figma promise that never settles) does NOT freeze the
+// thread, so heartbeats alone would keep it alive until the server's hard cap
+// and hold the edit queue all that time. Each request therefore has a run
+// budget from the server: past it, it leaves the heartbeat (the server times
+// it out) and the edit queue moves on without it.
+const HEARTBEAT_MS = 2_000;
+const DEFAULT_RUN_BUDGET_MS = 5 * 60_000;
+type LiveRequest = { cancelled: boolean; budgetMs: number; runningSince: number | null };
+const liveRequests = new Map<string, LiveRequest>();
+let heartbeatTimer: number | null = null;
+
+const withinBudget = (live: LiveRequest): boolean =>
+  live.runningSince === null || Date.now() - live.runningSince < live.budgetMs;
+
+/** `sync` marks the first heartbeat after a (re)connect: it lists every live
+ *  request, so the server can re-adopt the ones in flight when the socket dropped. */
+const postHeartbeat = (sync = false): void => {
+  const requestIds = [...liveRequests.entries()]
+    .filter(([, live]) => withinBudget(live))
+    .map(([id]) => id);
+  if (!sync && requestIds.length === 0) return;
+  figma.ui.postMessage({
+    type: "progress",
+    payload: { requestIds, ...(sync ? { sync: true } : {}) },
+  });
+};
+
+const scheduleHeartbeat = (): void => {
+  if (heartbeatTimer !== null || ![...liveRequests.values()].some(withinBudget)) return;
+  heartbeatTimer = setTimeout(() => {
+    heartbeatTimer = null;
+    postHeartbeat();
+    scheduleHeartbeat();
+  }, HEARTBEAT_MS);
+};
+
 figma.ui.onmessage = async (message) => {
   if (message.type === "ui-ready") {
     sendStatus();
+    postHeartbeat(true);
     return;
   }
 
   if (message.type === "server-request") {
+    const control = message.payload as { type: string; requestId: string };
+    if (control.type === "cancel") {
+      // The server gave up on this request. Still queued → it is skipped
+      // below; already running → it finishes (no safe point to stop it).
+      const target = liveRequests.get(control.requestId);
+      if (target) target.cancelled = true;
+      return;
+    }
     const request = message.payload as ServerRequest;
-    const run = async (): Promise<void> => {
-      const response = applyReadCap(request, await handleRequest(request));
-      try {
-        figma.ui.postMessage(response);
-      } catch (err) {
-        figma.ui.postMessage({
-          type: response.type,
-          requestId: response.requestId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    };
-
-    if (
+    const mutates =
       EDIT_REQUEST_TYPES.has(request.type) ||
       FIGJAM_REQUEST_TYPES.has(request.type) ||
       SLIDES_REQUEST_TYPES.has(request.type) ||
       BUZZ_REQUEST_TYPES.has(request.type) ||
-      request.type === "execute_code"
-    ) {
-      mutationChain = mutationChain.then(run, run);
+      request.type === "execute_code";
+    const live: LiveRequest = {
+      cancelled: false,
+      budgetMs:
+        typeof request.budgetMs === "number" && request.budgetMs > 0
+          ? request.budgetMs
+          : DEFAULT_RUN_BUDGET_MS,
+      runningSince: null,
+    };
+    liveRequests.set(request.requestId, live);
+    scheduleHeartbeat();
+    const run = async (): Promise<void> => {
+      try {
+        // A timed-out edit must never land late: the caller may already be retrying it.
+        if (live.cancelled) return;
+        live.runningSince = Date.now();
+        const response = applyReadCap(request, await handleRequest(request));
+        // Plugin actions share ONE undo step until committed, and this plugin
+        // stays open all session: commit after each edit so a user's Cmd+Z
+        // reverts the last tool call, not everything the agent ever did.
+        if (mutates) {
+          try {
+            figma.commitUndo();
+          } catch {
+            /* best-effort */
+          }
+        }
+        try {
+          figma.ui.postMessage(response);
+        } catch (err) {
+          figma.ui.postMessage({
+            type: response.type,
+            requestId: response.requestId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } finally {
+        liveRequests.delete(request.requestId);
+      }
+    };
+
+    if (mutates) {
+      // The queue waits for this edit at most its run budget: a hung one is
+      // left running in the background instead of blocking every later edit.
+      const runWithinBudget = (): Promise<void> =>
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, live.budgetMs);
+          void run().finally(() => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      mutationChain = mutationChain.then(runWithinBudget, runWithinBudget);
     } else {
       void run();
     }

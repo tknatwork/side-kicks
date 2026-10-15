@@ -3,6 +3,9 @@ export interface BridgeRequest {
   requestId: string;
   nodeIds?: string[];
   params?: Record<string, unknown>;
+  /** How long the plugin may RUN this request (queue time excluded) before
+   *  treating it as stuck: it drops it from heartbeats and frees the edit queue. */
+  budgetMs?: number;
 }
 
 export interface BridgeResponse {

@@ -5,6 +5,14 @@ import { isIP } from "node:net";
 import path from "node:path";
 import type { z } from "zod";
 import type { Node } from "./node.js";
+import { callContext, type CallContext } from "./call-context.js";
+import {
+  applyCodeMappings,
+  hasDescribedInstances,
+  type CodeMapping,
+  type ContextNode,
+  type MappingCoverage,
+} from "./code-mapping.js";
 import { listSkills, readSkill, getBuildRecipe } from "./skills.js";
 import { runLint, type LintSnapshot } from "./lint/index.js";
 import {
@@ -180,11 +188,57 @@ interface SaveScreenshotItemResult {
  * @param node - The node coordinator for leader/follower routing.
  * @param port - The port used for follower-to-leader HTTP calls.
  */
+/** The parts of the SDK's per-request `extra` the call context uses. */
+type ToolCallExtra = {
+  signal?: AbortSignal;
+  _meta?: { progressToken?: string | number };
+  sendNotification?: (notification: {
+    method: "notifications/progress";
+    params: { progressToken: string | number; progress: number; message?: string };
+  }) => Promise<void>;
+};
+
+/** Plugin heartbeats become MCP progress notifications when the client asked
+ *  for progress, so clients that reset their timeout on progress keep waiting
+ *  through long Figma jobs; the client's cancel signal reaches the bridge. */
+const contextFor = (extra: ToolCallExtra | undefined): CallContext => {
+  const token = extra?._meta?.progressToken;
+  const send = extra?.sendNotification;
+  let progress = 0;
+  return {
+    signal: extra?.signal,
+    onProgress:
+      token === undefined || !send
+        ? undefined
+        : () => {
+            progress += 1;
+            send({
+              method: "notifications/progress",
+              params: { progressToken: token, progress, message: "Figma plugin is still working" },
+            }).catch(() => {
+              /* best-effort */
+            });
+          },
+  };
+};
+
 export function registerTools(
   server: McpServer,
   node: Node,
   port: number
 ): void {
+  // Every tool callback runs inside a CallContext built from its request's
+  // `extra`, which the SDK always passes as the callback's last argument.
+  const registerTool = server.tool.bind(server) as (...args: unknown[]) => unknown;
+  (server as unknown as { tool: (...args: unknown[]) => unknown }).tool = (...args) => {
+    const callback = args[args.length - 1] as (...cbArgs: unknown[]) => unknown;
+    args[args.length - 1] = (...cbArgs: unknown[]) =>
+      callContext.run(contextFor(cbArgs[cbArgs.length - 1] as ToolCallExtra | undefined), () =>
+        callback(...cbArgs)
+      );
+    return registerTool(...args);
+  };
+
   // Journal every op under the connecting client's identity (best-effort:
   // clientInfo is available once the MCP handshake completes).
   node.agentSupplier = () => {
@@ -277,18 +331,40 @@ export function registerTools(
 
   server.tool(
     "get_design_context",
-    "Get the design context for the current selection or page. Returns a summarized tree structure optimized for understanding the current design context. Text nodes report textWrapStyle and, for variable fonts, fontVariationSettings. When multiple files are connected, specify fileKey.",
+    "Get the design context for the current selection or page. Returns a summarized tree structure optimized for understanding the current design context. Text nodes report textWrapStyle and, for variable fonts, fontVariationSettings. Instances report `component` (name, variant, keys, current property values). Instances with a code mapping (set_code_mapping) get a `code` block with a snippet for their current values, and their layers are collapsed unless expandMapped; `codeMappings` lists used components that have no mapping yet. When multiple files are connected, specify fileKey.",
     toolInputSchemas.get_design_context.shape,
-    async ({ depth, fileKey }): Promise<ToolResult> => {
+    async ({ depth, expandMapped, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = {};
       if (depth !== undefined && depth > 0) {
         params.depth = depth;
       }
-      return renderResponse(() =>
-        node.sendWithParams("get_design_context", undefined, params, fileKey)
-      );
+      return renderResponse(async () => {
+        const resp = await node.sendWithParams("get_design_context", undefined, params, fileKey);
+        if (!resp.error) await attachCodeMappings(resp.data, fileKey, expandMapped === true);
+        return resp;
+      });
     }
   );
+
+  /** Resolves code mappings into a get_design_context result (in place).
+   *  Best-effort: a failed mapping lookup leaves the design context as is. */
+  const attachCodeMappings = async (
+    data: unknown,
+    fileKey: string | undefined,
+    expandMapped: boolean
+  ): Promise<void> => {
+    const result = data as { context?: ContextNode[]; codeMappings?: MappingCoverage } | undefined;
+    if (!result || !Array.isArray(result.context)) return;
+    const roots = result.context;
+    if (!hasDescribedInstances(roots)) return;
+    try {
+      const resp = await node.sendWithParams("get_code_mappings", undefined, {}, fileKey);
+      const mappings = (resp.data as { mappings?: Record<string, CodeMapping> } | undefined)?.mappings;
+      result.codeMappings = applyCodeMappings(roots, mappings ?? {}, expandMapped);
+    } catch {
+      /* mappings unavailable: return the plain design context */
+    }
+  };
 
   server.tool(
     "get_variable_defs",
@@ -1443,7 +1519,7 @@ export function registerTools(
 
   server.tool(
     "set_code_mapping",
-    "Local Code-Connect equivalent (Figma gates Code Connect to Org/Enterprise): durably map a component/node to its source code (path + snippet + language), stored server-side per file. Any agent then resolves design→code via get_code_mappings. Independent tooling — does not touch Figma's Code Connect service.",
+    "Local Code-Connect equivalent (Figma gates Code Connect to Org/Enterprise): durably map a component to its source code, stored server-side per file. Target the component key, component-set key or component name that get_design_context reports in an instance's `component`. Add `component` + `props` (+ `children`, `imports`) and get_design_context renders every instance of it as a snippet for its current property values (e.g. <Button size=\"sm\" disabled>Save</Button>) instead of its layers. Independent tooling — does not touch Figma's Code Connect service.",
     setCodeMappingShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(setCodeMappingInput, args);

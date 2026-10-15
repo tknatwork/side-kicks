@@ -35,6 +35,57 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   is non-empty. `vite.config.ts` calls `viteSingleFile()` with no options, so the code never runs,
   and it would only run at build time. Revisit when `braces` or `vite-plugin-singlefile` ships a fix.
 
+### Added — long tasks no longer break
+
+- **Timeouts measure silence, not duration.** The plugin sends a heartbeat every 2 s listing each
+  request it has queued or running, and each heartbeat restarts that request's timeout window (30 s,
+  or `timeoutMs`). Long jobs, and edits queued behind them, keep going while the plugin works, up to
+  a 30-minute cap. Before, the clock started at send, so edits queued behind a slow one timed out
+  while still waiting, then ran anyway after the agent had moved on or retried.
+- **A timeout or a client cancel cancels the request in the plugin.** An edit still queued is
+  skipped, so it can't land late; one already running finishes. Cancelling a tool call in the MCP
+  client (or a follower hanging up) is passed through the same way.
+- **Run budget.** A request may run 4× its timeout window (at least 1 minute). Past that, the plugin
+  treats it as stuck, stops reporting it (so it times out), and frees the edit queue. A hung Figma
+  call no longer blocks every later edit until the plugin is reloaded.
+- **Reconnect grace.** If the plugin's socket drops, in-flight requests wait up to 15 s for it to
+  come back. The plugin UI keeps responses that finish while disconnected and sends them on
+  reconnect; before, they were dropped. A request the reconnected plugin no longer knows about fails
+  at once with a clear message.
+- **MCP progress notifications.** If the client sent a progress token, heartbeats are forwarded as
+  `notifications/progress`, so clients that reset their timeout on progress keep waiting through
+  long Figma jobs. This applies on the leader only.
+- **One undo step per tool call.** The plugin calls `figma.commitUndo()` after each edit. Before,
+  every edit in the plugin session was a single undo step, so one Cmd+Z could revert an entire agent
+  session.
+
+### Added — design to code, FigJam reads
+
+- **`get_design_context` reports what each instance is:** a `component` object with the set name,
+  variant, keys and current property values (`#id` suffix dropped).
+- **Code-Connect-style mappings.**
+  - `set_code_mapping` takes `component`, `imports`, `props` (Figma property → code prop, with value
+    translation) and `children`.
+  - `get_design_context` then gives each mapped instance a `code` block with a snippet for its
+    current values, e.g. `<Button size="sm" disabled>Save</Button>` (JSX for tsx/jsx; resolved props
+    for other languages).
+  - A mapped instance's layers collapse to `childCount`; `expandMapped: true` keeps them.
+  - `codeMappings` lists the components in use that still have no mapping.
+  - Mappings are matched by component key, then component-set key, then name. Existing static
+    mappings keep working and now appear in `code` too.
+- **FigJam boards are readable.** Reads now include sticky and shape text, connector endpoints and
+  labels, code-block code, and table cell text (first 400 cells). None of this lives in TEXT nodes,
+  so a board used to read as empty shapes.
+- **`pnpm test` in `plugin/`.** Serializer and composed-color tests run on the sources (Node ≥ 22.6).
+
+### Fixed
+
+- **`get_design_context` cost scaled with the whole subtree, not the requested depth.** It fully
+  serialized every node's descendants and then dropped those below `depth`, and it re-fetched and
+  re-serialized each level. A shallow read of a large page did several times the work of a full
+  read, in one blocking step. It is now one depth-bounded pass, and an equivalence test over 150
+  tree/depth pairs gave byte-identical output.
+
 ### Changed
 
 - **Plugin: `@figma/plugin-typings` 1.138.0 → 1.141.0, and composed colors use the real
@@ -53,6 +104,9 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `dist/` is untracked, so these fixes take effect only after a rebuild: `pnpm --dir
   figma-limitless-mcp/server build` and `pnpm --dir figma-limitless-mcp/plugin build`, then re-run
   the plugin in Figma and restart every MCP client session.
+- Mixed versions are safe. An old plugin with the new server sends no heartbeats, so it keeps the
+  old absolute timeouts and ignores `cancel`. A new plugin with an old server has its heartbeats
+  ignored.
 
 ## [0.5.1] — 2026-09-22
 

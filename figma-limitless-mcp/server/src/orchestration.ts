@@ -576,6 +576,11 @@ export class Orchestrator {
         ...(typeof params.snippet === "string" ? { snippet: params.snippet } : {}),
         ...(typeof params.language === "string" ? { language: params.language } : {}),
         ...(typeof params.notes === "string" ? { notes: params.notes } : {}),
+        // Code-Connect-style fields, shape-checked by the tool schema.
+        ...(typeof params.component === "string" ? { component: params.component } : {}),
+        ...(Array.isArray(params.imports) ? { imports: params.imports } : {}),
+        ...(params.props && typeof params.props === "object" ? { props: params.props } : {}),
+        ...(typeof params.children === "string" ? { children: params.children } : {}),
         agent: typeof params.agent === "string" ? params.agent : "unknown",
         ts: new Date().toISOString(),
       };

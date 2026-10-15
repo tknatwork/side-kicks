@@ -156,7 +156,8 @@ All session state lives in `~/.figma-limitless-mcp/` and survives restarts.
 | `list_library_variables` errors about permissions | Re-import the plugin — the manifest needs `teamlibrary` (already declared) |
 | Font load fails | The style string is wrong — `list_fonts` for exact values; never guess |
 | "Axis … is not defined" / "… is a static font family" | Use only the axis tags `list_fonts` reports in `variationAxes` (`null` = static family) |
-| A timeout error after a mutation | The op may still have applied — verify with a read (`get_journal` / `get_node`) before retrying |
+| A timeout error after a mutation | Timeouts measure silence: the plugin stopped answering (frozen in a long loop, or a hung call past its run budget). A still-queued edit was cancelled; a started one may have applied — verify with a read (`get_journal` / `get_node`) before retrying |
+| Undoing an AI change | Each edit tool call is its own undo step — Cmd+Z in Figma reverts the last one |
 | New values (e.g. `SPACE_EVENLY`) or single-field calls fail with a 400 right after an upgrade | An older server still holds :1994 and validates with its old schemas — restart every MCP client session; `get_workspace_status` shows the running version |
 | Changed detector/gather code and lint looks stale | The server loads at session start — rebuild, then a fresh session (or a plugin re-run for gather changes) picks it up |
 

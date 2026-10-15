@@ -1434,6 +1434,38 @@ export const setCodeMappingShape = z.object({
   snippet: z.string().optional().describe("Representative usage snippet"),
   language: z.string().optional().describe("e.g. 'tsx', 'swift'"),
   notes: z.string().optional(),
+  component: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Code component name, e.g. 'Button'. With `props`, get_design_context renders each mapped instance as a snippet " +
+        "for its current values (JSX for tsx/jsx or no language; resolved props otherwise)"
+    ),
+  imports: z
+    .array(z.string())
+    .optional()
+    .describe("Import lines the snippet needs, e.g. [\"import { Button } from '@/ui/button'\"]"),
+  props: z
+    .record(
+      z.string(),
+      z.object({
+        prop: z.string().min(1).describe("Code prop name"),
+        values: z
+          .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+          .optional()
+          .describe("Figma value → code value, e.g. {Small: 'sm'}; unlisted values pass through. null/false omit the prop"),
+      })
+    )
+    .optional()
+    .describe(
+      "Keyed by Figma property name as get_design_context reports it (variant names as-is, #id suffix dropped), " +
+        "e.g. {Size: {prop: 'size', values: {Small: 'sm'}}, Disabled: {prop: 'disabled'}}"
+    ),
+  children: z
+    .string()
+    .optional()
+    .describe("Figma TEXT property whose value becomes the element's children, e.g. 'Label'"),
   remove: z.boolean().optional().describe("Delete the mapping for target"),
   agent: z.string().optional(),
   fileKey: fileKeyField,
@@ -1811,6 +1843,12 @@ export const toolInputSchemas = {
       .number()
       .optional()
       .describe("How many levels deep to traverse the node tree (default 2)"),
+    expandMapped: z
+      .boolean()
+      .optional()
+      .describe(
+        "Keep the layers of instances that have a code mapping (default false: their `code` snippet replaces them)"
+      ),
     fileKey: fileKeyField,
   }),
 

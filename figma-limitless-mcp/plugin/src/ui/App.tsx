@@ -51,6 +51,9 @@ type PluginStatus = {
 };
 
 const WS_BASE_URL = "ws://localhost:1994/ws";
+/** Responses held while the socket is down; the server keeps their requests
+ *  waiting for a short reconnect window, so delivering them late still counts. */
+const MAX_OUTBOX = 200;
 
 export default function App() {
   const [connected, setConnected] = useState(false);
@@ -62,6 +65,7 @@ export default function App() {
   const [served, setServed] = useState(0);
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<number | null>(null);
+  const outboxRef = useRef<string[]>([]);
 
   const statusLabel = useMemo(
     () => (connected ? "Connected · :1994" : "Waiting for server · :1994"),
@@ -78,9 +82,10 @@ export default function App() {
         return;
       }
 
-      if (msg.type === "doc-event") {
-        // Plugin-initiated change notification — forward without a requestId
-        // so the server can invalidate its digest cache.
+      if (msg.type === "doc-event" || msg.type === "progress") {
+        // Plugin-initiated notification (digest invalidation, request
+        // heartbeat) — forward without a requestId. Stale ones aren't worth
+        // buffering: a reconnect drops the digest cache and resyncs requests.
         if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
           socketRef.current.send(JSON.stringify(msg));
         }
@@ -91,10 +96,14 @@ export default function App() {
         return;
       }
 
+      const wire = JSON.stringify(msg);
       if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+        const outbox = outboxRef.current;
+        outbox.push(wire);
+        if (outbox.length > MAX_OUTBOX) outbox.shift();
         return;
       }
-      socketRef.current.send(JSON.stringify(msg));
+      socketRef.current.send(wire);
       setServed((n) => n + 1);
     };
 
@@ -128,6 +137,12 @@ export default function App() {
 
       ws.onopen = () => {
         setConnected(true);
+        // Buffered responses go first, so they settle their requests before
+        // the sync heartbeat (sent on ui-ready) reconciles what is still live.
+        const outbox = outboxRef.current;
+        outboxRef.current = [];
+        for (const wire of outbox) ws.send(wire);
+        if (outbox.length > 0) setServed((n) => n + outbox.length);
         parent.postMessage({ pluginMessage: { type: "ui-ready" } }, "*");
       };
 

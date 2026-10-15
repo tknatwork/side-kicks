@@ -2,6 +2,7 @@ import http from "node:http";
 import type { Duplex } from "node:stream";
 import { isLoopbackAddress, rpcDenial, upgradeDenial } from "./access.js";
 import { Bridge } from "./bridge.js";
+import { callContext } from "./call-context.js";
 import { validateRpc } from "./schema.js";
 import { executeSaveScreenshots } from "./tools.js";
 import type { ExportFormat } from "./tools.js";
@@ -318,13 +319,21 @@ export class Leader {
           return;
         }
 
-        const resp = await this.execute(
-          rpcReq.tool,
-          rpcReq.nodeIds,
-          rpcReq.params,
-          fileKey,
-          rpcReq.agent,
-          rpcReq.timeoutMs
+        // A follower hangs up when its MCP client cancels the call; treat that
+        // as a cancel so a queued edit doesn't land after the fact.
+        const hangUp = new AbortController();
+        res.on("close", () => {
+          if (!res.writableEnded) hangUp.abort();
+        });
+        const resp = await callContext.run({ signal: hangUp.signal }, () =>
+          this.execute(
+            rpcReq.tool,
+            rpcReq.nodeIds,
+            rpcReq.params,
+            fileKey,
+            rpcReq.agent,
+            rpcReq.timeoutMs
+          )
         );
 
         this.sendJSON(

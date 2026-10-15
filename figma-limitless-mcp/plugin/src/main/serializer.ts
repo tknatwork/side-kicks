@@ -106,7 +106,27 @@ type SerializedNode = {
   styles?: SerializedStyles;
   children?: SerializedNode[];
   childCount?: number;
+  // FigJam content, which lives outside TEXT nodes.
+  /** Sticky / shape-with-text text, or a connector's label. */
+  text?: string;
+  shapeType?: string;
+  connector?: {
+    start: SerializedEndpoint;
+    end: SerializedEndpoint;
+    lineType: string;
+  };
+  codeBlock?: { language: string; code: string };
+  table?: { rows: number; columns: number; cells: string[][]; truncated?: true };
 };
+
+type SerializedEndpoint = {
+  nodeId?: string;
+  magnet?: string;
+  position?: { x: number; y: number };
+};
+
+/** A table larger than this reports only its first rows (truncated: true). */
+const MAX_TABLE_CELLS = 400;
 
 const isMixed = (value: unknown): value is symbol => typeof value === "symbol";
 
@@ -401,15 +421,82 @@ const serializeStyles = (node: SerializableNode): SerializedStyles => {
   return styles;
 };
 
+const serializeEndpoint = (endpoint: ConnectorEndpoint): SerializedEndpoint => ({
+  ...("endpointNodeId" in endpoint ? { nodeId: endpoint.endpointNodeId } : {}),
+  ...("magnet" in endpoint ? { magnet: endpoint.magnet } : {}),
+  ...("position" in endpoint ? { position: endpoint.position } : {}),
+});
+
+/**
+ * What a FigJam board says: sticky and shape text, what each connector joins
+ * (and its label), code-block code, table cell text. None of it is in a TEXT
+ * node, so without this a board reads as empty shapes.
+ */
+const serializeBoardContent = (node: SerializableNode): Partial<SerializedNode> => {
+  try {
+    switch (node.type) {
+      case "STICKY":
+        return { text: node.text.characters };
+      case "SHAPE_WITH_TEXT":
+        return { shapeType: node.shapeType, text: node.text.characters };
+      case "CONNECTOR": {
+        const label = node.text.characters;
+        return {
+          connector: {
+            start: serializeEndpoint(node.connectorStart),
+            end: serializeEndpoint(node.connectorEnd),
+            lineType: node.connectorLineType,
+          },
+          ...(label ? { text: label } : {}),
+        };
+      }
+      case "CODE_BLOCK":
+        return { codeBlock: { language: node.codeLanguage, code: node.code } };
+      case "TABLE": {
+        const columns = node.numColumns;
+        const rowsShown = Math.min(
+          node.numRows,
+          Math.max(1, Math.floor(MAX_TABLE_CELLS / Math.max(1, columns)))
+        );
+        const cells: string[][] = [];
+        for (let r = 0; r < rowsShown; r++) {
+          const row: string[] = [];
+          for (let c = 0; c < columns; c++) row.push(node.cellAt(r, c).text.characters);
+          cells.push(row);
+        }
+        return {
+          table: {
+            rows: node.numRows,
+            columns,
+            cells,
+            ...(rowsShown < node.numRows ? { truncated: true as const } : {}),
+          },
+        };
+      }
+      default:
+        return {};
+    }
+  } catch {
+    return {};
+  }
+};
+
 // Accepts any node (BaseNode) — every field beyond id/name/type is read
 // behind a "prop in node" guard, so pages and the document serialize safely.
-export const serializeNode = (node: SerializableNode): SerializedNode => {
+// maxDepth bounds the levels of children serialized: a node at the limit
+// reports childCount instead of children, so a shallow read of a huge page
+// costs only the nodes it returns.
+export const serializeNode = (
+  node: SerializableNode,
+  maxDepth = Infinity
+): SerializedNode => {
   const base: SerializedNode = {
     id: node.id,
     name: node.name,
     type: node.type,
     bounds: getBounds(node),
     styles: serializeStyles(node),
+    ...serializeBoardContent(node),
   };
 
   if (node.type === "TEXT") {
@@ -417,11 +504,11 @@ export const serializeNode = (node: SerializableNode): SerializedNode => {
   }
 
   if ("children" in node) {
+    const visible = node.children.filter((child) => child.visible !== false);
+    if (maxDepth <= 0) return { ...base, childCount: visible.length };
     return {
       ...base,
-      children: node.children
-        .filter((child) => child.visible !== false)
-        .map((child) => serializeNode(child)),
+      children: visible.map((child) => serializeNode(child, maxDepth - 1)),
     };
   }
 
