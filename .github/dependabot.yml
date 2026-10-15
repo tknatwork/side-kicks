@@ -10,6 +10,9 @@
 # ecosystems are gone. natural-scroll-switch is SwiftPM with ZERO dependencies, so
 # it needs no package ecosystem; its GitHub Actions are SHA-pinned and are already
 # covered by the `github-actions` entry at `/` below.
+#
+# Every label listed here must already exist in the repo; Dependabot does not create
+# them, it only comments a warning on each PR. `dependencies` and `javascript` exist.
 
 version: 2
 updates:
@@ -24,7 +27,7 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "npm"
+      - "javascript"
     commit-message:
       prefix: "chore(deps)"
       include: "scope"
@@ -43,7 +46,6 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "github-actions"
     commit-message:
       prefix: "chore(actions)"
 
@@ -55,6 +57,5 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
-      - "github-actions"
     commit-message:
       prefix: "chore(actions)"
