@@ -67,6 +67,9 @@ interface CachedDigest {
 
 /** Tools whose calls are recorded in the journal (mutations + escape hatch). */
 export const JOURNALED_TOOLS = new Set([
+  "manage_pages",
+  "create_svg",
+  "boolean_operation",
   "set_node_visibility",
   "set_text_content",
   "set_text_properties",

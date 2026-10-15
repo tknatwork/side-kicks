@@ -59,6 +59,22 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   every edit in the plugin session was a single undo step, so one Cmd+Z could revert an entire agent
   session.
 
+### Added — pages, SVG import, boolean operations (98 → 102 tools)
+
+- **`manage_pages`** creates, renames, moves and deletes pages. `index` is the final position.
+  Delete requires `confirm: true`, refuses to delete the only page, and switches away first when
+  the page being deleted is the current one. Figma's typings don't say whether a move later in the
+  list counts the page's old slot, so the move checks where the page landed and corrects once; a
+  test passes every move under both behaviours.
+- **`switch_page`** takes a `pageId` or an exact name. It is navigation (like `set_selection`), so
+  it works in Dev Mode and isn't journaled. Reads only see the current page, and until now no tool
+  could change it without `execute_code`.
+- **`create_svg`** imports SVG markup as editable vector layers inside a new frame (Figma's own SVG
+  import). It returns `layerCount`, so the caller can check that nothing was dropped.
+- **`boolean_operation`** does `UNION`, `SUBTRACT`, `INTERSECT` and `EXCLUDE` (an editable boolean
+  group) and `FLATTEN` (a single vector). The result takes the layers' place in their shared parent.
+- The three edits are Dev-Mode-gated, journaled, run in the edit queue, and are one undo step each.
+
 ### Added — design to code, FigJam reads
 
 - **`get_design_context` reports what each instance is:** a `component` object with the set name,

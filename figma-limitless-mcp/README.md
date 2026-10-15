@@ -5,7 +5,7 @@
 ![MCP](https://img.shields.io/badge/MCP-compatible-5865F2)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 ![Network](https://img.shields.io/badge/network-none%20(local--only)-2ea44f)
-![Tools](https://img.shields.io/badge/tools-98-8A2BE2)
+![Tools](https://img.shields.io/badge/tools-102-8A2BE2)
 ![Surfaces](https://img.shields.io/badge/surfaces-Design%20·%20Dev%20·%20FigJam%20·%20Slides%20·%20Buzz-0AA)
 ![DS Linter](https://img.shields.io/badge/design--system%20linter-57%20rules-orange)
 
@@ -29,7 +29,7 @@ Figma Desktop plugin ── full Plugin API access to your open files
 
 Three things in one package:
 
-1. **A full-power Figma MCP** — 98 tools spanning read, create, style, layout, variables, components, instances, prototyping, and the FigJam/Slides/Buzz editors. Anything the Plugin API can do, your AI can do.
+1. **A full-power Figma MCP** — 102 tools spanning read, create, style, layout, variables, components, instances, prototyping, and the FigJam/Slides/Buzz editors. Anything the Plugin API can do, your AI can do.
 2. **A crash-safe session layer** — a disk journal, named checkpoints, TTL locks, and cached file digests so multi-step (and multi-agent) work resumes exactly where it stopped.
 3. **A design-system skills + linter** — bundled, offline knowledge on how tokens *should* be derived, plus a 57-rule structure linter that checks your variables/styles/components against it and hands the AI fix hints. Read-only; it never mutates your file.
 
@@ -112,15 +112,16 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 5. **Structure over raw values:** bind variables > apply styles > raw values. Author with `write_variables` (one batched call via `$N.field` back-refs); read with `get_variables_deep`.
 6. **Parallel agents:** `acquire_lock` on what you mutate; locks auto-expire. After a timeout, **read before retrying** — the op may have landed; the journal knows.
 
-## 🛠️ Tool surface (98 tools)
+## 🛠️ Tool surface (102 tools)
 
 | Category | Tools |
 |---|---|
 | 🧭 Orientation | `get_workspace_status` · `get_file_digest` (cached) · `list_files` · `get_metadata` |
 | 📖 Reads | `get_document` · `get_node` · `get_selection` · `get_design_context` · `get_styles` · `get_text_styles` · `get_effect_styles` · `get_variables_deep` · `get_variable_defs` · `get_annotations` · `get_reactions` · `get_motion` · `list_shaders` · `list_fonts` · `list_library_variables` |
-| 🎨 Create & style | `create_frame` · `create_text` · `create_shape` · `create_image` · `set_solid_fill` · `set_gradient_fill` · `set_effects` · `set_stroke_properties` · `apply_style` · `create_paint_style` · `create_effect_style` |
+| 🎨 Create & style | `create_frame` · `create_text` · `create_shape` · `create_image` · `create_svg` · `set_solid_fill` · `set_gradient_fill` · `set_effects` · `set_stroke_properties` · `apply_style` · `create_paint_style` · `create_effect_style` |
 | ✍️ Text | `set_text_content` · `set_text_properties` · `create_text_style` · `update_text_style` · `apply_text_style` · `load_fonts` — variable-font axes (`variationSettings`) and text wrap (AUTO/BALANCE/PRETTY) on text nodes and styles |
-| 📐 Layout & structure | `set_auto_layout` (incl. SPACE_EVENLY/SPACE_AROUND) · `set_grid_layout` · `set_node_properties` · `set_node_visibility` · `duplicate_nodes` · `reparent_nodes` · `group_nodes` · `ungroup_node` · `delete_nodes` (confirm-gated) |
+| 📐 Layout & structure | `set_auto_layout` (incl. SPACE_EVENLY/SPACE_AROUND) · `set_grid_layout` · `set_node_properties` · `set_node_visibility` · `duplicate_nodes` · `reparent_nodes` · `group_nodes` · `ungroup_node` · `boolean_operation` (union/subtract/intersect/exclude/flatten) · `delete_nodes` (confirm-gated) |
+| 🗂️ Pages | `manage_pages` (create/rename/move; delete is confirm-gated) · `switch_page` (also in Dev Mode) |
 | 🔧 Variables | `write_variables` (batched authoring with `$N.field` refs; COLOR/FLOAT/STRING/BOOLEAN, motion EASING/TIMING with TIMING in seconds, and composed colors — a color plus an opacity, at least one of them an alias — with the COLOR_OPACITY scope) |
 | 🧩 Components & instances | `create_component_from_node` · `combine_as_variants` · `add_component_property` · `create_slot` · `append_to_slot` · `reset_slot` · `get_slots` · `instantiate_component` · `set_instance_properties` · `swap_instance` |
 | 🔀 Prototyping | `set_reactions` · `set_flow_starting_point` |

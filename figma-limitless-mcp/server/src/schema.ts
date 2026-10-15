@@ -299,6 +299,93 @@ export const groupNodesInput = z.object({
   fileKey: fileKeyField,
 });
 
+export const managePagesShape = z.object({
+  action: z
+    .enum(["create", "rename", "move", "delete"])
+    .describe("create a page, rename one, move it to another position, or delete it"),
+  pageId: createFigmaNodeIdSchema()
+    .optional()
+    .describe("The page to rename, move or delete (page ids are listed by get_metadata)"),
+  name: z.string().min(1).optional().describe("create: the new page's name; rename: its new name"),
+  index: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe("create/move: final position among the pages, 0 = first (create defaults to last)"),
+  confirm: z
+    .boolean()
+    .optional()
+    .describe("delete: must be true — deleting a page deletes everything on it"),
+  fileKey: fileKeyField,
+});
+
+export const managePagesInput = managePagesShape.superRefine((v, ctx) => {
+  const require = (ok: boolean, message: string) => {
+    if (!ok) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+  };
+  if (v.action !== "create") require(v.pageId !== undefined, `${v.action} requires pageId`);
+  if (v.action === "rename") require(v.name !== undefined, "rename requires name");
+  if (v.action === "move") require(v.index !== undefined, "move requires index");
+  if (v.action === "delete") require(v.confirm === true, "delete requires confirm: true");
+});
+
+export const switchPageShape = z.object({
+  pageId: createFigmaNodeIdSchema().optional().describe("The page to switch to"),
+  name: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Exact page name, used when pageId is omitted (fails if several pages share it)"),
+  fileKey: fileKeyField,
+});
+
+export const switchPageInput = switchPageShape.refine(
+  (v) => v.pageId !== undefined || v.name !== undefined,
+  "pageId or name is required"
+);
+
+/** SVG markup crosses the bridge as one string; a few MB is already far past icons and illustrations. */
+const MAX_SVG_CHARS = 5_000_000;
+
+export const createSvgInput = z.object({
+  svg: z
+    .string()
+    .min(1)
+    .max(MAX_SVG_CHARS)
+    .describe("SVG markup (<svg …>…</svg>), imported like Figma's own SVG import into editable vector layers"),
+  parentId: createFigmaNodeIdSchema()
+    .optional()
+    .describe("Parent frame/group/page for the new frame (default: the current page)"),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  name: z.string().optional().describe("Name for the frame that holds the imported layers"),
+  fileKey: fileKeyField,
+});
+
+export const booleanOperationShape = z.object({
+  operation: z
+    .enum(["UNION", "SUBTRACT", "INTERSECT", "EXCLUDE", "FLATTEN"])
+    .describe(
+      "UNION/SUBTRACT/INTERSECT/EXCLUDE build an editable boolean group (SUBTRACT cuts the upper layers out of the " +
+        "bottom-most one); FLATTEN merges the layers into one vector, which cannot be undone except by Cmd+Z"
+    ),
+  nodeIds: z
+    .array(createFigmaNodeIdSchema())
+    .min(1)
+    .describe("Layers to combine; boolean operations need at least 2. They must share a parent unless parentId is given"),
+  parentId: createFigmaNodeIdSchema()
+    .optional()
+    .describe("Parent for the result (default: the layers' shared parent)"),
+  name: z.string().optional().describe("Name for the result"),
+  fileKey: fileKeyField,
+});
+
+export const booleanOperationInput = booleanOperationShape.refine(
+  (v) => v.operation === "FLATTEN" || v.nodeIds.length >= 2,
+  "UNION, SUBTRACT, INTERSECT and EXCLUDE need at least 2 nodes"
+);
+
 export const ungroupNodeInput = z.object({
   nodeId: createFigmaNodeIdSchema().describe(
     "Group or frame to ungroup. Children move up to its parent and the wrapper is removed."
@@ -1979,6 +2066,14 @@ export const toolInputSchemas = {
 
   ungroup_node: ungroupNodeInput,
 
+  manage_pages: managePagesInput,
+
+  switch_page: switchPageInput,
+
+  create_svg: createSvgInput,
+
+  boolean_operation: booleanOperationInput,
+
   set_selection: setSelectionInput,
 
   scroll_and_zoom_into_view: scrollAndZoomIntoViewInput,
@@ -2222,6 +2317,10 @@ const rpcToArgs: Record<
   reparent_nodes: (nodeIds, params) => ({ nodeIds, ...params }),
   group_nodes: (nodeIds, params) => ({ nodeIds, ...params }),
   ungroup_node: (nodeIds, params) => ({ nodeId: nodeIds?.[0], ...params }),
+  manage_pages: (_nodeIds, params) => ({ ...params }),
+  switch_page: (_nodeIds, params) => ({ ...params }),
+  create_svg: (_nodeIds, params) => ({ ...params }),
+  boolean_operation: (nodeIds, params) => ({ nodeIds, ...params }),
   set_selection: (nodeIds, params) => ({ nodeIds, ...params }),
   scroll_and_zoom_into_view: (nodeIds, params) => ({ nodeIds, ...params }),
   delete_nodes: (nodeIds, params) => ({ nodeIds, ...params }),

@@ -32,6 +32,13 @@ import {
   setSelectionInput,
   scrollAndZoomIntoViewInput,
   groupNodesInput,
+  managePagesShape,
+  managePagesInput,
+  switchPageShape,
+  switchPageInput,
+  createSvgInput,
+  booleanOperationShape,
+  booleanOperationInput,
   ungroupNodeInput,
   setTextPropertiesShape,
   setTextPropertiesInput,
@@ -638,6 +645,59 @@ export function registerTools(
     async ({ nodeId, fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
         node.sendWithParams("ungroup_node", [nodeId], undefined, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "manage_pages",
+    "Create, rename, move or delete a page. delete requires confirm: true and removes everything on the page; deleting the current page first switches to another one. `index` is the final position (0 = first). Page ids come from get_metadata. Returns the page's id, name and final index.",
+    managePagesShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(managePagesInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("manage_pages", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "switch_page",
+    "Switch Figma to another page, by pageId or exact name. Reads like get_document and get_design_context work on the current page, so switch first to work across pages. Navigation only: allowed in Dev Mode, not journaled.",
+    switchPageShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(switchPageInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("switch_page", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_svg",
+    "Import SVG markup as editable vector layers (Figma's own SVG import), inside a new frame. Returns the frame's id, size and layerCount: check layerCount against what the SVG should contain.",
+    createSvgInput.shape,
+    async ({ fileKey, ...params }): Promise<ToolResult> => {
+      return renderResponse(() =>
+        node.sendWithParams("create_svg", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "boolean_operation",
+    "Combine layers with UNION, SUBTRACT, INTERSECT or EXCLUDE (an editable boolean group; SUBTRACT cuts the upper layers out of the bottom-most one), or FLATTEN them into a single vector. The result takes the layers' place in their shared parent. Returns the result's id and type.",
+    booleanOperationShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(booleanOperationInput, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeIds, fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("boolean_operation", nodeIds, params, fileKey)
       );
     }
   );

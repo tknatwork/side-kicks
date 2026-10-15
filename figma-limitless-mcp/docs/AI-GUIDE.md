@@ -21,7 +21,7 @@ most Figma failures are ordering failures.
 | Plugin reconnect | A dropped plugin socket keeps in-flight requests for 15s; if the plugin reconnects still running them, they complete normally | "Plugin reconnected without this request" → read state before retrying |
 | Undo | Every edit tool call is its own undo step in Figma | The user can Cmd+Z one bad step without losing the session |
 | Dev Mode | All write tools rejected with a clear error | Switch Figma to the design editor |
-| Delete gate | `delete_nodes` requires `confirm: true` | Confirm deliberately, never by default |
+| Delete gate | `delete_nodes` and `manage_pages` `delete` require `confirm: true` | Confirm deliberately, never by default |
 | Result cap | `execute_code` returns ≤1MB JSON | Return narrow slices, never nodes |
 | Multi-file | With 2+ files connected every call needs `fileKey` | `list_files` first, thread `fileKey` through |
 | Journal | Every mutation is logged with your agent identity | `get_journal` is the source of truth after any failure |
@@ -58,7 +58,7 @@ Build order:
 3. `create_component_from_node` on each.
 4. `combine_as_variants` — the set is auto-arranged and resized.
 5. `add_component_property` (TEXT / BOOLEAN / INSTANCE_SWAP). Use the returned `#`-suffixed key verbatim.
-6. Icons: one INSTANCE_SWAP property + `preferredValues`. Never a variant per icon.
+6. Icons: one INSTANCE_SWAP property + `preferredValues`. Never a variant per icon. Bring icon artwork in with `create_svg` (check `layerCount`); combine shapes with `boolean_operation` rather than hand-drawn paths.
 7. Slots: `create_slot` — its SLOT property is created automatically (key returned). Don't add a second one.
 8. Cap variant matrices at ~30 combinations.
 
@@ -82,6 +82,7 @@ Build order:
 ## Heavy files — context discipline
 
 - Orient with `get_file_digest`, drill with `get_node` on specific ids. Never bulk-read.
+- Reads see the current page. To work on another page: page ids from `get_metadata` → `switch_page` → read. Create, rename, reorder or delete pages with `manage_pages`.
 - `get_variables_deep`: filter by `collectionName` on large token libraries (unfiltered dumps over 4000 variables are refused).
 - `get_file_digest` `scope: "all-pages"` is slow the first time — use only when you need the full component inventory.
 - Fine detail you discovered (node ids, property keys, exact font strings) goes into `save_checkpoint` — never re-discover what a ledger already holds.

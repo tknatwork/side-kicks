@@ -10,6 +10,7 @@ import {
   referencedVariableIds,
   type ComposedColorInput,
 } from "./composed-color";
+import { movePageTo } from "./pages";
 
 type RequestType =
   | "get_document"
@@ -36,6 +37,10 @@ type RequestType =
   | "duplicate_nodes"
   | "reparent_nodes"
   | "group_nodes"
+  | "manage_pages"
+  | "switch_page"
+  | "create_svg"
+  | "boolean_operation"
   | "ungroup_node"
   | "set_selection"
   | "scroll_and_zoom_into_view"
@@ -1302,6 +1307,10 @@ const EDIT_REQUEST_TYPES = new Set<RequestType>([
   "group_nodes",
   "ungroup_node",
   "delete_nodes",
+  "manage_pages",
+  "create_svg",
+  "boolean_operation",
+  // switch_page deliberately NOT gated: navigation, like set_selection.
   "create_text_style",
   "update_text_style",
   "apply_text_style",
@@ -2741,6 +2750,185 @@ const handleRequest = async (
           data: {
             framedCount: nodes.length,
             framedIds: nodes.map((n) => n.id),
+          },
+        };
+      }
+      case "manage_pages": {
+        const params = request.params ?? {};
+        const action = params.action;
+        const pages = (): readonly PageNode[] => figma.root.children;
+        const describePage = (page: PageNode) => ({
+          pageId: page.id,
+          name: page.name,
+          index: pages().indexOf(page),
+        });
+        const findPage = async (): Promise<PageNode> => {
+          const id = params.pageId;
+          if (typeof id !== "string") throw new Error(`manage_pages ${String(action)} requires pageId`);
+          const node = await figma.getNodeByIdAsync(id);
+          if (!node || node.type !== "PAGE") throw new Error(`Page not found: ${id}`);
+          return node;
+        };
+        let data: Record<string, unknown>;
+        switch (action) {
+          case "create": {
+            const page = figma.createPage();
+            if (typeof params.name === "string") page.name = params.name;
+            if (typeof params.index === "number") movePageTo(figma.root, page, params.index);
+            data = { action, ...describePage(page) };
+            break;
+          }
+          case "rename": {
+            const page = await findPage();
+            if (typeof params.name !== "string" || params.name === "") {
+              throw new Error("manage_pages rename requires name");
+            }
+            page.name = params.name;
+            data = { action, ...describePage(page) };
+            break;
+          }
+          case "move": {
+            const page = await findPage();
+            if (typeof params.index !== "number") throw new Error("manage_pages move requires index");
+            movePageTo(figma.root, page, params.index);
+            data = { action, ...describePage(page) };
+            break;
+          }
+          case "delete": {
+            if (params.confirm !== true) throw new Error("manage_pages delete requires confirm: true");
+            const page = await findPage();
+            if (pages().length <= 1) throw new Error("Cannot delete the only page");
+            let switchedTo: { pageId: string; name: string } | undefined;
+            if (figma.currentPage.id === page.id) {
+              const fallback = pages().find((p) => p.id !== page.id)!;
+              await figma.setCurrentPageAsync(fallback);
+              switchedTo = { pageId: fallback.id, name: fallback.name };
+            }
+            const deleted = { pageId: page.id, name: page.name };
+            await page.loadAsync();
+            page.remove();
+            data = { action, deleted, ...(switchedTo ? { switchedTo } : {}) };
+            break;
+          }
+          default:
+            throw new Error(`Unknown manage_pages action: ${String(action)}`);
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { ...data, pageCount: pages().length },
+        };
+      }
+      case "switch_page": {
+        const params = request.params ?? {};
+        const pages = figma.root.children;
+        let page: PageNode | undefined;
+        if (typeof params.pageId === "string") {
+          page = pages.find((p) => p.id === params.pageId);
+        } else if (typeof params.name === "string") {
+          const matches = pages.filter((p) => p.name === params.name);
+          if (matches.length > 1) {
+            throw new Error(
+              `Several pages are named "${params.name}" (${matches.map((p) => p.id).join(", ")}); pass pageId`
+            );
+          }
+          page = matches[0];
+        }
+        if (!page) {
+          throw new Error(
+            `Page not found. Pages: ${pages.map((p) => `"${p.name}" (${p.id})`).join(", ")}`
+          );
+        }
+        await figma.setCurrentPageAsync(page);
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: { pageId: page.id, name: page.name, index: pages.indexOf(page) },
+        };
+      }
+      case "create_svg": {
+        const params = request.params ?? {};
+        if (typeof params.svg !== "string" || params.svg.trim() === "") {
+          throw new Error("create_svg requires svg markup");
+        }
+        const frame = figma.createNodeFromSvg(params.svg);
+        await appendToParentIfProvided(frame, params.parentId);
+        if (typeof params.x === "number") frame.x = params.x;
+        if (typeof params.y === "number") frame.y = params.y;
+        if (typeof params.name === "string") frame.name = params.name;
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: frame.id,
+            nodeName: frame.name,
+            parentId: frame.parent?.id,
+            width: frame.width,
+            height: frame.height,
+            // Imported layers, so the caller can verify nothing was dropped.
+            layerCount: frame.findAll(() => true).length,
+          },
+        };
+      }
+      case "boolean_operation": {
+        const params = request.params ?? {};
+        const operation = params.operation;
+        if (!request.nodeIds || request.nodeIds.length === 0) {
+          throw new Error("nodeIds is required for boolean_operation");
+        }
+        if (operation !== "FLATTEN" && request.nodeIds.length < 2) {
+          throw new Error(`${String(operation)} needs at least 2 nodes`);
+        }
+        const nodes = await Promise.all(request.nodeIds.map((id) => getSceneNodeById(id)));
+        let parent: BaseNode & ChildrenMixin;
+        if (typeof params.parentId === "string") {
+          parent = await getParentNodeById(params.parentId);
+        } else {
+          const parents = new Set(nodes.map((n) => n.parent?.id));
+          const shared = nodes[0].parent;
+          if (parents.size !== 1 || !shared || !supportsChildren(shared)) {
+            throw new Error(
+              "boolean_operation requires all nodes to share a parent, or pass parentId explicitly"
+            );
+          }
+          parent = shared;
+        }
+        // Put the result where the layers were: at the lowest of their positions.
+        const positions = nodes.map((n) => parent.children.indexOf(n));
+        const index = positions.every((i) => i >= 0) ? Math.min(...positions) : undefined;
+        let result: BooleanOperationNode | VectorNode;
+        switch (operation) {
+          case "UNION":
+            result = figma.union(nodes, parent, index);
+            break;
+          case "SUBTRACT":
+            result = figma.subtract(nodes, parent, index);
+            break;
+          case "INTERSECT":
+            result = figma.intersect(nodes, parent, index);
+            break;
+          case "EXCLUDE":
+            result = figma.exclude(nodes, parent, index);
+            break;
+          case "FLATTEN":
+            result = figma.flatten(nodes, parent, index);
+            break;
+          default:
+            throw new Error(`Unknown boolean_operation: ${String(operation)}`);
+        }
+        if (typeof params.name === "string") result.name = params.name;
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            nodeId: result.id,
+            nodeName: result.name,
+            type: result.type,
+            operation,
+            parentId: result.parent?.id,
+            ...(result.type === "BOOLEAN_OPERATION"
+              ? { childIds: result.children.map((c) => c.id) }
+              : {}),
           },
         };
       }
