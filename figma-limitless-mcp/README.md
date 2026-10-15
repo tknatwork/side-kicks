@@ -5,7 +5,7 @@
 ![MCP](https://img.shields.io/badge/MCP-compatible-5865F2)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 ![Network](https://img.shields.io/badge/network-none%20(local--only)-2ea44f)
-![Tools](https://img.shields.io/badge/tools-102-8A2BE2)
+![Tools](https://img.shields.io/badge/tools-103-8A2BE2)
 ![Surfaces](https://img.shields.io/badge/surfaces-Design%20·%20Dev%20·%20FigJam%20·%20Slides%20·%20Buzz-0AA)
 ![DS Linter](https://img.shields.io/badge/design--system%20linter-57%20rules-orange)
 
@@ -29,7 +29,7 @@ Figma Desktop plugin ── full Plugin API access to your open files
 
 Three things in one package:
 
-1. **A full-power Figma MCP** — 102 tools spanning read, create, style, layout, variables, components, instances, prototyping, and the FigJam/Slides/Buzz editors. Anything the Plugin API can do, your AI can do.
+1. **A full-power Figma MCP** — 103 tools spanning read, create, style, layout, variables, components, instances, prototyping, and the FigJam/Slides/Buzz editors. Anything the Plugin API can do, your AI can do.
 2. **A crash-safe session layer** — a disk journal, named checkpoints, TTL locks, and cached file digests so multi-step (and multi-agent) work resumes exactly where it stopped.
 3. **A design-system skills + linter** — bundled, offline knowledge on how tokens *should* be derived, plus a 57-rule structure linter that checks your variables/styles/components against it and hands the AI fix hints. Read-only; it never mutates your file.
 
@@ -112,7 +112,7 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 5. **Structure over raw values:** bind variables > apply styles > raw values. Author with `write_variables` (one batched call via `$N.field` back-refs); read with `get_variables_deep`.
 6. **Parallel agents:** `acquire_lock` on what you mutate; locks auto-expire. After a timeout, **read before retrying** — the op may have landed; the journal knows.
 
-## 🛠️ Tool surface (102 tools)
+## 🛠️ Tool surface (103 tools)
 
 | Category | Tools |
 |---|---|
@@ -130,7 +130,7 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 | 🖥️ Slides | `create_slide` · `create_slide_row` · `focus_slide` · `get_slide_grid` · `set_slide_grid` · `set_slide_skip` · `set_slide_transition` |
 | ✳️ Buzz | `create_buzz_frame` · `get_buzz_content` · `set_buzz_text` · `set_buzz_asset_type` · `buzz_smart_resize` |
 | 🔍 Design-system skills & linter | `list_skills` · `read_skill` · `get_build_recipe` · `lint_design_system` |
-| 🤝 Handoff | `set_annotation` · `dev_resources` · `set_code_mapping` · `get_code_mappings` |
+| 🤝 Handoff | `set_annotation` · `dev_resources` · `set_code_mapping` · `get_code_mappings` · `load_code_connect_templates` (runs your Code Connect `.figma.ts` templates locally) |
 | 📚 Library | `import_library_asset` |
 | 👁️ Viewport & media | `set_selection` · `scroll_and_zoom_into_view` · `get_screenshot` · `save_screenshots` (images + MP4/GIF/WEBM video of animated frames) |
 | 💾 Sessions | `save_checkpoint` · `load_checkpoint` · `get_journal` · `acquire_lock` · `release_lock` |

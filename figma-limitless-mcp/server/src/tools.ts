@@ -8,11 +8,15 @@ import type { Node } from "./node.js";
 import { callContext, type CallContext } from "./call-context.js";
 import {
   applyCodeMappings,
+  buildTemplateJob,
   hasDescribedInstances,
+  templateTargets,
   type CodeMapping,
   type ContextNode,
   type MappingCoverage,
 } from "./code-mapping.js";
+import { loadTemplates, nameFromFile, resolveTemplateRoot } from "./code-connect-loader.js";
+import { runTemplates, type TemplateLayer, type TemplateOutcome } from "./code-connect-runtime.js";
 import { listSkills, readSkill, getBuildRecipe } from "./skills.js";
 import { runLint, type LintSnapshot } from "./lint/index.js";
 import {
@@ -117,6 +121,7 @@ import {
   setCodeMappingShape,
   setCodeMappingInput,
   getCodeMappingsInput,
+  loadCodeConnectTemplatesInput,
   toolInputSchemas,
 } from "./schema.js";
 import type { BridgeResponse } from "./types.js";
@@ -365,13 +370,119 @@ export function registerTools(
     const roots = result.context;
     if (!hasDescribedInstances(roots)) return;
     try {
-      const resp = await node.sendWithParams("get_code_mappings", undefined, {}, fileKey);
-      const mappings = (resp.data as { mappings?: Record<string, CodeMapping> } | undefined)?.mappings;
-      result.codeMappings = applyCodeMappings(roots, mappings ?? {}, expandMapped);
+      const resp = await node.sendWithParams(
+        "get_code_mappings",
+        undefined,
+        { includeTemplates: true },
+        fileKey
+      );
+      const mappings = (resp.data as { mappings?: Record<string, CodeMapping> } | undefined)?.mappings ?? {};
+      // Code Connect templates need the instances' own layers: fetched only
+      // for instances that have one, then rendered in the sandbox.
+      let rendered: Record<string, TemplateOutcome> = {};
+      const targets = templateTargets(roots, mappings);
+      if (targets.length > 0) {
+        try {
+          const treesResp = await node.sendWithParams("describe_instance_trees", targets, undefined, fileKey);
+          const trees = (treesResp.data as { trees?: Record<string, TemplateLayer> } | undefined)?.trees ?? {};
+          rendered = runTemplates(
+            buildTemplateJob(trees, mappings),
+            targets.filter((id) => id in trees)
+          );
+        } catch (err) {
+          const error = `template layers unavailable: ${err instanceof Error ? err.message : String(err)}`;
+          rendered = Object.fromEntries(targets.map((id) => [id, { error }]));
+        }
+      }
+      result.codeMappings = applyCodeMappings(roots, mappings, expandMapped, rendered);
     } catch {
       /* mappings unavailable: return the plain design context */
     }
   };
+
+  server.tool(
+    "load_code_connect_templates",
+    "Load Figma Code Connect templates (*.figma.ts / *.figma.js, the parserless format of Code Connect CLI v2) from a directory in this repo, so get_design_context renders each instance with its real template locally: no Figma Org/Enterprise plan, no publishing. A template whose `// url=` points into a connected file is keyed by that component's key; otherwise by its file name (Button.figma.ts → 'Button'). Templates run sandboxed (no Node APIs, 1s per render) and may import only 'figma' and relative files. Reload after editing them. Returns what was loaded, skipped and why.",
+    loadCodeConnectTemplatesInput.shape,
+    async ({ dir, fileKey }): Promise<ToolResult> => {
+      try {
+        const root = await resolveTemplateRoot(dir ?? ".", process.cwd());
+        const loaded = await loadTemplates(root);
+
+        // Resolve url= node ids to component keys where the url's file is connected.
+        let files = node.listConnectedFiles();
+        if (files === undefined) {
+          files = await new Follower(`http://localhost:${port}`).listConnectedFiles().catch(() => []);
+        }
+        const connected = new Set(files.map((f) => f.fileKey));
+        const resolved = new Map<string, { key?: string; setKey?: string }>();
+        const byFile = new Map<string, string[]>();
+        for (const t of loaded.templates) {
+          if (t.fileKey && t.nodeId && connected.has(t.fileKey)) {
+            byFile.set(t.fileKey, [...(byFile.get(t.fileKey) ?? []), t.nodeId]);
+          }
+        }
+        for (const [key, nodeIds] of byFile) {
+          try {
+            const resp = await node.sendWithParams("resolve_components", nodeIds, undefined, key);
+            const components = (resp.data as { components?: Record<string, { key?: string; setKey?: string }> })
+              ?.components ?? {};
+            for (const [nodeId, info] of Object.entries(components)) resolved.set(`${key}|${nodeId}`, info);
+          } catch {
+            /* unresolved: those templates fall back to their file name */
+          }
+        }
+
+        const targets = new Map<string, string>();
+        const conflicts: Array<{ file: string; target: string; keptFile: string }> = [];
+        const entries = [];
+        const summary = [];
+        for (const t of loaded.templates) {
+          const info = t.fileKey && t.nodeId ? resolved.get(`${t.fileKey}|${t.nodeId}`) : undefined;
+          const target = info?.setKey ?? info?.key ?? nameFromFile(t.file);
+          const matchedBy = info?.setKey ? "component set key" : info?.key ? "component key" : "file name";
+          const kept = targets.get(target);
+          if (kept) {
+            conflicts.push({ file: t.file, target, keptFile: kept });
+            continue;
+          }
+          targets.set(target, t.file);
+          entries.push({
+            target,
+            file: t.file,
+            ...(t.header.url ? { url: t.header.url } : {}),
+            ...(t.header.source ? { source: t.header.source } : {}),
+            ...(t.header.component ? { component: t.header.component } : {}),
+            bundle: t.bundle,
+            hash: t.hash,
+          });
+          summary.push({ file: t.file, target, matchedBy, ...(t.header.component ? { component: t.header.component } : {}) });
+        }
+        if (entries.length > 0) {
+          await node.sendWithParams("store_code_templates", undefined, { templates: entries }, fileKey);
+        }
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                root,
+                loaded: summary,
+                ...(conflicts.length ? { conflicts } : {}),
+                ...(loaded.skipped.length ? { skipped: loaded.skipped } : {}),
+                ...(loaded.errors.length ? { errors: loaded.errors } : {}),
+              }),
+            },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
+          isError: true,
+        };
+      }
+    }
+  );
 
   server.tool(
     "get_variable_defs",

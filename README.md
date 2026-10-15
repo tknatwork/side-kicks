@@ -4,7 +4,7 @@
 
 ![MCP](https://img.shields.io/badge/MCP-compatible-5865F2)
 ![Network](https://img.shields.io/badge/network-none%20(local--only)-2ea44f)
-![Tools](https://img.shields.io/badge/tools-102-8A2BE2)
+![Tools](https://img.shields.io/badge/tools-103-8A2BE2)
 ![DS Linter](https://img.shields.io/badge/design--system%20linter-57%20rules-orange)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
@@ -17,7 +17,7 @@
 
 ## 🚀 Flagship — Limitless MCP for Figma
 
-**[`figma-limitless-mcp/`](figma-limitless-mcp/)** — everything the official/remote Figma MCP can't reach, running entirely on your machine: your locally-installed fonts, variable/component/prototype authoring (incl. motion `EASING`/`TIMING` variables), MP4/GIF/WEBM export of animated frames, the FigJam/Slides/Buzz surfaces, a crash-safe journal/checkpoint session layer, and a **build → lint → fix** design-system loop (bundled skills + a 57-rule structure linter). No REST calls, no REST rate limits (it uses the local Plugin API), no plan-tier tooling locks. **102 tools, v0.5.1.**
+**[`figma-limitless-mcp/`](figma-limitless-mcp/)** — everything the official/remote Figma MCP can't reach, running entirely on your machine: your locally-installed fonts, variable/component/prototype authoring (incl. motion `EASING`/`TIMING` variables), MP4/GIF/WEBM export of animated frames, the FigJam/Slides/Buzz surfaces, a crash-safe journal/checkpoint session layer, and a **build → lint → fix** design-system loop (bundled skills + a 57-rule structure linter). No REST calls, no REST rate limits (it uses the local Plugin API), no plan-tier tooling locks. **103 tools, v0.5.1.**
 
 → **[Read the full docs & quick start](figma-limitless-mcp/README.md).**
 

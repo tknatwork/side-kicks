@@ -59,6 +59,37 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   every edit in the plugin session was a single undo step, so one Cmd+Z could revert an entire agent
   session.
 
+### Added — Code Connect templates, run locally (102 → 103 tools)
+
+- **`load_code_connect_templates`** loads Figma Code Connect template files (`*.figma.ts` /
+  `*.figma.js`, the parserless format of Code Connect CLI v2) from a folder in the repo. From then
+  on, `get_design_context` renders each matching instance with its real template, for its current
+  property values. No Figma Org/Enterprise plan and no publishing are needed, and the same files
+  still publish to real Code Connect.
+  - **Bundling.** esbuild bundles each template. A template may import only `figma` and relative
+    helpers, and nothing outside the loaded folder (symlinks resolved). The folder must be inside
+    the server's working directory. Parser-based `.figma.tsx` files are skipped, with a pointer to
+    `figma connect migrate`.
+  - **Matching.** When the `// url=` points into a connected file, the plugin resolves it to the
+    component (set) key, so instances match exactly in any file. Otherwise the template is keyed by
+    its file name (`Button.figma.ts` → `Button`).
+  - **Runtime.**
+    - `figma.selectedInstance`: `getString`, `getBoolean`, `getEnum`, `getInstanceSwap`, `getSlot`,
+      `getPropertyValue`, the `find*` methods (`path` and `traverseInstances` included),
+      `executeTemplate`, `codeConnectId` and `hasCodeConnect`.
+    - The `figma.code` / `tsx` / `html` / `swift` / `kotlin` tags, `figma.properties`, and
+      approximate `figma.helpers`.
+    - Nested instances render with their own template, or their props mapping, and their imports
+      are merged.
+  - **Sandbox.** Templates run in a `vm` context that holds no host object: the runtime is
+    serialized into it, data goes in as JSON, and only strings come out. Code generation from
+    strings is off and each render has a 1 s timeout. A failing template falls back to the mapping's
+    props or static snippet and reports `templateError`.
+  - **Mappings.** `get_code_mappings` shows a template's file and hash but not its code, and
+    `set_code_mapping` keeps a mapping's template when other fields change.
+- New server dependency: `esbuild` ^0.28.2. It's used only by this tool, loaded on first use, and
+  `pnpm audit` is clean.
+
 ### Added — pages, SVG import, boolean operations (98 → 102 tools)
 
 - **`manage_pages`** creates, renames, moves and deletes pages. `index` is the final position.

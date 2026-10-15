@@ -1563,6 +1563,17 @@ export const setCodeMappingInput = setCodeMappingShape.refine(
   "source is required unless remove: true"
 );
 
+export const loadCodeConnectTemplatesInput = z.object({
+  dir: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Directory to search for *.figma.ts / *.figma.js templates, inside the MCP server's working directory (default '.')"
+    ),
+  fileKey: fileKeyField,
+});
+
 export const getCodeMappingsInput = z.object({
   targets: z
     .array(z.string())

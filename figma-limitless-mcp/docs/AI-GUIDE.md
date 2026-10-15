@@ -124,6 +124,7 @@ next run.
 - `get_design_context` reports each instance's `component` (name, variant, keys, current property values). Instances with a mapping come back with a `code` block — a snippet for their current values plus imports — and their layers collapsed: use that snippet, don't rebuild the component. `codeMappings.unmapped` lists the used components that have no mapping yet.
 - After implementing a component: `set_code_mapping` with `target` = the component-set key (or key / name from `component`), `source`, `component`, `imports`, and `props` mapping Figma properties to code props (`{Size: {prop: 'size', values: {Small: 'sm'}}, Disabled: {prop: 'disabled'}}`), plus `children` for a label property. Every later read renders it for free.
 - `get_code_mappings` lists all mappings; a static `snippet` without `props` still surfaces in `code`.
+- If the repo has Code Connect templates (`*.figma.ts`), `load_code_connect_templates {dir}` once (and after edits): `get_design_context` then renders those components with their real templates (`code.template` names the file). Prefer templates over `props` mappings: they handle nested instances, slots and text layers. `templateError` means the template failed and the props/static mapping stood in. Parser-based `.figma.tsx` files are skipped; `figma connect migrate` converts them.
 - FigJam reads carry board content: sticky/shape `text`, `connector` endpoints (`nodeId`/`magnet`/`position`) and label, `codeBlock`, and `table` cell text (first 400 cells).
 
 ## Error playbook

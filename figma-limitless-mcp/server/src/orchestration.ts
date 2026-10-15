@@ -145,6 +145,8 @@ export const META_TOOLS = new Set([
   "get_workspace_status",
   "set_code_mapping",
   "get_code_mappings",
+  // Internal (no MCP tool): load_code_connect_templates stores bundles here.
+  "store_code_templates",
 ]);
 
 const sanitize = (value: string): string => {
@@ -574,7 +576,11 @@ export class Orchestrator {
     } else {
       const source = typeof params.source === "string" ? params.source : "";
       if (!source) throw new Error("source is required (e.g. 'src/components/Button.tsx')");
+      // A loaded Code Connect template survives edits to the mapping's other
+      // fields; only remove: true (or reloading templates) replaces it.
+      const previous = mappings[target] as { template?: unknown } | undefined;
       mappings[target] = {
+        ...(previous && typeof previous === "object" && previous.template ? { template: previous.template } : {}),
         source,
         ...(typeof params.snippet === "string" ? { snippet: params.snippet } : {}),
         ...(typeof params.language === "string" ? { language: params.language } : {}),
@@ -598,6 +604,42 @@ export class Orchestrator {
     };
   }
 
+  /**
+   * Stores Code Connect templates (from load_code_connect_templates) on their
+   * mappings, keeping each mapping's other fields. Internal meta tool: the
+   * bundles are code, so no MCP tool accepts them from an agent.
+   */
+  storeCodeTemplates(params: Record<string, unknown>): unknown {
+    const fileKey =
+      typeof params.fileKey === "string" && params.fileKey ? params.fileKey : GLOBAL_BUCKET;
+    const list = Array.isArray(params.templates) ? params.templates : [];
+    const mappings = this.readCodeMappings(fileKey);
+    const stored: string[] = [];
+    for (const raw of list) {
+      const t = raw as Record<string, unknown>;
+      if (!t || typeof t.target !== "string" || typeof t.file !== "string" || typeof t.bundle !== "string") continue;
+      const previous = (mappings[t.target] && typeof mappings[t.target] === "object"
+        ? mappings[t.target]
+        : {}) as Record<string, unknown>;
+      mappings[t.target] = {
+        ...previous,
+        source: typeof t.source === "string" ? t.source : (previous.source ?? t.file),
+        ...(typeof t.component === "string" ? { component: t.component } : {}),
+        template: {
+          file: t.file,
+          ...(typeof t.url === "string" ? { url: t.url } : {}),
+          hash: typeof t.hash === "string" ? t.hash : "",
+          bundle: t.bundle,
+        },
+        agent: typeof params.agent === "string" ? params.agent : "unknown",
+        ts: new Date().toISOString(),
+      };
+      stored.push(t.target);
+    }
+    this.writeCodeMappings(fileKey, mappings);
+    return { fileKey, stored, totalMappings: Object.keys(mappings).length };
+  }
+
   getCodeMappings(params: Record<string, unknown>): unknown {
     const fileKey =
       typeof params.fileKey === "string" && params.fileKey
@@ -610,6 +652,17 @@ export class Orchestrator {
       const globalMappings = this.readCodeMappings(GLOBAL_BUCKET);
       for (const key of Object.keys(globalMappings)) {
         if (!(key in mappings)) mappings[key] = globalMappings[key];
+      }
+    }
+    // Template bundles are code: only the server's own design-context read
+    // asks for them; agents see the template file, url and hash.
+    if (params.includeTemplates !== true) {
+      for (const key of Object.keys(mappings)) {
+        const m = mappings[key] as { template?: { file?: unknown; url?: unknown; hash?: unknown } } | null;
+        if (m && typeof m === "object" && m.template) {
+          const { file, url, hash } = m.template;
+          mappings[key] = { ...m, template: { file, ...(url ? { url } : {}), hash } };
+        }
       }
     }
     const targets = Array.isArray(params.targets)
@@ -698,6 +751,8 @@ export class Orchestrator {
         return this.setCodeMapping(params);
       case "get_code_mappings":
         return this.getCodeMappings(params);
+      case "store_code_templates":
+        return this.storeCodeTemplates(params);
       default:
         throw new Error(`Unknown meta tool: ${tool}`);
     }

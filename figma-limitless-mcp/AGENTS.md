@@ -5,7 +5,7 @@
 ## What this is
 
 A local Figma MCP server + Figma Desktop plugin. No REST calls, so no REST
-rate limits — it uses the Figma Plugin API locally. **102 tools** across
+rate limits — it uses the Figma Plugin API locally. **103 tools** across
 Design, Dev Mode, FigJam, Slides & Buzz: local
 fonts, text/paint/effect styles, variable authoring, grid layout, master
 components, instances, prototyping, annotations, dev resources, Motion/shaders
@@ -55,6 +55,25 @@ set key → name): `component` + `props` render a snippet for the instance's
 current values (JSX for tsx/jsx), its children collapse to `childCount` unless
 `expandMapped`, and `codeMappings` reports coverage. Code layers and Figma's own
 Code Connect have no Plugin API surface — this is the local equivalent.
+
+**Code Connect templates** (`code-connect-loader.ts`, `code-connect-runtime.ts`).
+`load_code_connect_templates` bundles `*.figma.ts` / `*.figma.js` with esbuild
+(only `figma` + relative imports, nothing outside the loaded dir, which must be
+inside the server's cwd; symlinks resolved). It keys each template by the
+component (set) key its `url=` resolves to through the plugin's internal
+`resolve_components` read, when that file is connected, else by file name, and
+stores the bundle on the mapping via the internal `store_code_templates` meta
+tool. `get_code_mappings` hides bundles unless the server passes
+`includeTemplates`, and `set_code_mapping` keeps a mapping's template. On
+`get_design_context`, instances with a template get their layers from the
+internal `describe_instance_trees` read and render in a `vm` sandbox:
+- no host object enters it (the runtime is serialized with `toString()`, data
+  goes in as a JSON literal, only strings come out);
+- string codegen is off, and there's a 1s timeout per render;
+- on failure the props/static mapping stands in, with `templateError`.
+
+`getSlot` pairs slot layers with SLOT properties by name, then by order (the
+Plugin API has no link between them). `figma.helpers` are approximations.
 
 ## Orchestration layer (server/src/orchestration.ts)
 

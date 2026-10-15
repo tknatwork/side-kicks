@@ -39,6 +39,9 @@ type RequestType =
   | "group_nodes"
   | "manage_pages"
   | "switch_page"
+  // Internal reads for Code Connect templates (not MCP tools).
+  | "describe_instance_trees"
+  | "resolve_components"
   | "create_svg"
   | "boolean_operation"
   | "ungroup_node"
@@ -1445,6 +1448,36 @@ type DescribedNode = {
  * needs this to use the real component, and the server matches code mappings
  * on it. Main components are fetched async (dynamic-page documents).
  */
+/** A component property name without its `#id` suffix (variant names have none). */
+const shortPropertyName = (name: string): string => name.replace(/#[^#]*$/, "");
+
+/** Which component an instance is, and its current property values (short
+ *  names). `withTypes` adds each property's type, for Code Connect templates. */
+const describeComponent = async (
+  node: InstanceNode,
+  withTypes = false
+): Promise<Record<string, unknown>> => {
+  const main = await node.getMainComponentAsync();
+  const properties: Record<string, string | boolean> = {};
+  const types: Record<string, string> = {};
+  for (const [name, prop] of Object.entries(node.componentProperties)) {
+    const short = shortPropertyName(name);
+    const key = short in properties ? name : short;
+    properties[key] = prop.value;
+    types[key] = prop.type;
+  }
+  const set = main?.parent?.type === "COMPONENT_SET" ? main.parent : null;
+  return {
+    name: set ? set.name : main?.name ?? null,
+    ...(set && main ? { variant: main.name } : {}),
+    key: main?.key ?? null,
+    ...(set ? { setKey: set.key } : {}),
+    remote: main?.remote ?? false,
+    properties,
+    ...(withTypes ? { types } : {}),
+  };
+};
+
 const describeInstances = async (roots: DescribedNode[]): Promise<void> => {
   const instances: DescribedNode[] = [];
   const walk = (n: DescribedNode): void => {
@@ -1457,26 +1490,58 @@ const describeInstances = async (roots: DescribedNode[]): Promise<void> => {
       try {
         const node = await figma.getNodeByIdAsync(serialized.id);
         if (!node || node.type !== "INSTANCE") return;
-        const main = await node.getMainComponentAsync();
-        const properties: Record<string, string | boolean> = {};
-        for (const [name, prop] of Object.entries(node.componentProperties)) {
-          const short = name.replace(/#[^#]*$/, "");
-          properties[short in properties ? name : short] = prop.value;
-        }
-        const set = main?.parent?.type === "COMPONENT_SET" ? main.parent : null;
-        serialized.component = {
-          name: set ? set.name : main?.name ?? null,
-          ...(set && main ? { variant: main.name } : {}),
-          key: main?.key ?? null,
-          ...(set ? { setKey: set.key } : {}),
-          remote: main?.remote ?? false,
-          properties,
-        };
+        serialized.component = await describeComponent(node);
       } catch {
         /* missing or inaccessible main component: leave the node as is */
       }
     })
   );
+};
+
+/** A layer as Code Connect templates see it (describe_instance_trees). */
+type TemplateLayer = {
+  id: string;
+  type: string;
+  name: string;
+  characters?: string;
+  component?: Record<string, unknown>;
+  /** This instance fills the parent instance's INSTANCE_SWAP property of this name. */
+  swapProp?: string;
+  children?: TemplateLayer[];
+};
+
+/** Layers per tree, so one huge instance can't stall the read. */
+const MAX_TEMPLATE_LAYERS = 1500;
+
+/** The visible layers of an instance with what templates read: text content,
+ *  nested instances' component identity, property values and types, and which
+ *  parent property swaps them. */
+const describeTemplateLayers = async (root: InstanceNode): Promise<TemplateLayer> => {
+  let budget = MAX_TEMPLATE_LAYERS;
+  const visit = async (node: SceneNode): Promise<TemplateLayer> => {
+    budget--;
+    const layer: TemplateLayer = { id: node.id, type: node.type, name: node.name };
+    if (node.type === "TEXT") layer.characters = node.characters;
+    if (node.type === "INSTANCE") {
+      try {
+        layer.component = await describeComponent(node, true);
+      } catch {
+        /* inaccessible main component: the template sees no properties */
+      }
+    }
+    const swap = node.componentPropertyReferences?.mainComponent;
+    if (swap) layer.swapProp = shortPropertyName(swap);
+    if ("children" in node && budget > 0) {
+      const children: TemplateLayer[] = [];
+      for (const child of node.children) {
+        if (child.visible === false || budget <= 0) continue;
+        children.push(await visit(child));
+      }
+      layer.children = children;
+    }
+    return layer;
+  };
+  return visit(root);
 };
 
 const handleRequest = async (
@@ -1604,6 +1669,38 @@ const handleRequest = async (
             context: contextNodes,
           },
         };
+      }
+      case "describe_instance_trees": {
+        const trees: Record<string, TemplateLayer> = {};
+        for (const id of request.nodeIds ?? []) {
+          const node = await figma.getNodeByIdAsync(id);
+          if (node?.type === "INSTANCE") trees[id] = await describeTemplateLayers(node);
+        }
+        return { type: request.type, requestId: request.requestId, data: { trees } };
+      }
+      case "resolve_components": {
+        // A Code Connect url= node id → the component (set) key that instances
+        // anywhere carry. Only meaningful in the library file that owns the ids.
+        const components: Record<string, unknown> = {};
+        for (const id of request.nodeIds ?? []) {
+          const node = await figma.getNodeByIdAsync(id);
+          const component =
+            node?.type === "INSTANCE" ? await node.getMainComponentAsync() : node;
+          if (component?.type === "COMPONENT_SET") {
+            components[id] = { type: component.type, name: component.name, key: component.key };
+          } else if (component?.type === "COMPONENT") {
+            const set = component.parent?.type === "COMPONENT_SET" ? component.parent : null;
+            components[id] = {
+              type: component.type,
+              name: set ? set.name : component.name,
+              key: component.key,
+              ...(set ? { setKey: set.key } : {}),
+            };
+          } else {
+            components[id] = { error: node ? `not a component (${node.type})` : "not found" };
+          }
+        }
+        return { type: request.type, requestId: request.requestId, data: { components } };
       }
       case "get_variable_defs": {
         const collections =
