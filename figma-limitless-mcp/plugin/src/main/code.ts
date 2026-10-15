@@ -9,8 +9,7 @@ import {
   isComposedColorValue,
   referencedVariableIds,
   type ComposedColorInput,
-  type ComposedColorValue,
-} from "./figma-139-shim";
+} from "./composed-color";
 
 type RequestType =
   | "get_document"
@@ -607,7 +606,7 @@ const ensureNodeFont = async (
   return { family, variationSettings };
 };
 
-// Typings 1.138 still declare the node setter as FontName, although Figma
+// Typings 1.141 still declare the node setter as FontName, although Figma
 // documents it accepting a FontNameInput (style omitted). The one cast lives here.
 const assignNodeFontName = (node: TextNode, font: FontNameInput): void => {
   (node as { fontName: FontNameInput }).fontName = font;
@@ -978,16 +977,9 @@ const parseVariableValue = (
  */
 const buildComposedColor = async (
   input: ComposedColorInput
-): Promise<ComposedColorValue> => {
+): Promise<VariableComposedColor> => {
   const colorId = aliasInputId(input.color);
   const opacityId = aliasInputId(input.opacity);
-  if (colorId === null && opacityId === null) {
-    // Figma: either the color or the opacity must be an alias, or both.
-    throw new Error(
-      "A composed color needs its color and/or opacity as an alias ({alias: variableId}); " +
-        "for two raw values set a plain {r,g,b,a} instead"
-    );
-  }
   const aliasTo = async (
     id: string,
     want: VariableResolvedDataType,
@@ -1003,11 +995,36 @@ const buildComposedColor = async (
     return figma.variables.createVariableAlias(target);
   };
 
-  let color: RGB | RGBA | VariableAlias;
-  const rawColor = input.color as { r?: unknown; g?: unknown; b?: unknown; a?: unknown };
+  // One branch per VariableComposedColor shape, so the compiler checks Figma's
+  // rule: an aliased color takes a raw or aliased opacity; a raw color needs an
+  // aliased opacity.
   if (colorId !== null) {
-    color = await aliasTo(colorId, "COLOR", "color");
-  } else if (typeof input.color === "string") {
+    const color = await aliasTo(colorId, "COLOR", "color");
+    if (opacityId !== null) {
+      return { color, opacity: await aliasTo(opacityId, "FLOAT", "opacity") };
+    }
+    if (
+      typeof input.opacity === "number" &&
+      isFinite(input.opacity) &&
+      input.opacity >= 0 &&
+      input.opacity <= 100
+    ) {
+      return { color, opacity: input.opacity };
+    }
+    throw new Error(
+      "composed color.opacity must be a percentage 0-100 (60 = 60%) or {alias: floatVariableId}"
+    );
+  }
+  if (opacityId === null) {
+    // Figma: either the color or the opacity must be an alias, or both.
+    throw new Error(
+      "A composed color needs its color and/or opacity as an alias ({alias: variableId}); " +
+        "for two raw values set a plain {r,g,b,a} instead"
+    );
+  }
+  let color: RGB | RGBA;
+  const rawColor = input.color as { r?: unknown; g?: unknown; b?: unknown; a?: unknown };
+  if (typeof input.color === "string") {
     color = parseHexColor(input.color);
   } else if (
     rawColor &&
@@ -1025,23 +1042,7 @@ const buildComposedColor = async (
       "composed color.color must be '#RRGGBB', {r,g,b,a?}, or {alias: colorVariableId}"
     );
   }
-
-  let opacity: number | VariableAlias;
-  if (opacityId !== null) {
-    opacity = await aliasTo(opacityId, "FLOAT", "opacity");
-  } else if (
-    typeof input.opacity === "number" &&
-    isFinite(input.opacity) &&
-    input.opacity >= 0 &&
-    input.opacity <= 100
-  ) {
-    opacity = input.opacity;
-  } else {
-    throw new Error(
-      "composed color.opacity must be a percentage 0-100 (60 = 60%) or {alias: floatVariableId}"
-    );
-  }
-  return { color, opacity };
+  return { color, opacity: await aliasTo(opacityId, "FLOAT", "opacity") };
 };
 
 /** parseVariableValue plus the Update 139 composed color, whose alias sides
@@ -1056,8 +1057,7 @@ const parseVariableValueAsync = async (
         `A composed {color, opacity} value is only valid on COLOR variables, not ${resolvedType}`
       );
     }
-    // Cast: VariableComposedColor isn't in typings 1.138 (see figma-139-shim.ts).
-    return (await buildComposedColor(value)) as unknown as VariableValue;
+    return buildComposedColor(value);
   }
   return parseVariableValue(resolvedType, value);
 };
@@ -1265,7 +1265,7 @@ const requireMotionApi = (): MotionAPI => {
   return figma.motion;
 };
 
-/** primaryAxisAlignItems values (typings 1.138.0; SPACE_EVENLY/SPACE_AROUND are
+/** primaryAxisAlignItems values (typings 1.141.0; SPACE_EVENLY/SPACE_AROUND are
  * Plugin API Update 137). set_auto_layout skips values missing from this list,
  * so the type assertion below fails `pnpm typecheck` — and `pnpm build`, which
  * type-checks first — when the typings add one. */

@@ -25,10 +25,24 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   is non-empty. `vite.config.ts` calls `viteSingleFile()` with no options, so the code never runs,
   and it would only run at build time. Revisit when `braces` or `vite-plugin-singlefile` ships a fix.
 
+### Changed
+
+- **Plugin: `@figma/plugin-typings` 1.138.0 → 1.141.0, and composed colors use the real
+  `VariableComposedColor` type.** The local `ComposedColorValue` stand-in is gone, along with the
+  `as unknown as VariableValue` cast that hid it from the compiler. The real type only admits the two
+  shapes Figma accepts (an aliased color with a raw or aliased opacity, or a raw color with an
+  aliased opacity), so `buildComposedColor` now has one branch per shape and the compiler checks
+  the rule. Its checks, their order and its error messages are unchanged. `figma-139-shim.ts` is
+  renamed `composed-color.ts`, since it now holds only the plugin's own runtime guards and
+  `write_variables` helpers. The read guard `isComposedColorValue` now matches the type exactly, so
+  it no longer accepts a raw color with a raw opacity (Figma never stores one). No change to tool
+  inputs or outputs.
+
 ### Note for the operator
 
 - `dist/` is untracked, so these fixes take effect only after a rebuild: `pnpm --dir
-  figma-limitless-mcp/server build`, then restart every MCP client session.
+  figma-limitless-mcp/server build` and `pnpm --dir figma-limitless-mcp/plugin build`, then re-run
+  the plugin in Figma and restart every MCP client session.
 
 ## [0.5.1] — 2026-09-22
 
