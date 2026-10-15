@@ -6,6 +6,30 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Security
+
+- **Server: `@modelcontextprotocol/sdk` 1.30.0 → 1.32.1** (fixes GHSA-6qxp-vccf-f47h, high: the
+  OAuth client could send credentials to an authorization server chosen by the MCP server). The
+  lockfile also moves the SDK's own dependencies to patched releases: `proxy-addr` 2.0.8
+  (critical, GHSA-jqcg-44mw-7w3h), `fast-uri` 3.1.8 (five high, one moderate), `qs` 6.16.1,
+  `hono` 4.13.13, and `ip-address` 10.7.4 via `express-rate-limit` 8.7.1. `pnpm audit`: 18 → 0.
+  No source changes; the build and all 100 unit tests pass.
+- **Plugin (build tooling only; none of it ships in the bundle):** `concurrently` 9.2.4 → 9.2.5,
+  the upstream backport whose only change is `shell-quote` 1.12.0 (critical,
+  GHSA-pqg4-j6r4-53mv). It stays on major 9. The lockfile also moves `browserslist` 4.29.3,
+  `baseline-browser-mapping` 2.11.29 and `source-map-js` 1.2.2 to patched releases. Typecheck and
+  both Vite builds pass. `pnpm audit`: 6 → 1.
+- **Known, not fixable upstream:** `braces` 3.0.3 (GHSA-vfj7-8cjw-p6xm, stack-exhaustion DoS on
+  deeply nested patterns) has no patched release. The only path to it is `vite-plugin-singlefile` →
+  `micromatch`, and `vite-plugin-singlefile` calls `micromatch.isMatch` only when `inlinePattern`
+  is non-empty. `vite.config.ts` calls `viteSingleFile()` with no options, so the code never runs,
+  and it would only run at build time. Revisit when `braces` or `vite-plugin-singlefile` ships a fix.
+
+### Note for the operator
+
+- `dist/` is untracked, so these fixes take effect only after a rebuild: `pnpm --dir
+  figma-limitless-mcp/server build`, then restart every MCP client session.
+
 ## [0.5.1] — 2026-09-22
 
 ### Fixed
