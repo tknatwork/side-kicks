@@ -4,7 +4,7 @@
 // sandbox's isolation.
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -14,7 +14,9 @@ const { runTemplates } = await import("../dist/code-connect-runtime.js");
 const { applyCodeMappings, buildTemplateJob } = await import("../dist/code-mapping.js");
 
 // ---- fixture repo -------------------------------------------------------------
-const workspace = mkdtempSync(path.join(tmpdir(), "limitless-cc-ws-"));
+// loadTemplates expects a realpath'd root (resolveTemplateRoot does this in
+// production); macOS tmpdir() sits behind the /var -> /private/var symlink.
+const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), "limitless-cc-ws-")));
 const repo = path.join(workspace, "repo");
 const write = (rel, text) => {
   mkdirSync(path.dirname(path.join(repo, rel)), { recursive: true });
