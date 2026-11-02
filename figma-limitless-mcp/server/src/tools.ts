@@ -651,7 +651,7 @@ export function registerTools(
 
   server.tool(
     "set_effects",
-    "Replace a node's effects list (drop/inner shadows, layer/background blurs). Pass an empty array to clear all effects. Each entry mirrors the shape returned by get_node's `effects` field.",
+    "Replace a node's effects list (drop/inner shadows, layer/background blurs). Pass an empty array to clear all effects. Each shadow or blur entry mirrors the shape returned by get_node's `effects` field (shadow `color` as hex or an authored colour); a SHADER effect get_node reports is applied with apply_shader, not here.",
     setEffectsShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(setEffectsInput, args);
@@ -1291,7 +1291,7 @@ export function registerTools(
 
   server.tool(
     "update_animation_style",
-    "Change a local custom animation style (Figma Design only): rename, describe, remove entries (by entries[].id), append entries, reorder it (moveAfter a style id, or null for first), delete it, or reorder a folder of them (moveFolder, no styleId). Steps run in that order and are not atomic: an error names what already landed — read with get_motion before retrying.",
+    "Change a local custom animation style (Figma Design only): rename, describe, remove entries (by entries[].id), append entries, reorder it (moveAfter a style id, or null for first), then reorder a folder of them (moveFolder, which needs no styleId). Steps run in that order and are not atomic: an error names what already landed — read with get_motion before retrying. An entry cannot be edited in place: remove it and add it again (it goes last). delete runs alone.",
     updateAnimationStyleShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(updateAnimationStyleInput, args);

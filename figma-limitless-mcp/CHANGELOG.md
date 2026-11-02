@@ -15,15 +15,18 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   file's custom styles with their entries. `apply_animation_style` applies a custom style too
   (`type: "CUSTOM"`, detected from the id when omitted) and passes `props` overrides through to a
   Figma style, which it did not before. A custom style takes only `timelineOffset`: its entries
-  carry duration and props. Figma Design only. 104 → 106 tools.
+  carry duration and props (an entry's duration is its `duration` prop; an entry is changed by
+  removing and re-adding it). Creating and changing custom styles is Figma Design only; `get_motion`
+  lists them in any editor. 104 → 106 tools.
 - **Colours in their authored space (Plugin API Update 141).** Figma now keeps a colour in the space
   it was made in (sRGB, Display P3, HSL, HSB, OKLab, OKLCH) as `sourceColor`, beside the r/g/b it
   projects for the document profile. Reads (`get_node`, `get_document`, …) return `sourceColor`
   next to the hex on solid paints, gradient stops and shadows, when it is there. `set_solid_fill`,
   `set_gradient_fill` stops, `set_effects` / `create_effect_style` shadow colours and
-  `create_paint_style` take `color: { space: "OKLCH", l, c, h }` (and the other five spaces) where
-  they took hex, and build it with `figma.util.rgb` / `rgba` so Figma records the authored space.
-  Components are checked against the ranges Figma enforces (0–1, hue in degrees) before the call.
+  `create_paint_style` take `color` as hex or `{ space: "OKLCH", l, c, h }` (and the other five spaces)
+  where they took hex (so a read's `color` or `sourceColor` can be written back as-is), and build it with `figma.util.rgb` / `rgba` so Figma records the authored space.
+  Components are checked against the ranges Figma enforces (0–1, hue in degrees) before the call,
+  and a Figma build older than Update 141, which would ignore the space, is refused instead.
   Variable values are unchanged by Update 141.
 
 ### Changed

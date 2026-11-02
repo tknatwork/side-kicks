@@ -61,7 +61,12 @@ test("update_animation_style needs a change, and a styleId for any change to a s
 test("delete stands alone", () => {
   ok("update_animation_style", { styleId: "S:abc,", delete: true });
   rejected("update_animation_style", { styleId: "S:abc,", delete: true, name: "x" }, /delete cannot be combined/);
+  rejected("update_animation_style", { styleId: "S:abc,", delete: true, moveFolder: { folder: "Motion", after: null } }, /delete cannot be combined/);
   assert.match(validateRpc("update_animation_style", undefined, { styleId: "S:abc,", delete: true, addEntries: [{ styleId: "Scale" }] }), /delete cannot be combined/);
+});
+
+test("a style change and a folder move go together", () => {
+  ok("update_animation_style", { styleId: "S:abc,", name: "New/Fade", moveFolder: { folder: "New", after: null } });
 });
 
 test("the registered (unrefined) shapes advertise the new fields", () => {
@@ -93,7 +98,17 @@ test("set_solid_fill takes a colour in any of the six spaces, instead of hex", (
 test("set_solid_fill needs exactly one of hex and color", () => {
   rejected("set_solid_fill", { nodeId: NODE }, /hex or color/);
   rejected("set_solid_fill", { nodeId: NODE, hex: "#000000", color: OKLCH }, /hex or color/);
+  rejected("set_solid_fill", { nodeId: NODE, hex: "#000000", color: "#000000" }, /hex or color/);
   assert.match(validateRpc("set_solid_fill", [NODE], {}), /hex or color/);
+});
+
+test("color takes hex too, so what a read returns can be written back", () => {
+  // Reads report a paint or stop colour as `color: "<hex>"` (and `sourceColor` when authored).
+  ok("set_solid_fill", { nodeId: NODE, color: "#ff8800" });
+  ok("set_solid_fill", { nodeId: NODE, color: OKLCH });
+  ok("set_gradient_fill", { nodeId: NODE, gradientStops: [{ position: 0, color: "#ff0000", opacity: 1 }, { position: 1, color: "#0000ff", opacity: 0.5 }] });
+  ok("create_paint_style", { name: "Brand/Ink", color: "#080705" });
+  rejected("set_solid_fill", { nodeId: NODE, color: "orange" });
 });
 
 test("components outside the ranges Figma enforces are refused before they reach it", () => {

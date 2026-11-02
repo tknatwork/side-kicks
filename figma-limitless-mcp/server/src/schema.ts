@@ -135,7 +135,9 @@ const gradientStop = z
       .max(1)
       .describe("Stop position from 0 (start of gradient) to 1 (end)"),
     hex: createHexColorSchema().optional().describe("Stop color as hex"),
-    color: authoredColor.optional().describe("Stop color in its authored space (instead of hex)"),
+    color: hexOrAuthoredColor
+      .optional()
+      .describe("Stop color as hex, or in its authored space (instead of hex; a read's stop `color` works as-is)"),
     opacity: z
       .number()
       .min(0)
@@ -198,9 +200,9 @@ export const setNodePropertiesInput = z.object({
 export const setSolidFillShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("The node ID to update"),
   hex: createHexColorSchema().optional().describe("Solid color as hex (e.g. '#FFAA00')"),
-  color: authoredColor
+  color: hexOrAuthoredColor
     .optional()
-    .describe("Solid color in its authored space, e.g. { space: 'OKLCH', l: 0.7, c: 0.12, h: 60 } (instead of hex)"),
+    .describe("Solid color as hex, or in its authored space, e.g. { space: 'OKLCH', l: 0.7, c: 0.12, h: 60 } (instead of hex; a read's `color` or `sourceColor` works as-is)"),
   opacity: z
     .number()
     .min(0)
@@ -1087,12 +1089,14 @@ export const applyAnimationStyleInput = applyAnimationStyleShape
   )
   .refine(
     (value) => value.type !== "CUSTOM" || (value.duration === undefined && value.props === undefined),
-    "a custom animation style takes only timelineOffset: its entries carry duration and props"
+    "a custom animation style takes only timelineOffset: duration and props belong to its entries (an entry's duration is its `duration` prop)"
   );
 
 const animationEntryInput = z.object({
   styleId: z.string().min(1).describe("A Figma animation style id (get_motion availableAnimationStyles)"),
-  props: animationProps.optional(),
+  props: animationProps
+    .optional()
+    .describe("The entry's props, its timing included: `duration` and `delay` are props (get_motion lists each style's props and defaults)"),
 });
 
 export const createAnimationStyleInput = z.object({
@@ -1148,7 +1152,9 @@ export const updateAnimationStyleInput = updateAnimationStyleShape
     "styleId is required for a style change (only moveFolder runs without one)"
   )
   .refine(
-    (v) => v.delete !== true || STYLE_EDITS.every((k) => k === "delete" || v[k] === undefined),
+    (v) =>
+      v.delete !== true ||
+      (v.moveFolder === undefined && STYLE_EDITS.every((k) => k === "delete" || v[k] === undefined)),
     "delete cannot be combined with other changes"
   );
 
@@ -1293,7 +1299,7 @@ export const applyStyleInput = applyStyleShape.refine(
 export const createPaintStyleShape = z.object({
   name: z.string().min(1).describe("Style name (slash-grouped)"),
   hex: createHexColorSchema().optional().describe("Solid color"),
-  color: authoredColor.optional().describe("Solid color in its authored space (instead of hex)"),
+  color: hexOrAuthoredColor.optional().describe("Solid color as hex, or in its authored space (instead of hex)"),
   opacity: z.number().min(0).max(1).optional(),
   gradientType: z.enum(["LINEAR", "RADIAL", "ANGULAR", "DIAMOND"]).optional(),
   gradientStops: z

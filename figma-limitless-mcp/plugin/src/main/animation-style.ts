@@ -26,7 +26,7 @@ export function animationConfig(
   if (kind === "CUSTOM") {
     if (params.duration !== undefined || params.props !== undefined) {
       throw new Error(
-        "A custom animation style takes only timelineOffset: its entries carry duration and props (change them with update_animation_style)."
+        "A custom animation style takes only timelineOffset: duration and props belong to its entries (an entry's duration is its `duration` prop, set when it is added). To change an entry, remove it and add it again with update_animation_style; the re-added entry goes last."
       );
     }
     return offset === undefined ? { type: "CUSTOM" } : { type: "CUSTOM", timelineOffset: offset };

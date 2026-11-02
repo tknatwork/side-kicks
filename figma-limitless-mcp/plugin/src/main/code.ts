@@ -473,11 +473,25 @@ const colorInputOf = (value: unknown, field: string): ColorInput => {
 
 // figma.util converts an authored colour and carries it as sourceColor; it
 // validates the components itself (ranges in the server's authoredColor).
+// Update 141 returns sourceColor for all six spaces (checked live 2026-11-02),
+// so a result without one is an older build that ignored the space.
+const authored = <T extends { sourceColor?: ColorWithColorSpace }>(
+  converted: T,
+  color: ColorWithColorSpace
+): T => {
+  if (!converted.sourceColor) {
+    throw new Error(
+      `This Figma build ignored the ${color.space} colour space: it predates Plugin API Update 141 (October 2026). Update Figma Desktop, or pass hex.`
+    );
+  }
+  return converted;
+};
+
 const toRgb = (color: ColorInput): RGB =>
-  typeof color === "string" ? parseHexColor(color) : figma.util.rgb(color);
+  typeof color === "string" ? parseHexColor(color) : authored(figma.util.rgb(color), color);
 
 const toRgba = (color: ColorInput, alpha: number): RGBA => {
-  if (typeof color !== "string") return figma.util.rgba(color, alpha);
+  if (typeof color !== "string") return authored(figma.util.rgba(color, alpha), color);
   const rgb = parseHexColor(color);
   return { r: rgb.r, g: rgb.g, b: rgb.b, a: alpha };
 };
@@ -4159,19 +4173,24 @@ const handleRequest = async (
             }
           }
         }
-        // Update 140: the file's own custom styles (Design only; older builds lack the API).
-        const customAnimationStyles =
-          figma.editorType === "figma" &&
-          typeof figma.getLocalCustomAnimationStylesAsync === "function"
-            ? toSerializableResult(
-                (await figma.getLocalCustomAnimationStylesAsync()).map(describeCustomAnimationStyle),
-                "get_motion"
-              )
-            : undefined;
+        // Update 140: the file's own custom styles. Only creating and moving them
+        // is Design-only, so they are listed in any editor; older builds lack the API.
+        let customAnimationStyles: unknown;
+        let customAnimationStylesError: string | undefined;
+        if (typeof figma.getLocalCustomAnimationStylesAsync === "function") {
+          try {
+            customAnimationStyles = toSerializableResult(
+              (await figma.getLocalCustomAnimationStylesAsync()).map(describeCustomAnimationStyle),
+              "get_motion"
+            );
+          } catch (err) {
+            customAnimationStylesError = err instanceof Error ? err.message : String(err);
+          }
+        }
         return {
           type: request.type,
           requestId: request.requestId,
-          data: { availableAnimationStyles: styles, customAnimationStyles, nodes },
+          data: { availableAnimationStyles: styles, customAnimationStyles, customAnimationStylesError, nodes },
         };
       }
       case "apply_animation_style": {
@@ -4273,9 +4292,50 @@ const handleRequest = async (
       case "update_animation_style": {
         requireCustomAnimationStyles(request.type);
         const params = request.params ?? {};
-        // Steps run in this order and are not atomic: a failure names what already landed.
+        // Steps run in the order the tool documents — rename, describe, remove
+        // entries, add entries, moveAfter, then moveFolder (a rename can create
+        // the folder it moves) — and are not atomic: a failure names what landed.
         const applied: string[] = [];
         try {
+          if (params.delete === true && params.moveFolder !== undefined) {
+            throw new Error("delete cannot be combined with other changes");
+          }
+          let style: CustomAnimationStyle | undefined;
+          if (typeof params.styleId === "string") {
+            style = await localCustomAnimationStyle(params.styleId);
+            if (params.delete === true) {
+              style.remove();
+              return {
+                type: request.type,
+                requestId: request.requestId,
+                data: { styleId: params.styleId, deleted: true, applied: ["deleted"] },
+              };
+            }
+            if (typeof params.name === "string") {
+              style.name = params.name;
+              applied.push("renamed");
+            }
+            if (typeof params.description === "string") {
+              style.description = params.description;
+              applied.push("described");
+            }
+            for (const id of Array.isArray(params.removeEntryIds) ? params.removeEntryIds : []) {
+              style.removeAnimationEntry(String(id));
+              applied.push(`removed entry ${String(id)}`);
+            }
+            for (const entry of animationEntries(params.addEntries, "addEntries")) {
+              await style.addAnimationEntryAsync(entry.styleId, entry.props);
+              applied.push(`added ${entry.styleId}`);
+            }
+            if (params.moveAfter !== undefined) {
+              const reference =
+                params.moveAfter === null
+                  ? null
+                  : await localCustomAnimationStyle(String(params.moveAfter));
+              figma.moveLocalCustomAnimationStyleAfter(style, reference);
+              applied.push(reference ? `moved after ${reference.id}` : "moved first");
+            }
+          }
           if (params.moveFolder !== undefined) {
             const move = params.moveFolder as { folder?: unknown; after?: unknown };
             if (typeof move.folder !== "string" || !(typeof move.after === "string" || move.after === null)) {
@@ -4284,50 +4344,17 @@ const handleRequest = async (
             figma.moveLocalCustomAnimationFolderAfter(move.folder, move.after);
             applied.push(`moved folder ${move.folder}`);
           }
-          if (typeof params.styleId !== "string") {
-            if (applied.length === 0) throw new Error("styleId is required (or moveFolder alone)");
-            return { type: request.type, requestId: request.requestId, data: { applied } };
-          }
-          const style = await localCustomAnimationStyle(params.styleId);
-          if (params.delete === true) {
-            style.remove();
-            applied.push("deleted");
-            return {
-              type: request.type,
-              requestId: request.requestId,
-              data: { styleId: params.styleId, deleted: true, applied },
-            };
-          }
-          if (typeof params.name === "string") {
-            style.name = params.name;
-            applied.push("renamed");
-          }
-          if (typeof params.description === "string") {
-            style.description = params.description;
-            applied.push("described");
-          }
-          for (const id of Array.isArray(params.removeEntryIds) ? params.removeEntryIds : []) {
-            style.removeAnimationEntry(String(id));
-            applied.push(`removed entry ${String(id)}`);
-          }
-          for (const entry of animationEntries(params.addEntries, "addEntries")) {
-            await style.addAnimationEntryAsync(entry.styleId, entry.props);
-            applied.push(`added ${entry.styleId}`);
-          }
-          if (params.moveAfter !== undefined) {
-            const reference =
-              params.moveAfter === null
-                ? null
-                : await localCustomAnimationStyle(String(params.moveAfter));
-            figma.moveLocalCustomAnimationStyleAfter(style, reference);
-            applied.push(reference ? `moved after ${reference.id}` : "moved first");
+          if (applied.length === 0) {
+            throw new Error("nothing to update: set a style change (with styleId) or moveFolder");
           }
           return {
             type: request.type,
             requestId: request.requestId,
             data: {
               applied,
-              style: toSerializableResult(describeCustomAnimationStyle(style), request.type),
+              ...(style
+                ? { style: toSerializableResult(describeCustomAnimationStyle(style), request.type) }
+                : {}),
             },
           };
         } catch (err) {
