@@ -40,10 +40,22 @@ type SerializedImagePaint = {
   opacity?: number;
 };
 
+// An applied shader (Config 2026 beta). `shaderId` is the id apply_shader takes;
+// `propertyMetadata` (typings 1.141.0) names each property's type and default.
+type SerializedShader = {
+  type: "SHADER";
+  shaderId: string;
+  properties?: { [defId: string]: ShaderPropertyValue };
+  propertyMetadata?: { [defId: string]: ShaderPropertyDefinition };
+};
+
+type SerializedShaderPaint = SerializedShader & { opacity?: number; blendMode?: string };
+
 type SerializedPaint =
   | SerializedSolidPaint
   | SerializedGradientPaint
-  | SerializedImagePaint;
+  | SerializedImagePaint
+  | SerializedShaderPaint;
 
 // --- Serialized effect types ---
 type SerializedShadowEffect = {
@@ -62,7 +74,7 @@ type SerializedBlurEffect = {
   radius: number;
 };
 
-type SerializedEffect = SerializedShadowEffect | SerializedBlurEffect;
+type SerializedEffect = SerializedShadowEffect | SerializedBlurEffect | SerializedShader;
 
 // --- Serialized auto-layout ---
 type SerializedAutoLayout = {
@@ -153,6 +165,13 @@ const toHex = (color: RGB): string => {
 const sourceOf = (color: RGBWithColorSpace | RGBAWithColorSpace) =>
   color.sourceColor ? { sourceColor: color.sourceColor } : {};
 
+const serializeShader = (shader: ShaderPaint | ShaderEffect): SerializedShader => ({
+  type: "SHADER",
+  shaderId: shader.id,
+  ...(shader.properties ? { properties: shader.properties } : {}),
+  ...(shader.propertyMetadata ? { propertyMetadata: shader.propertyMetadata } : {}),
+});
+
 const serializeGradientStops = (stops: readonly ColorStop[]): SerializedGradientStop[] =>
   stops.map((stop) => ({
     color: toHex(stop.color),
@@ -202,6 +221,8 @@ const serializePaints = (
               opacity: paint.opacity,
             },
           ];
+        case "SHADER":
+          return [{ ...serializeShader(paint), opacity: paint.opacity, blendMode: paint.blendMode }];
         default:
           return [];
       }
@@ -230,6 +251,8 @@ const serializeEffects = (effects: readonly Effect[]): SerializedEffect[] =>
         case "LAYER_BLUR":
         case "BACKGROUND_BLUR":
           return [{ type: effect.type, radius: effect.radius }];
+        case "SHADER":
+          return [serializeShader(effect)];
         default:
           return [];
       }

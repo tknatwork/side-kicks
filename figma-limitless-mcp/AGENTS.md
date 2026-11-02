@@ -104,6 +104,9 @@ config each kind takes, entry parsing, the read-back) and are Design-only
 its error names the steps that already landed. Verified live 2026-11-02 (read-only): the four
 Update 140 functions exist, `figmaAnimationStyles()` lists 7 styles with their props.
 
+The serializer reads applied shaders (paint and effect) as `{ type: "SHADER", shaderId, properties,
+propertyMetadata }`; before 2026-11-02 its `default: return []` dropped them.
+
 ## Design-system skills + structure linter (closed loop)
 
 Two offline halves that answer "how should the tokens be derived?" and "is the

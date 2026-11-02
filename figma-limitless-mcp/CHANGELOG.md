@@ -30,6 +30,13 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 - `@figma/plugin-typings` 1.141.0 → 1.142.0 (Update 141).
 
+### Fixed
+
+- **Reads now show applied shaders.** A shader fill, stroke or effect was dropped from `get_node` /
+  `get_document` output, so a node with one read as if it had none. It now reads as
+  `{ type: "SHADER", shaderId, properties, propertyMetadata }`; `shaderId` is the id `apply_shader`
+  takes, and `propertyMetadata` (typings 1.141.0) names each property's type and default.
+
 ### Security
 
 - **The :1994 server no longer accepts tool calls from other devices or from web pages.** It

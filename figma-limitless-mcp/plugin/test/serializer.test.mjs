@@ -63,3 +63,18 @@ test("a colour authored in a colour space reads back with its sourceColor; other
   assert.equal("sourceColor" in fills[2].gradientStops[1], false);
   assert.deepEqual(effects[0].sourceColor, oklch);
 });
+
+test("an applied shader reads back with its properties and their metadata, instead of vanishing", () => {
+  const metadata = { amount: { name: "Amount", type: "NUMBER", defaultValue: 0.5 }, tint: { name: "Tint", type: "COLOR" } };
+  const node = {
+    ...frame("1:10"),
+    fills: [{ type: "SHADER", id: "shader:grain", visible: true, opacity: 0.8, blendMode: "NORMAL", properties: { amount: 0.3 }, propertyMetadata: metadata }],
+    effects: [
+      { type: "SHADER", id: "shader:glow", visible: true },
+      { type: "SHADER", id: "shader:hidden", visible: false },
+    ],
+  };
+  const { fills, effects } = serializeNode(node).styles;
+  assert.deepEqual(fills, [{ type: "SHADER", shaderId: "shader:grain", properties: { amount: 0.3 }, propertyMetadata: metadata, opacity: 0.8, blendMode: "NORMAL" }]);
+  assert.deepEqual(effects, [{ type: "SHADER", shaderId: "shader:glow" }], "no empty properties, hidden effects skipped");
+});
