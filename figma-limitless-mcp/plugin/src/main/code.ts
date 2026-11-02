@@ -11,6 +11,12 @@ import {
   type ComposedColorInput,
 } from "./composed-color";
 import { movePageTo } from "./pages";
+import {
+  animationConfig,
+  animationEntries,
+  describeCustomAnimationStyle,
+  type AnimationKind,
+} from "./animation-style";
 
 type RequestType =
   | "get_document"
@@ -65,6 +71,8 @@ type RequestType =
   | "get_reactions"
   | "get_motion"
   | "apply_animation_style"
+  | "create_animation_style"
+  | "update_animation_style"
   | "list_shaders"
   | "apply_shader"
   | "set_reactions"
@@ -452,15 +460,51 @@ const parseHexColor = (hex: string): RGB => {
   };
 };
 
+/** A hex string, or a colour in its authored space (Update 141), which Figma keeps as `sourceColor`. */
+type ColorInput = string | ColorWithColorSpace;
+
+const colorInputOf = (value: unknown, field: string): ColorInput => {
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && typeof (value as { space?: unknown }).space === "string") {
+    return value as ColorWithColorSpace;
+  }
+  throw new Error(`${field} must be a hex string or a { space, … } colour`);
+};
+
+// figma.util converts an authored colour and carries it as sourceColor; it
+// validates the components itself (ranges in the server's authoredColor).
+// Update 141 returns sourceColor for all six spaces (checked live 2026-11-02),
+// so a result without one is an older build that ignored the space.
+const authored = <T extends { sourceColor?: ColorWithColorSpace }>(
+  converted: T,
+  color: ColorWithColorSpace
+): T => {
+  if (!converted.sourceColor) {
+    throw new Error(
+      `This Figma build ignored the ${color.space} colour space: it predates Plugin API Update 141 (October 2026). Update Figma Desktop, or pass hex.`
+    );
+  }
+  return converted;
+};
+
+const toRgb = (color: ColorInput): RGB =>
+  typeof color === "string" ? parseHexColor(color) : authored(figma.util.rgb(color), color);
+
+const toRgba = (color: ColorInput, alpha: number): RGBA => {
+  if (typeof color !== "string") return authored(figma.util.rgba(color, alpha), color);
+  const rgb = parseHexColor(color);
+  return { r: rgb.r, g: rgb.g, b: rgb.b, a: alpha };
+};
+
 const setSolidFill = (
   node: SceneNode,
-  fillHex: string,
+  fill: ColorInput,
   fillOpacity?: number,
   target: "fill" | "stroke" = "fill"
 ): void => {
   const paint: SolidPaint = {
     type: "SOLID",
-    color: parseHexColor(fillHex),
+    color: toRgb(fill),
     opacity: fillOpacity ?? 1,
   };
 
@@ -478,7 +522,7 @@ const setSolidFill = (
   (node as GeometryMixin & { fills: ReadonlyArray<Paint> }).fills = [paint];
 };
 
-type GradientStopInput = { position: number; hex: string; opacity?: number };
+type GradientStopInput = { position: number; hex?: string; color?: unknown; opacity?: number };
 type GradientPaintType =
   | "GRADIENT_LINEAR"
   | "GRADIENT_RADIAL"
@@ -491,12 +535,11 @@ const buildGradientPaint = (
   transform: Transform | undefined,
   opacity: number | undefined
 ): GradientPaint => {
-  const colorStops = stops.map((stop) => {
-    const rgb = parseHexColor(stop.hex);
-    return {
-      position: stop.position,
-      color: { r: rgb.r, g: rgb.g, b: rgb.b, a: stop.opacity ?? 1 },
-    };
+  const colorStops = stops.map((stop, i) => {
+    const color =
+      stop.color !== undefined ? colorInputOf(stop.color, `gradientStops[${i}].color`) : stop.hex;
+    if (color === undefined) throw new Error(`gradientStops[${i}] needs hex or color`);
+    return { position: stop.position, color: toRgba(color, stop.opacity ?? 1) };
   });
   // Identity transform: [[1,0,0],[0,1,0]] (Figma-default, horizontal L→R).
   const gradientTransform: Transform = transform ?? [
@@ -1187,9 +1230,7 @@ const buildEffectsFromParams = (rawEffects: unknown): Effect[] => {
   return (rawEffects as Array<Record<string, unknown>>).map((raw, i): Effect => {
     const type = raw.type;
     if (type === "DROP_SHADOW" || type === "INNER_SHADOW") {
-      if (typeof raw.color !== "string") {
-        throw new Error(`effects[${i}].color must be a hex string`);
-      }
+      const color = colorInputOf(raw.color, `effects[${i}].color`);
       const offset = raw.offset as { x?: unknown; y?: unknown } | undefined;
       if (!offset || typeof offset.x !== "number" || typeof offset.y !== "number") {
         throw new Error(`effects[${i}].offset must be {x,y} numbers`);
@@ -1197,11 +1238,10 @@ const buildEffectsFromParams = (rawEffects: unknown): Effect[] => {
       if (typeof raw.radius !== "number") {
         throw new Error(`effects[${i}].radius must be a number`);
       }
-      const rgb = parseHexColor(raw.color);
       const alpha = typeof raw.opacity === "number" ? raw.opacity : 1;
       return {
         type,
-        color: { r: rgb.r, g: rgb.g, b: rgb.b, a: alpha },
+        color: toRgba(color, alpha),
         offset: { x: offset.x, y: offset.y },
         radius: raw.radius,
         spread: typeof raw.spread === "number" ? raw.spread : 0,
@@ -1291,6 +1331,44 @@ const requireMotionApi = (): MotionAPI => {
   return figma.motion;
 };
 
+/** Custom animation styles (Update 140) are a Figma Design API. */
+const requireCustomAnimationStyles = (toolName: RequestType): void => {
+  if (typeof figma.createCustomAnimationStyle !== "function") {
+    throw new Error(
+      `${toolName}: custom animation styles need Plugin API Update 140 (September 2026). Update Figma Desktop.`
+    );
+  }
+  if (figma.editorType !== "figma") {
+    throw new Error(
+      `${toolName} runs in Figma Design only — custom animation styles are a Design API (current editor: ${figma.editorType}).`
+    );
+  }
+};
+
+/** A local, editable custom animation style by id. */
+const localCustomAnimationStyle = async (styleId: string): Promise<CustomAnimationStyle> => {
+  const style = await figma.getStyleByIdAsync(styleId);
+  if (!style || style.type !== "CUSTOM_ANIMATION") {
+    throw new Error(`No custom animation style ${styleId} (list them with get_motion)`);
+  }
+  if (style.remote) {
+    throw new Error(`Custom animation style ${styleId} comes from a library; edit it in its own file`);
+  }
+  return style;
+};
+
+/** FIGMA or CUSTOM: as requested, else CUSTOM when the id names a custom animation style. */
+const animationKindOf = async (styleId: string, requested: unknown): Promise<AnimationKind> => {
+  if (requested === "FIGMA" || requested === "CUSTOM") return requested;
+  try {
+    const style = await figma.getStyleByIdAsync(styleId);
+    if (style && style.type === "CUSTOM_ANIMATION") return "CUSTOM";
+  } catch {
+    // A Figma animation style id ("Position") is not a style id.
+  }
+  return "FIGMA";
+};
+
 /** primaryAxisAlignItems values (typings 1.141.0; SPACE_EVENLY/SPACE_AROUND are
  * Plugin API Update 137). set_auto_layout skips values missing from this list,
  * so the type assertion below fails `pnpm typecheck` — and `pnpm build`, which
@@ -1338,6 +1416,8 @@ const EDIT_REQUEST_TYPES = new Set<RequestType>([
   // set_annotation deliberately NOT gated: annotations are Dev Mode's
   // legitimate write surface. dev_resources likewise.
   "apply_animation_style",
+  "create_animation_style",
+  "update_animation_style",
   "apply_shader",
   "set_reactions",
   "set_flow_starting_point",
@@ -2160,14 +2240,20 @@ const handleRequest = async (
         const node = await getSceneNodeById(nodeId);
         const params = request.params ?? {};
 
-        if (typeof params.hex !== "string") {
-          throw new Error("hex is required");
+        const color =
+          params.color !== undefined
+            ? colorInputOf(params.color, "color")
+            : typeof params.hex === "string"
+              ? params.hex
+              : undefined;
+        if (color === undefined) {
+          throw new Error("hex or color is required");
         }
         const target = params.target === "stroke" ? "stroke" : "fill";
         const opacity =
           typeof params.opacity === "number" ? params.opacity : undefined;
 
-        setSolidFill(node, params.hex, opacity, target);
+        setSolidFill(node, color, opacity, target);
 
         return {
           type: request.type,
@@ -2177,7 +2263,7 @@ const handleRequest = async (
             nodeName: node.name,
             applied: {
               target,
-              hex: params.hex,
+              ...(typeof color === "string" ? { hex: color } : { color }),
               opacity: opacity ?? 1,
             },
           },
@@ -4087,10 +4173,24 @@ const handleRequest = async (
             }
           }
         }
+        // Update 140: the file's own custom styles. Only creating and moving them
+        // is Design-only, so they are listed in any editor; older builds lack the API.
+        let customAnimationStyles: unknown;
+        let customAnimationStylesError: string | undefined;
+        if (typeof figma.getLocalCustomAnimationStylesAsync === "function") {
+          try {
+            customAnimationStyles = toSerializableResult(
+              (await figma.getLocalCustomAnimationStylesAsync()).map(describeCustomAnimationStyle),
+              "get_motion"
+            );
+          } catch (err) {
+            customAnimationStylesError = err instanceof Error ? err.message : String(err);
+          }
+        }
         return {
           type: request.type,
           requestId: request.requestId,
-          data: { availableAnimationStyles: styles, nodes },
+          data: { availableAnimationStyles: styles, customAnimationStyles, customAnimationStylesError, nodes },
         };
       }
       case "apply_animation_style": {
@@ -4135,22 +4235,134 @@ const handleRequest = async (
         if (typeof params.styleId !== "string") {
           throw new Error("styleId is required (discover via get_motion)");
         }
-        const config: Record<string, unknown> = {};
-        if (typeof params.duration === "number") config.duration = params.duration;
-        if (typeof params.timelineOffset === "number") {
-          config.timelineOffset = params.timelineOffset;
-        }
+        const kind = await animationKindOf(params.styleId, params.type);
         const appliedStyleInstanceId = node.applyAnimationStyle(
           params.styleId,
-          Object.keys(config).length > 0
-            ? (config as AnimationStyleConfiguration)
-            : undefined
+          animationConfig(kind, params)
         );
         return {
           type: request.type,
           requestId: request.requestId,
-          data: { nodeId: node.id, appliedStyleInstanceId },
+          data: { nodeId: node.id, appliedStyleInstanceId, kind },
         };
+      }
+      case "create_animation_style": {
+        requireCustomAnimationStyles(request.type);
+        const params = request.params ?? {};
+        const { name } = params;
+        if (typeof name !== "string" || !name) {
+          throw new Error("name is required for create_animation_style");
+        }
+        const entries = animationEntries(params.entries);
+        if (params.skipIfExists === true) {
+          const existing = (await figma.getLocalCustomAnimationStylesAsync()).find(
+            (s) => s.name === name
+          );
+          if (existing) {
+            return {
+              type: request.type,
+              requestId: request.requestId,
+              data: {
+                existed: true,
+                style: toSerializableResult(describeCustomAnimationStyle(existing), request.type),
+              },
+            };
+          }
+        }
+        const style = figma.createCustomAnimationStyle();
+        try {
+          style.name = name;
+          if (typeof params.description === "string") style.description = params.description;
+          for (const entry of entries) {
+            await style.addAnimationEntryAsync(entry.styleId, entry.props);
+          }
+        } catch (err) {
+          style.remove();
+          throw err;
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            existed: false,
+            style: toSerializableResult(describeCustomAnimationStyle(style), request.type),
+          },
+        };
+      }
+      case "update_animation_style": {
+        requireCustomAnimationStyles(request.type);
+        const params = request.params ?? {};
+        // Steps run in the order the tool documents — rename, describe, remove
+        // entries, add entries, moveAfter, then moveFolder (a rename can create
+        // the folder it moves) — and are not atomic: a failure names what landed.
+        const applied: string[] = [];
+        try {
+          if (params.delete === true && params.moveFolder !== undefined) {
+            throw new Error("delete cannot be combined with other changes");
+          }
+          let style: CustomAnimationStyle | undefined;
+          if (typeof params.styleId === "string") {
+            style = await localCustomAnimationStyle(params.styleId);
+            if (params.delete === true) {
+              style.remove();
+              return {
+                type: request.type,
+                requestId: request.requestId,
+                data: { styleId: params.styleId, deleted: true, applied: ["deleted"] },
+              };
+            }
+            if (typeof params.name === "string") {
+              style.name = params.name;
+              applied.push("renamed");
+            }
+            if (typeof params.description === "string") {
+              style.description = params.description;
+              applied.push("described");
+            }
+            for (const id of Array.isArray(params.removeEntryIds) ? params.removeEntryIds : []) {
+              style.removeAnimationEntry(String(id));
+              applied.push(`removed entry ${String(id)}`);
+            }
+            for (const entry of animationEntries(params.addEntries, "addEntries")) {
+              await style.addAnimationEntryAsync(entry.styleId, entry.props);
+              applied.push(`added ${entry.styleId}`);
+            }
+            if (params.moveAfter !== undefined) {
+              const reference =
+                params.moveAfter === null
+                  ? null
+                  : await localCustomAnimationStyle(String(params.moveAfter));
+              figma.moveLocalCustomAnimationStyleAfter(style, reference);
+              applied.push(reference ? `moved after ${reference.id}` : "moved first");
+            }
+          }
+          if (params.moveFolder !== undefined) {
+            const move = params.moveFolder as { folder?: unknown; after?: unknown };
+            if (typeof move.folder !== "string" || !(typeof move.after === "string" || move.after === null)) {
+              throw new Error("moveFolder needs { folder, after } — after is a folder name or null (first)");
+            }
+            figma.moveLocalCustomAnimationFolderAfter(move.folder, move.after);
+            applied.push(`moved folder ${move.folder}`);
+          }
+          if (applied.length === 0) {
+            throw new Error("nothing to update: set a style change (with styleId) or moveFolder");
+          }
+          return {
+            type: request.type,
+            requestId: request.requestId,
+            data: {
+              applied,
+              ...(style
+                ? { style: toSerializableResult(describeCustomAnimationStyle(style), request.type) }
+                : {}),
+            },
+          };
+        } catch (err) {
+          if (applied.length === 0) throw err;
+          throw new Error(
+            `${err instanceof Error ? err.message : String(err)} — already applied: ${applied.join(", ")}`
+          );
+        }
       }
       case "list_shaders": {
         if (!("listAvailableShaders" in figma)) {
@@ -4636,14 +4848,16 @@ const handleRequest = async (
             undefined,
             typeof params.opacity === "number" ? params.opacity : undefined
           );
-        } else if (typeof params.hex === "string") {
+        } else if (params.color !== undefined || typeof params.hex === "string") {
           paint = {
             type: "SOLID",
-            color: parseHexColor(params.hex),
+            color: toRgb(
+              params.color !== undefined ? colorInputOf(params.color, "color") : (params.hex as string)
+            ),
             opacity: typeof params.opacity === "number" ? params.opacity : 1,
           };
         } else {
-          throw new Error("create_paint_style needs hex or gradientStops");
+          throw new Error("create_paint_style needs hex, color or gradientStops");
         }
         const style = figma.createPaintStyle();
         try {

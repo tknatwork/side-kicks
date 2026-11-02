@@ -29,6 +29,7 @@ import {
   createTextInput,
   setNodePropertiesInput,
   setGradientFillInput,
+  setSolidFillShape,
   setSolidFillInput,
   setEffectsShape,
   setEffectsInput,
@@ -71,6 +72,9 @@ import {
   getMotionInput,
   applyAnimationStyleShape,
   applyAnimationStyleInput,
+  createAnimationStyleInput,
+  updateAnimationStyleShape,
+  updateAnimationStyleInput,
   listShadersInput,
   applyShaderInput,
   setReactionsInput,
@@ -622,9 +626,12 @@ export function registerTools(
 
   server.tool(
     "set_solid_fill",
-    "Replace a node's fill (or stroke) with a single solid paint. Provide a hex color and optional paint opacity. Use set_gradient_fill for gradient paints.",
-    setSolidFillInput.shape,
-    async ({ nodeId, fileKey, ...params }): Promise<ToolResult> => {
+    "Replace a node's fill (or stroke) with a single solid paint. Provide a hex color, or a color in its authored space (OKLCH, Display P3, HSL, HSB, OKLab, sRGB — kept as the paint's sourceColor, Plugin API Update 141), and optional paint opacity. Use set_gradient_fill for gradient paints.",
+    setSolidFillShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(setSolidFillInput, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeId, fileKey, ...params } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("set_solid_fill", [nodeId], params, fileKey)
       );
@@ -633,7 +640,7 @@ export function registerTools(
 
   server.tool(
     "set_gradient_fill",
-    "Replace a node's fill (or stroke) with a gradient paint. Provide ordered stops (position 0..1, hex color, optional alpha) and an optional 2x3 gradientTransform matching Figma's gradientTransform format. Useful for setting linear/radial/angular/diamond gradients programmatically.",
+    "Replace a node's fill (or stroke) with a gradient paint. Provide ordered stops (position 0..1, a hex color or a color in its authored space, optional alpha) and an optional 2x3 gradientTransform matching Figma's gradientTransform format. Useful for setting linear/radial/angular/diamond gradients programmatically.",
     setGradientFillInput.shape,
     async ({ nodeId, fileKey, ...params }): Promise<ToolResult> => {
       return renderResponse(() =>
@@ -644,7 +651,7 @@ export function registerTools(
 
   server.tool(
     "set_effects",
-    "Replace a node's effects list (drop/inner shadows, layer/background blurs). Pass an empty array to clear all effects. Each entry mirrors the shape returned by get_node's `effects` field.",
+    "Replace a node's effects list (drop/inner shadows, layer/background blurs). Pass an empty array to clear all effects. Each shadow or blur entry mirrors the shape returned by get_node's `effects` field (shadow `color` as hex or an authored colour); a SHADER effect get_node reports is applied with apply_shader, not here.",
     setEffectsShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(setEffectsInput, args);
@@ -1245,7 +1252,7 @@ export function registerTools(
 
   server.tool(
     "get_motion",
-    "Read Figma Motion (Config 2026 beta): available animation styles (incl. spring/bezier easings — easing variables surface here), plus per-node applied styles, manual keyframe tracks, and timelines. Errors clearly if the running Figma predates the Motion beta. Official MCP has motion READS only via rate-limited get_motion_context; this is local and unthrottled.",
+    "Read Figma Motion (Config 2026 beta): available animation styles (incl. spring/bezier easings — easing variables surface here) with their props and defaults, the file's custom animation styles and their entries (Figma Design, Plugin API Update 140), plus per-node applied styles (type FIGMA or CUSTOM), manual keyframe tracks, and timelines. Errors clearly if the running Figma predates the Motion beta. Official MCP has motion READS only via rate-limited get_motion_context; this is local and unthrottled.",
     getMotionInput.shape,
     async ({ nodeIds, fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
@@ -1256,7 +1263,7 @@ export function registerTools(
 
   server.tool(
     "apply_animation_style",
-    "WRITE Figma Motion animations — the official MCP cannot: apply an animation style to a node (optional duration/timelineOffset overrides; returns the applied instance id), or remove one (remove:true + appliedStyleInstanceId). Discover style ids via get_motion. Beta API — errors clearly on older Figma versions.",
+    "WRITE Figma Motion animations — the official MCP cannot: apply a Figma animation style (optional duration/timelineOffset/props overrides) or a custom animation style (timelineOffset only — its entries carry the rest) to a node; type is detected from styleId when omitted. Returns the applied instance id. Remove one with remove:true + appliedStyleInstanceId. Discover style ids via get_motion. Beta API — errors clearly on older Figma versions.",
     applyAnimationStyleShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(applyAnimationStyleInput, args);
@@ -1264,6 +1271,34 @@ export function registerTools(
       const { nodeId, fileKey, ...params } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("apply_animation_style", [nodeId], params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_animation_style",
+    "Create a local custom animation style (Plugin API Update 140, Figma Design only): a named, reusable sequence of Figma animations (entries: styleId + optional props, from get_motion), applied with apply_animation_style. skipIfExists for idempotent reruns. If adding an entry fails, the new style is removed again.",
+    createAnimationStyleInput.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(toolInputSchemas.create_animation_style, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("create_animation_style", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "update_animation_style",
+    "Change a local custom animation style (Figma Design only): rename, describe, remove entries (by entries[].id), append entries, reorder it (moveAfter a style id, or null for first), then reorder a folder of them (moveFolder, which needs no styleId). Steps run in that order and are not atomic: an error names what already landed — read with get_motion before retrying. An entry cannot be edited in place: remove it and add it again (it goes last). delete runs alone.",
+    updateAnimationStyleShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(updateAnimationStyleInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("update_animation_style", undefined, params, fileKey)
       );
     }
   );

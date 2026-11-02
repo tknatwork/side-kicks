@@ -97,6 +97,8 @@ export const JOURNALED_TOOLS = new Set([
   "set_grid_layout",
   "set_annotation",
   "apply_animation_style",
+  "create_animation_style",
+  "update_animation_style",
   "apply_shader",
   "set_reactions",
   "set_flow_starting_point",

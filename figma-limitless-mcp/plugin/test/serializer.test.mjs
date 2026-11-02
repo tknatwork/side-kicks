@@ -38,3 +38,43 @@ test("FigJam stickies, shapes, connectors, code blocks and tables carry their co
   assert.deepEqual([table.table.rows, table.table.cells.length, table.table.truncated], [300, 200, true]);
   assert.deepEqual(table.table.cells[1], ["1,0", "1,1"]);
 });
+
+test("a colour authored in a colour space reads back with its sourceColor; others are unchanged", () => {
+  const oklch = { space: "OKLCH", l: 0.7, c: 0.12, h: 60 };
+  const p3 = { space: "DISPLAY_P3", r: 1, g: 0.2, b: 0.1 };
+  const node = {
+    ...frame("1:9"),
+    fills: [
+      { type: "SOLID", visible: true, opacity: 1, color: { r: 0.83, g: 0.55, b: 0.3, sourceColor: oklch } },
+      { type: "SOLID", visible: true, opacity: 1, color: { r: 0, g: 0, b: 0 } },
+      { type: "GRADIENT_LINEAR", visible: true, opacity: 1, gradientTransform: [[1, 0, 0], [0, 1, 0]], gradientStops: [
+        { position: 0, color: { r: 1, g: 0, b: 0, a: 1, sourceColor: p3 } },
+        { position: 1, color: { r: 0, g: 0, b: 1, a: 0.5 } },
+      ] },
+    ],
+    effects: [
+      { type: "DROP_SHADOW", visible: true, color: { r: 0, g: 0, b: 0, a: 0.25, sourceColor: oklch }, offset: { x: 0, y: 2 }, radius: 4, spread: 0, blendMode: "NORMAL" },
+    ],
+  };
+  const { fills, effects } = serializeNode(node).styles;
+  assert.deepEqual(fills[0], { type: "SOLID", color: "#d48c4d", sourceColor: oklch, opacity: 1 });
+  assert.deepEqual(fills[1], { type: "SOLID", color: "#000000", opacity: 1 }, "no sourceColor key at all");
+  assert.deepEqual(fills[2].gradientStops[0].sourceColor, p3);
+  assert.equal("sourceColor" in fills[2].gradientStops[1], false);
+  assert.deepEqual(effects[0].sourceColor, oklch);
+});
+
+test("an applied shader reads back with its properties and their metadata, instead of vanishing", () => {
+  const metadata = { amount: { name: "Amount", type: "NUMBER", defaultValue: 0.5 }, tint: { name: "Tint", type: "COLOR" } };
+  const node = {
+    ...frame("1:10"),
+    fills: [{ type: "SHADER", id: "shader:grain", visible: true, opacity: 0.8, blendMode: "NORMAL", properties: { amount: 0.3 }, propertyMetadata: metadata }],
+    effects: [
+      { type: "SHADER", id: "shader:glow", visible: true },
+      { type: "SHADER", id: "shader:hidden", visible: false },
+    ],
+  };
+  const { fills, effects } = serializeNode(node).styles;
+  assert.deepEqual(fills, [{ type: "SHADER", shaderId: "shader:grain", properties: { amount: 0.3 }, propertyMetadata: metadata, opacity: 0.8, blendMode: "NORMAL" }]);
+  assert.deepEqual(effects, [{ type: "SHADER", shaderId: "shader:glow" }], "no empty properties, hidden effects skipped");
+});

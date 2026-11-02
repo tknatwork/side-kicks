@@ -99,20 +99,53 @@ const fileKeyField = z
     "The fileKey of the Figma file to query. Required when multiple files are connected. Use list_files to see connected files."
   );
 
-const gradientStop = z.object({
-  position: z
-    .number()
-    .min(0)
-    .max(1)
-    .describe("Stop position from 0 (start of gradient) to 1 (end)"),
-  hex: createHexColorSchema().describe("Stop color as hex"),
-  opacity: z
-    .number()
-    .min(0)
-    .max(1)
-    .optional()
-    .describe("Optional per-stop alpha (default 1)"),
-});
+const unitInterval = z.number().min(0).max(1);
+const hueDegrees = z.number().finite();
+
+/**
+ * A colour in the space it was authored in (Plugin API Update 141). Figma keeps
+ * it as the paint's `sourceColor` and projects r/g/b for the document profile.
+ * Ranges are the ones Figma enforces (checked live 2026-11-02): r/g/b, s, l and
+ * OKLab/OKLCH lightness in 0..1, hue in degrees.
+ */
+const authoredColor = z
+  .discriminatedUnion("space", [
+    z.object({ space: z.literal("SRGB"), r: unitInterval, g: unitInterval, b: unitInterval }),
+    z.object({ space: z.literal("DISPLAY_P3"), r: unitInterval, g: unitInterval, b: unitInterval }),
+    z.object({ space: z.literal("HSL"), h: hueDegrees, s: unitInterval, l: unitInterval }),
+    z.object({ space: z.literal("HSB"), h: hueDegrees, s: unitInterval, b: unitInterval }),
+    z.object({ space: z.literal("OKLAB"), l: unitInterval, a: z.number().finite(), b: z.number().finite() }),
+    z.object({ space: z.literal("OKLCH"), l: unitInterval, c: z.number().min(0), h: hueDegrees }),
+  ])
+  .describe(
+    "A colour in its authored space, kept as the paint's sourceColor (Plugin API Update 141): { space: 'OKLCH', l, c, h } and likewise SRGB/DISPLAY_P3 (r,g,b), HSL (h,s,l), HSB (h,s,b), OKLAB (l,a,b). r/g/b, s, l and OKLab/OKLCH l are 0..1; hue in degrees."
+  );
+
+/** A hex string or an authored colour: where a field already took hex alone. */
+const hexOrAuthoredColor = z.union([createHexColorSchema(), authoredColor]);
+
+const exactlyOneColor = (v: { hex?: unknown; color?: unknown }) =>
+  (v.hex === undefined) !== (v.color === undefined);
+
+const gradientStop = z
+  .object({
+    position: z
+      .number()
+      .min(0)
+      .max(1)
+      .describe("Stop position from 0 (start of gradient) to 1 (end)"),
+    hex: createHexColorSchema().optional().describe("Stop color as hex"),
+    color: hexOrAuthoredColor
+      .optional()
+      .describe("Stop color as hex, or in its authored space (instead of hex; a read's stop `color` works as-is)"),
+    opacity: z
+      .number()
+      .min(0)
+      .max(1)
+      .optional()
+      .describe("Optional per-stop alpha (default 1)"),
+  })
+  .refine(exactlyOneColor, "each gradient stop needs hex or color (not both)");
 
 const gradientTransform = z
   .array(z.array(z.number()).length(3))
@@ -164,9 +197,12 @@ export const setNodePropertiesInput = z.object({
   fileKey: fileKeyField,
 });
 
-export const setSolidFillInput = z.object({
+export const setSolidFillShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("The node ID to update"),
-  hex: createHexColorSchema().describe("Solid color as hex (e.g. '#FFAA00')"),
+  hex: createHexColorSchema().optional().describe("Solid color as hex (e.g. '#FFAA00')"),
+  color: hexOrAuthoredColor
+    .optional()
+    .describe("Solid color as hex, or in its authored space, e.g. { space: 'OKLCH', l: 0.7, c: 0.12, h: 60 } (instead of hex; a read's `color` or `sourceColor` works as-is)"),
   opacity: z
     .number()
     .min(0)
@@ -179,6 +215,11 @@ export const setSolidFillInput = z.object({
     .describe("Apply to fills or strokes (default fill)"),
   fileKey: fileKeyField,
 });
+
+export const setSolidFillInput = setSolidFillShape.refine(
+  exactlyOneColor,
+  "set_solid_fill needs hex or color (not both)"
+);
 
 const blendMode = z.enum([
   "PASS_THROUGH",
@@ -204,7 +245,7 @@ const blendMode = z.enum([
 
 const shadowEffect = z.object({
   type: z.enum(["DROP_SHADOW", "INNER_SHADOW"]),
-  color: createHexColorSchema().describe("Shadow color as hex"),
+  color: hexOrAuthoredColor.describe("Shadow color as hex, or in its authored space"),
   opacity: z
     .number()
     .min(0)
@@ -238,9 +279,9 @@ const effectInput = z.object({
   type: z
     .enum(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"])
     .describe("Effect type"),
-  color: createHexColorSchema()
+  color: hexOrAuthoredColor
     .optional()
-    .describe("Required for shadow effects"),
+    .describe("Required for shadow effects: hex, or a colour in its authored space"),
   opacity: z
     .number()
     .min(0)
@@ -1004,14 +1045,32 @@ export const getMotionInput = z.object({
   fileKey: fileKeyField,
 });
 
+/** An animation prop override: string, number, boolean, an easing object or a variable alias. */
+const animationProps = z
+  .record(z.string(), z.unknown())
+  .describe(
+    "Prop overrides keyed by the style's prop names (get_motion lists each style's props with their defaults), e.g. { direction: 'right', distance: 80 }"
+  );
+
 export const applyAnimationStyleShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("Node to animate"),
   styleId: z
     .string()
     .optional()
-    .describe("Animation style id (discover via get_motion availableAnimationStyles)"),
-  duration: z.number().positive().optional().describe("Override duration in seconds"),
+    .describe(
+      "A Figma animation style id (get_motion availableAnimationStyles) or a custom animation style id (get_motion customAnimationStyles)"
+    ),
+  type: z
+    .enum(["FIGMA", "CUSTOM"])
+    .optional()
+    .describe("FIGMA or CUSTOM; omit to detect it from styleId (Plugin API Update 140)"),
+  duration: z
+    .number()
+    .positive()
+    .optional()
+    .describe("Override duration in seconds (Figma styles only)"),
   timelineOffset: z.number().min(0).optional().describe("Delay/offset in seconds"),
+  props: animationProps.optional(),
   remove: z.boolean().optional().describe("Remove instead of apply"),
   appliedStyleInstanceId: z
     .string()
@@ -1020,13 +1079,84 @@ export const applyAnimationStyleShape = z.object({
   fileKey: fileKeyField,
 });
 
-export const applyAnimationStyleInput = applyAnimationStyleShape.refine(
-  (value) =>
-    value.remove === true
-      ? value.appliedStyleInstanceId !== undefined || value.styleId !== undefined
-      : value.styleId !== undefined,
-  "apply needs styleId; remove needs appliedStyleInstanceId (or styleId)"
-);
+export const applyAnimationStyleInput = applyAnimationStyleShape
+  .refine(
+    (value) =>
+      value.remove === true
+        ? value.appliedStyleInstanceId !== undefined || value.styleId !== undefined
+        : value.styleId !== undefined,
+    "apply needs styleId; remove needs appliedStyleInstanceId (or styleId)"
+  )
+  .refine(
+    (value) => value.type !== "CUSTOM" || (value.duration === undefined && value.props === undefined),
+    "a custom animation style takes only timelineOffset: duration and props belong to its entries (an entry's duration is its `duration` prop)"
+  );
+
+const animationEntryInput = z.object({
+  styleId: z.string().min(1).describe("A Figma animation style id (get_motion availableAnimationStyles)"),
+  props: animationProps
+    .optional()
+    .describe("The entry's props, its timing included: `duration` and `delay` are props (get_motion lists each style's props and defaults)"),
+});
+
+export const createAnimationStyleInput = z.object({
+  name: z.string().min(1).describe("Style name, slash-grouped (e.g. 'Motion/Enter')"),
+  description: z.string().optional(),
+  entries: z
+    .array(animationEntryInput)
+    .optional()
+    .describe("Figma animations the style plays, in order (add more later with update_animation_style)"),
+  skipIfExists: z.boolean().optional().describe("Return the existing style of this name instead of creating one"),
+  fileKey: fileKeyField,
+});
+
+export const updateAnimationStyleShape = z.object({
+  styleId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("The custom animation style to change (get_motion customAnimationStyles)"),
+  name: z.string().min(1).optional().describe("Rename (slash-grouped)"),
+  description: z.string().optional(),
+  removeEntryIds: z
+    .array(z.string().min(1))
+    .optional()
+    .describe("Entry ids to remove (the style's entries[].id); removed before addEntries"),
+  addEntries: z.array(animationEntryInput).optional().describe("Figma animations to append"),
+  moveAfter: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe("Reorder: after this custom animation style id, or null to move it first"),
+  moveFolder: z
+    .object({
+      folder: z.string().min(1).describe("Folder to move (its slash-grouped name)"),
+      after: z.string().min(1).nullable().describe("Folder to move it after, or null for first"),
+    })
+    .optional()
+    .describe("Reorder a folder of custom animation styles (needs no styleId)"),
+  delete: z.boolean().optional().describe("Delete the style (nothing else may be set with it)"),
+  fileKey: fileKeyField,
+});
+
+const STYLE_EDITS = ["name", "description", "removeEntryIds", "addEntries", "moveAfter", "delete"] as const;
+
+export const updateAnimationStyleInput = updateAnimationStyleShape
+  .refine(
+    (v) => STYLE_EDITS.some((k) => v[k] !== undefined) || v.moveFolder !== undefined,
+    "nothing to update: set a style change or moveFolder"
+  )
+  .refine(
+    (v) => v.styleId !== undefined || !STYLE_EDITS.some((k) => v[k] !== undefined),
+    "styleId is required for a style change (only moveFolder runs without one)"
+  )
+  .refine(
+    (v) =>
+      v.delete !== true ||
+      (v.moveFolder === undefined && STYLE_EDITS.every((k) => k === "delete" || v[k] === undefined)),
+    "delete cannot be combined with other changes"
+  );
 
 export const listShadersInput = z.object({
   fileKey: fileKeyField,
@@ -1169,28 +1299,25 @@ export const applyStyleInput = applyStyleShape.refine(
 export const createPaintStyleShape = z.object({
   name: z.string().min(1).describe("Style name (slash-grouped)"),
   hex: createHexColorSchema().optional().describe("Solid color"),
+  color: hexOrAuthoredColor.optional().describe("Solid color as hex, or in its authored space (instead of hex)"),
   opacity: z.number().min(0).max(1).optional(),
   gradientType: z.enum(["LINEAR", "RADIAL", "ANGULAR", "DIAMOND"]).optional(),
   gradientStops: z
-    .array(
-      z.object({
-        position: z.number().min(0).max(1),
-        hex: createHexColorSchema(),
-        opacity: z.number().min(0).max(1).optional(),
-      })
-    )
+    .array(gradientStop)
     .min(2)
     .optional()
-    .describe("Gradient stops (alternative to hex)"),
+    .describe("Gradient stops (alternative to hex/color), each with hex or color"),
   description: z.string().optional(),
   skipIfExists: z.boolean().optional(),
   fileKey: fileKeyField,
 });
 
-export const createPaintStyleInput = createPaintStyleShape.refine(
-  (v) => v.hex !== undefined || v.gradientStops !== undefined,
-  "hex or gradientStops is required"
-);
+export const createPaintStyleInput = createPaintStyleShape
+  .refine(
+    (v) => v.hex !== undefined || v.color !== undefined || v.gradientStops !== undefined,
+    "hex, color or gradientStops is required"
+  )
+  .refine((v) => v.hex === undefined || v.color === undefined, "pass hex or color, not both");
 
 export const createEffectStyleInput = z.object({
   name: z.string().min(1).describe("Style name, slash-grouped (e.g. 'Elevation/Raised')"),
@@ -2208,6 +2335,8 @@ export const toolInputSchemas = {
   get_motion: getMotionInput,
 
   apply_animation_style: applyAnimationStyleInput,
+  create_animation_style: createAnimationStyleInput,
+  update_animation_style: updateAnimationStyleInput,
 
   list_shaders: listShadersInput,
 
@@ -2371,6 +2500,8 @@ const rpcToArgs: Record<
     ...params,
     nodeId: nodeIds?.[0],
   }),
+  create_animation_style: (_nodeIds, params) => ({ ...params }),
+  update_animation_style: (_nodeIds, params) => ({ ...params }),
   list_shaders: (_nodeIds, params) => ({ ...params }),
   apply_shader: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   set_reactions: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
