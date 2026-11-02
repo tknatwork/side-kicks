@@ -11,6 +11,12 @@ import {
   type ComposedColorInput,
 } from "./composed-color";
 import { movePageTo } from "./pages";
+import {
+  animationConfig,
+  animationEntries,
+  describeCustomAnimationStyle,
+  type AnimationKind,
+} from "./animation-style";
 
 type RequestType =
   | "get_document"
@@ -65,6 +71,8 @@ type RequestType =
   | "get_reactions"
   | "get_motion"
   | "apply_animation_style"
+  | "create_animation_style"
+  | "update_animation_style"
   | "list_shaders"
   | "apply_shader"
   | "set_reactions"
@@ -1291,6 +1299,44 @@ const requireMotionApi = (): MotionAPI => {
   return figma.motion;
 };
 
+/** Custom animation styles (Update 140) are a Figma Design API. */
+const requireCustomAnimationStyles = (toolName: RequestType): void => {
+  if (typeof figma.createCustomAnimationStyle !== "function") {
+    throw new Error(
+      `${toolName}: custom animation styles need Plugin API Update 140 (September 2026). Update Figma Desktop.`
+    );
+  }
+  if (figma.editorType !== "figma") {
+    throw new Error(
+      `${toolName} runs in Figma Design only — custom animation styles are a Design API (current editor: ${figma.editorType}).`
+    );
+  }
+};
+
+/** A local, editable custom animation style by id. */
+const localCustomAnimationStyle = async (styleId: string): Promise<CustomAnimationStyle> => {
+  const style = await figma.getStyleByIdAsync(styleId);
+  if (!style || style.type !== "CUSTOM_ANIMATION") {
+    throw new Error(`No custom animation style ${styleId} (list them with get_motion)`);
+  }
+  if (style.remote) {
+    throw new Error(`Custom animation style ${styleId} comes from a library; edit it in its own file`);
+  }
+  return style;
+};
+
+/** FIGMA or CUSTOM: as requested, else CUSTOM when the id names a custom animation style. */
+const animationKindOf = async (styleId: string, requested: unknown): Promise<AnimationKind> => {
+  if (requested === "FIGMA" || requested === "CUSTOM") return requested;
+  try {
+    const style = await figma.getStyleByIdAsync(styleId);
+    if (style && style.type === "CUSTOM_ANIMATION") return "CUSTOM";
+  } catch {
+    // A Figma animation style id ("Position") is not a style id.
+  }
+  return "FIGMA";
+};
+
 /** primaryAxisAlignItems values (typings 1.141.0; SPACE_EVENLY/SPACE_AROUND are
  * Plugin API Update 137). set_auto_layout skips values missing from this list,
  * so the type assertion below fails `pnpm typecheck` — and `pnpm build`, which
@@ -1338,6 +1384,8 @@ const EDIT_REQUEST_TYPES = new Set<RequestType>([
   // set_annotation deliberately NOT gated: annotations are Dev Mode's
   // legitimate write surface. dev_resources likewise.
   "apply_animation_style",
+  "create_animation_style",
+  "update_animation_style",
   "apply_shader",
   "set_reactions",
   "set_flow_starting_point",
@@ -4087,10 +4135,19 @@ const handleRequest = async (
             }
           }
         }
+        // Update 140: the file's own custom styles (Design only; older builds lack the API).
+        const customAnimationStyles =
+          figma.editorType === "figma" &&
+          typeof figma.getLocalCustomAnimationStylesAsync === "function"
+            ? toSerializableResult(
+                (await figma.getLocalCustomAnimationStylesAsync()).map(describeCustomAnimationStyle),
+                "get_motion"
+              )
+            : undefined;
         return {
           type: request.type,
           requestId: request.requestId,
-          data: { availableAnimationStyles: styles, nodes },
+          data: { availableAnimationStyles: styles, customAnimationStyles, nodes },
         };
       }
       case "apply_animation_style": {
@@ -4135,22 +4192,126 @@ const handleRequest = async (
         if (typeof params.styleId !== "string") {
           throw new Error("styleId is required (discover via get_motion)");
         }
-        const config: Record<string, unknown> = {};
-        if (typeof params.duration === "number") config.duration = params.duration;
-        if (typeof params.timelineOffset === "number") {
-          config.timelineOffset = params.timelineOffset;
-        }
+        const kind = await animationKindOf(params.styleId, params.type);
         const appliedStyleInstanceId = node.applyAnimationStyle(
           params.styleId,
-          Object.keys(config).length > 0
-            ? (config as AnimationStyleConfiguration)
-            : undefined
+          animationConfig(kind, params)
         );
         return {
           type: request.type,
           requestId: request.requestId,
-          data: { nodeId: node.id, appliedStyleInstanceId },
+          data: { nodeId: node.id, appliedStyleInstanceId, kind },
         };
+      }
+      case "create_animation_style": {
+        requireCustomAnimationStyles(request.type);
+        const params = request.params ?? {};
+        const { name } = params;
+        if (typeof name !== "string" || !name) {
+          throw new Error("name is required for create_animation_style");
+        }
+        const entries = animationEntries(params.entries);
+        if (params.skipIfExists === true) {
+          const existing = (await figma.getLocalCustomAnimationStylesAsync()).find(
+            (s) => s.name === name
+          );
+          if (existing) {
+            return {
+              type: request.type,
+              requestId: request.requestId,
+              data: {
+                existed: true,
+                style: toSerializableResult(describeCustomAnimationStyle(existing), request.type),
+              },
+            };
+          }
+        }
+        const style = figma.createCustomAnimationStyle();
+        try {
+          style.name = name;
+          if (typeof params.description === "string") style.description = params.description;
+          for (const entry of entries) {
+            await style.addAnimationEntryAsync(entry.styleId, entry.props);
+          }
+        } catch (err) {
+          style.remove();
+          throw err;
+        }
+        return {
+          type: request.type,
+          requestId: request.requestId,
+          data: {
+            existed: false,
+            style: toSerializableResult(describeCustomAnimationStyle(style), request.type),
+          },
+        };
+      }
+      case "update_animation_style": {
+        requireCustomAnimationStyles(request.type);
+        const params = request.params ?? {};
+        // Steps run in this order and are not atomic: a failure names what already landed.
+        const applied: string[] = [];
+        try {
+          if (params.moveFolder !== undefined) {
+            const move = params.moveFolder as { folder?: unknown; after?: unknown };
+            if (typeof move.folder !== "string" || !(typeof move.after === "string" || move.after === null)) {
+              throw new Error("moveFolder needs { folder, after } — after is a folder name or null (first)");
+            }
+            figma.moveLocalCustomAnimationFolderAfter(move.folder, move.after);
+            applied.push(`moved folder ${move.folder}`);
+          }
+          if (typeof params.styleId !== "string") {
+            if (applied.length === 0) throw new Error("styleId is required (or moveFolder alone)");
+            return { type: request.type, requestId: request.requestId, data: { applied } };
+          }
+          const style = await localCustomAnimationStyle(params.styleId);
+          if (params.delete === true) {
+            style.remove();
+            applied.push("deleted");
+            return {
+              type: request.type,
+              requestId: request.requestId,
+              data: { styleId: params.styleId, deleted: true, applied },
+            };
+          }
+          if (typeof params.name === "string") {
+            style.name = params.name;
+            applied.push("renamed");
+          }
+          if (typeof params.description === "string") {
+            style.description = params.description;
+            applied.push("described");
+          }
+          for (const id of Array.isArray(params.removeEntryIds) ? params.removeEntryIds : []) {
+            style.removeAnimationEntry(String(id));
+            applied.push(`removed entry ${String(id)}`);
+          }
+          for (const entry of animationEntries(params.addEntries, "addEntries")) {
+            await style.addAnimationEntryAsync(entry.styleId, entry.props);
+            applied.push(`added ${entry.styleId}`);
+          }
+          if (params.moveAfter !== undefined) {
+            const reference =
+              params.moveAfter === null
+                ? null
+                : await localCustomAnimationStyle(String(params.moveAfter));
+            figma.moveLocalCustomAnimationStyleAfter(style, reference);
+            applied.push(reference ? `moved after ${reference.id}` : "moved first");
+          }
+          return {
+            type: request.type,
+            requestId: request.requestId,
+            data: {
+              applied,
+              style: toSerializableResult(describeCustomAnimationStyle(style), request.type),
+            },
+          };
+        } catch (err) {
+          if (applied.length === 0) throw err;
+          throw new Error(
+            `${err instanceof Error ? err.message : String(err)} — already applied: ${applied.join(", ")}`
+          );
+        }
       }
       case "list_shaders": {
         if (!("listAvailableShaders" in figma)) {

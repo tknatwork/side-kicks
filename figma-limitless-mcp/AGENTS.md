@@ -5,7 +5,7 @@
 ## What this is
 
 A local Figma MCP server + Figma Desktop plugin. No REST calls, so no REST
-rate limits — it uses the Figma Plugin API locally. **104 tools** across
+rate limits — it uses the Figma Plugin API locally. **106 tools** across
 Design, Dev Mode, FigJam, Slides & Buzz: local
 fonts, text/paint/effect styles, variable authoring, grid layout, master
 components, instances, prototyping, annotations, dev resources, Motion/shaders
@@ -95,6 +95,14 @@ Agent identity defaults to MCP clientInfo (`node.agentSupplier`); tools accept a
 `'listAvailableShaders' in figma` and throw clear capability errors on older Figma builds — the
 APIs are beta ("subject to change" per Plugin API Update 127, June 2026). Verified live 2026-07-13:
 Motion styles enumerate; shaders API present (0 shaders in file).
+
+Custom animation styles (Update 140) live in `plugin/src/main/animation-style.ts` (pure: the
+config each kind takes, entry parsing, the read-back) and are Design-only
+(`requireCustomAnimationStyles`). A custom style is applied with `{ type: "CUSTOM" }` and takes only
+`timelineOffset`; `apply_animation_style` detects the kind from the style id when `type` is omitted
+(a Figma style id such as `Position` is not a style id). `update_animation_style` is not atomic, so
+its error names the steps that already landed. Verified live 2026-11-02 (read-only): the four
+Update 140 functions exist, `figmaAnimationStyles()` lists 7 styles with their props.
 
 ## Design-system skills + structure linter (closed loop)
 

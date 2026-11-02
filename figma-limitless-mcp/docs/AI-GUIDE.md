@@ -78,7 +78,7 @@ Build order:
 3. Overlays: navigation `'OVERLAY'`; close with `{type:'CLOSE'}`; back with `{type:'BACK'}`.
 4. Entry points: `set_flow_starting_point` per flow.
 5. Verify: `get_reactions`.
-6. Motion (beta): `get_motion` → `apply_animation_style`. Errors cleanly on older Figma builds.
+6. Motion (beta): `get_motion` → `apply_animation_style`. Errors cleanly on older Figma builds. Reusable sequences (Figma Design only): `create_animation_style` with entries from `availableAnimationStyles`, applied by its id; a custom style takes only `timelineOffset` — change duration or props on its entries with `update_animation_style`.
 
 ## Heavy files — context discipline
 

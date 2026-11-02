@@ -6,6 +6,17 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- **Custom animation styles (Plugin API Update 140).** A custom animation style is a named,
+  reusable sequence of Figma animations. `create_animation_style` makes one from entries (a Figma
+  animation style id plus optional props), `update_animation_style` renames, describes, removes
+  and appends entries, reorders it or its folder, or deletes it, and `get_motion` now lists the
+  file's custom styles with their entries. `apply_animation_style` applies a custom style too
+  (`type: "CUSTOM"`, detected from the id when omitted) and passes `props` overrides through to a
+  Figma style, which it did not before. A custom style takes only `timelineOffset`: its entries
+  carry duration and props. Figma Design only. 104 → 106 tools.
+
 ### Security
 
 - **The :1994 server no longer accepts tool calls from other devices or from web pages.** It

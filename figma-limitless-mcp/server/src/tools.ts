@@ -71,6 +71,9 @@ import {
   getMotionInput,
   applyAnimationStyleShape,
   applyAnimationStyleInput,
+  createAnimationStyleInput,
+  updateAnimationStyleShape,
+  updateAnimationStyleInput,
   listShadersInput,
   applyShaderInput,
   setReactionsInput,
@@ -1245,7 +1248,7 @@ export function registerTools(
 
   server.tool(
     "get_motion",
-    "Read Figma Motion (Config 2026 beta): available animation styles (incl. spring/bezier easings — easing variables surface here), plus per-node applied styles, manual keyframe tracks, and timelines. Errors clearly if the running Figma predates the Motion beta. Official MCP has motion READS only via rate-limited get_motion_context; this is local and unthrottled.",
+    "Read Figma Motion (Config 2026 beta): available animation styles (incl. spring/bezier easings — easing variables surface here) with their props and defaults, the file's custom animation styles and their entries (Figma Design, Plugin API Update 140), plus per-node applied styles (type FIGMA or CUSTOM), manual keyframe tracks, and timelines. Errors clearly if the running Figma predates the Motion beta. Official MCP has motion READS only via rate-limited get_motion_context; this is local and unthrottled.",
     getMotionInput.shape,
     async ({ nodeIds, fileKey }): Promise<ToolResult> => {
       return renderResponse(() =>
@@ -1256,7 +1259,7 @@ export function registerTools(
 
   server.tool(
     "apply_animation_style",
-    "WRITE Figma Motion animations — the official MCP cannot: apply an animation style to a node (optional duration/timelineOffset overrides; returns the applied instance id), or remove one (remove:true + appliedStyleInstanceId). Discover style ids via get_motion. Beta API — errors clearly on older Figma versions.",
+    "WRITE Figma Motion animations — the official MCP cannot: apply a Figma animation style (optional duration/timelineOffset/props overrides) or a custom animation style (timelineOffset only — its entries carry the rest) to a node; type is detected from styleId when omitted. Returns the applied instance id. Remove one with remove:true + appliedStyleInstanceId. Discover style ids via get_motion. Beta API — errors clearly on older Figma versions.",
     applyAnimationStyleShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(applyAnimationStyleInput, args);
@@ -1264,6 +1267,34 @@ export function registerTools(
       const { nodeId, fileKey, ...params } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("apply_animation_style", [nodeId], params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "create_animation_style",
+    "Create a local custom animation style (Plugin API Update 140, Figma Design only): a named, reusable sequence of Figma animations (entries: styleId + optional props, from get_motion), applied with apply_animation_style. skipIfExists for idempotent reruns. If adding an entry fails, the new style is removed again.",
+    createAnimationStyleInput.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(toolInputSchemas.create_animation_style, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("create_animation_style", undefined, params, fileKey)
+      );
+    }
+  );
+
+  server.tool(
+    "update_animation_style",
+    "Change a local custom animation style (Figma Design only): rename, describe, remove entries (by entries[].id), append entries, reorder it (moveAfter a style id, or null for first), delete it, or reorder a folder of them (moveFolder, no styleId). Steps run in that order and are not atomic: an error names what already landed — read with get_motion before retrying.",
+    updateAnimationStyleShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(updateAnimationStyleInput, args);
+      if (!parsed.success) return parsed.error;
+      const { fileKey, ...params } = parsed.data;
+      return renderResponse(() =>
+        node.sendWithParams("update_animation_style", undefined, params, fileKey)
       );
     }
   );

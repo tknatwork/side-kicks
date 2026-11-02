@@ -5,7 +5,7 @@
 ![MCP](https://img.shields.io/badge/MCP-compatible-5865F2)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 ![Network](https://img.shields.io/badge/network-none%20(local--only)-2ea44f)
-![Tools](https://img.shields.io/badge/tools-104-8A2BE2)
+![Tools](https://img.shields.io/badge/tools-106-8A2BE2)
 ![Surfaces](https://img.shields.io/badge/surfaces-Design%20·%20Dev%20·%20FigJam%20·%20Slides%20·%20Buzz-0AA)
 ![DS Linter](https://img.shields.io/badge/design--system%20linter-57%20rules-orange)
 
@@ -29,7 +29,7 @@ Figma Desktop plugin ── full Plugin API access to your open files
 
 Three things in one package:
 
-1. **A full-power Figma MCP** — 104 tools spanning read, create, style, layout, variables, components, instances, prototyping, and the FigJam/Slides/Buzz editors. Anything the Plugin API can do, your AI can do.
+1. **A full-power Figma MCP** — 106 tools spanning read, create, style, layout, variables, components, instances, prototyping, and the FigJam/Slides/Buzz editors. Anything the Plugin API can do, your AI can do.
 2. **A crash-safe session layer** — a disk journal, named checkpoints, TTL locks, and cached file digests so multi-step (and multi-agent) work resumes exactly where it stopped.
 3. **A design-system skills + linter** — bundled, offline knowledge on how tokens *should* be derived, plus a 57-rule structure linter that checks your variables/styles/components against it and hands the AI fix hints. Read-only; it never mutates your file.
 
@@ -114,7 +114,7 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 5. **Structure over raw values:** bind variables > apply styles > raw values. Author with `write_variables` (one batched call via `$N.field` back-refs); read with `get_variables_deep`.
 6. **Parallel agents:** `acquire_lock` on what you mutate; locks auto-expire. After a timeout, **read before retrying** — the op may have landed; the journal knows.
 
-## 🛠️ Tool surface (104 tools)
+## 🛠️ Tool surface (106 tools)
 
 | Category | Tools |
 |---|---|
@@ -127,7 +127,7 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 | 🔧 Variables | `write_variables` (batched authoring with `$N.field` refs; COLOR/FLOAT/STRING/BOOLEAN, motion EASING/TIMING with TIMING in seconds, and composed colors — a color plus an opacity, at least one of them an alias — with the COLOR_OPACITY scope) |
 | 🧩 Components & instances | `create_component_from_node` · `combine_as_variants` · `add_component_property` · `create_slot` · `append_to_slot` · `reset_slot` · `get_slots` · `instantiate_component` · `set_instance_properties` · `swap_instance` |
 | 🔀 Prototyping | `set_reactions` · `set_flow_starting_point` |
-| 🎞️ Motion / shaders (beta) | `apply_animation_style` · `apply_shader` |
+| 🎞️ Motion / shaders (beta) | `apply_animation_style` · `create_animation_style` · `update_animation_style` · `apply_shader` |
 | 📌 FigJam | `create_sticky` · `create_connector` · `create_shape_with_text` · `create_section` · `create_table` · `create_code_block` · `create_gif` |
 | 🖥️ Slides | `create_slide` · `create_slide_row` · `focus_slide` · `get_slide_grid` · `set_slide_grid` · `set_slide_skip` · `set_slide_transition` |
 | ✳️ Buzz | `create_buzz_frame` · `get_buzz_content` · `set_buzz_text` · `set_buzz_asset_type` · `buzz_smart_resize` |

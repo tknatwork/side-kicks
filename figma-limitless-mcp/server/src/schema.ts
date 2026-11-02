@@ -1004,14 +1004,32 @@ export const getMotionInput = z.object({
   fileKey: fileKeyField,
 });
 
+/** An animation prop override: string, number, boolean, an easing object or a variable alias. */
+const animationProps = z
+  .record(z.string(), z.unknown())
+  .describe(
+    "Prop overrides keyed by the style's prop names (get_motion lists each style's props with their defaults), e.g. { direction: 'right', distance: 80 }"
+  );
+
 export const applyAnimationStyleShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("Node to animate"),
   styleId: z
     .string()
     .optional()
-    .describe("Animation style id (discover via get_motion availableAnimationStyles)"),
-  duration: z.number().positive().optional().describe("Override duration in seconds"),
+    .describe(
+      "A Figma animation style id (get_motion availableAnimationStyles) or a custom animation style id (get_motion customAnimationStyles)"
+    ),
+  type: z
+    .enum(["FIGMA", "CUSTOM"])
+    .optional()
+    .describe("FIGMA or CUSTOM; omit to detect it from styleId (Plugin API Update 140)"),
+  duration: z
+    .number()
+    .positive()
+    .optional()
+    .describe("Override duration in seconds (Figma styles only)"),
   timelineOffset: z.number().min(0).optional().describe("Delay/offset in seconds"),
+  props: animationProps.optional(),
   remove: z.boolean().optional().describe("Remove instead of apply"),
   appliedStyleInstanceId: z
     .string()
@@ -1020,13 +1038,80 @@ export const applyAnimationStyleShape = z.object({
   fileKey: fileKeyField,
 });
 
-export const applyAnimationStyleInput = applyAnimationStyleShape.refine(
-  (value) =>
-    value.remove === true
-      ? value.appliedStyleInstanceId !== undefined || value.styleId !== undefined
-      : value.styleId !== undefined,
-  "apply needs styleId; remove needs appliedStyleInstanceId (or styleId)"
-);
+export const applyAnimationStyleInput = applyAnimationStyleShape
+  .refine(
+    (value) =>
+      value.remove === true
+        ? value.appliedStyleInstanceId !== undefined || value.styleId !== undefined
+        : value.styleId !== undefined,
+    "apply needs styleId; remove needs appliedStyleInstanceId (or styleId)"
+  )
+  .refine(
+    (value) => value.type !== "CUSTOM" || (value.duration === undefined && value.props === undefined),
+    "a custom animation style takes only timelineOffset: its entries carry duration and props"
+  );
+
+const animationEntryInput = z.object({
+  styleId: z.string().min(1).describe("A Figma animation style id (get_motion availableAnimationStyles)"),
+  props: animationProps.optional(),
+});
+
+export const createAnimationStyleInput = z.object({
+  name: z.string().min(1).describe("Style name, slash-grouped (e.g. 'Motion/Enter')"),
+  description: z.string().optional(),
+  entries: z
+    .array(animationEntryInput)
+    .optional()
+    .describe("Figma animations the style plays, in order (add more later with update_animation_style)"),
+  skipIfExists: z.boolean().optional().describe("Return the existing style of this name instead of creating one"),
+  fileKey: fileKeyField,
+});
+
+export const updateAnimationStyleShape = z.object({
+  styleId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("The custom animation style to change (get_motion customAnimationStyles)"),
+  name: z.string().min(1).optional().describe("Rename (slash-grouped)"),
+  description: z.string().optional(),
+  removeEntryIds: z
+    .array(z.string().min(1))
+    .optional()
+    .describe("Entry ids to remove (the style's entries[].id); removed before addEntries"),
+  addEntries: z.array(animationEntryInput).optional().describe("Figma animations to append"),
+  moveAfter: z
+    .string()
+    .min(1)
+    .nullable()
+    .optional()
+    .describe("Reorder: after this custom animation style id, or null to move it first"),
+  moveFolder: z
+    .object({
+      folder: z.string().min(1).describe("Folder to move (its slash-grouped name)"),
+      after: z.string().min(1).nullable().describe("Folder to move it after, or null for first"),
+    })
+    .optional()
+    .describe("Reorder a folder of custom animation styles (needs no styleId)"),
+  delete: z.boolean().optional().describe("Delete the style (nothing else may be set with it)"),
+  fileKey: fileKeyField,
+});
+
+const STYLE_EDITS = ["name", "description", "removeEntryIds", "addEntries", "moveAfter", "delete"] as const;
+
+export const updateAnimationStyleInput = updateAnimationStyleShape
+  .refine(
+    (v) => STYLE_EDITS.some((k) => v[k] !== undefined) || v.moveFolder !== undefined,
+    "nothing to update: set a style change or moveFolder"
+  )
+  .refine(
+    (v) => v.styleId !== undefined || !STYLE_EDITS.some((k) => v[k] !== undefined),
+    "styleId is required for a style change (only moveFolder runs without one)"
+  )
+  .refine(
+    (v) => v.delete !== true || STYLE_EDITS.every((k) => k === "delete" || v[k] === undefined),
+    "delete cannot be combined with other changes"
+  );
 
 export const listShadersInput = z.object({
   fileKey: fileKeyField,
@@ -2208,6 +2293,8 @@ export const toolInputSchemas = {
   get_motion: getMotionInput,
 
   apply_animation_style: applyAnimationStyleInput,
+  create_animation_style: createAnimationStyleInput,
+  update_animation_style: updateAnimationStyleInput,
 
   list_shaders: listShadersInput,
 
@@ -2371,6 +2458,8 @@ const rpcToArgs: Record<
     ...params,
     nodeId: nodeIds?.[0],
   }),
+  create_animation_style: (_nodeIds, params) => ({ ...params }),
+  update_animation_style: (_nodeIds, params) => ({ ...params }),
   list_shaders: (_nodeIds, params) => ({ ...params }),
   apply_shader: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
   set_reactions: (nodeIds, params) => ({ ...params, nodeId: nodeIds?.[0] }),
