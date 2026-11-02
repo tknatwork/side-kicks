@@ -61,6 +61,39 @@ export function animationEntries(raw: unknown, field = "entries"): AnimationEntr
   });
 }
 
+/**
+ * The applied instance that a removal by `styleId` means.
+ *
+ * A Figma animation style reads back from a node with an internal styleId
+ * ("CodeComponentId:1:8"), not the id `figmaAnimationStyles()` lists ("Position");
+ * both carry the same name ("motion.preset_name.position"). Checked live
+ * 2026-11-02. So an exact styleId wins (a custom style's id, or an internal id
+ * read back), and a listed id is matched to Figma styles by name. More than one
+ * match is refused rather than guessed.
+ */
+export function appliedInstanceFor(
+  applied: ReadonlyArray<{ id: string; styleId: string; name: string; type?: string }>,
+  styleId: string,
+  listed: ReadonlyArray<{ styleId: string; name: string }>,
+  nodeId: string
+): string {
+  let matches = applied.filter((s) => s.styleId === styleId);
+  const template = listed.find((s) => s.styleId === styleId);
+  if (matches.length === 0 && template) {
+    matches = applied.filter((s) => s.type !== "CUSTOM" && s.name === template.name);
+  }
+  if (matches.length === 1) return matches[0].id;
+  if (matches.length > 1) {
+    throw new Error(
+      `styleId "${styleId}" is applied ${matches.length} times on ${nodeId}; pass appliedStyleInstanceId, one of: ${matches.map((s) => s.id).join(", ")}`
+    );
+  }
+  const all = applied.map((s) => `${s.styleId} (instance ${s.id})`).join(", ");
+  throw new Error(
+    `No applied animation style matches styleId "${styleId}" on ${nodeId}. Applied: ${all || "(none)"}`
+  );
+}
+
 /** A custom animation style as the tools report it. */
 export function describeCustomAnimationStyle(
   style: Pick<CustomAnimationStyle, "id" | "key" | "name" | "description" | "remote" | "animationEntries">

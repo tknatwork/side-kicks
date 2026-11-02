@@ -14,6 +14,7 @@ import { movePageTo } from "./pages";
 import {
   animationConfig,
   animationEntries,
+  appliedInstanceFor,
   describeCustomAnimationStyle,
   type AnimationKind,
 } from "./animation-style";
@@ -4194,7 +4195,7 @@ const handleRequest = async (
         };
       }
       case "apply_animation_style": {
-        requireMotionApi();
+        const motion = requireMotionApi();
         const nodeId = request.nodeIds && request.nodeIds[0];
         if (!nodeId) throw new Error("nodeIds is required for apply_animation_style");
         const node = await getSceneNodeById(nodeId);
@@ -4207,19 +4208,14 @@ const handleRequest = async (
               : "";
           if (!removeId && typeof params.styleId === "string") {
             // styleId is the TEMPLATE id; removal needs the applied INSTANCE
-            // id — resolve it from the node's applied styles.
-            const instance = node.animationStyles.find(
-              (s) => s.styleId === params.styleId
+            // id — resolve it from the node's applied styles (by name for a
+            // listed Figma style, whose applied styleId is internal).
+            removeId = appliedInstanceFor(
+              node.animationStyles,
+              params.styleId,
+              motion.figmaAnimationStyles(),
+              node.id
             );
-            if (!instance) {
-              const applied = node.animationStyles
-                .map((s) => `${s.styleId} (instance ${s.id})`)
-                .join(", ");
-              throw new Error(
-                `No applied animation style matches styleId "${params.styleId}" on ${node.id}. Applied: ${applied || "(none)"}`
-              );
-            }
-            removeId = instance.id;
           }
           if (!removeId) {
             throw new Error("remove needs appliedStyleInstanceId (or styleId)");
@@ -4402,13 +4398,31 @@ const handleRequest = async (
           throw new Error("shaderId is required (discover via list_shaders)");
         }
         const node = await getSceneNodeById(nodeId);
-        const shader = await figma.importShaderById(params.shaderId);
-        // Route by the shader's declared type: 'effect' shaders cannot be
-        // paints and vice versa. Omitted target derives from the shader.
         const requested =
           params.target === "stroke" || params.target === "effect" || params.target === "fill"
             ? params.target
             : undefined;
+        // A shader already in the file (applied from the Community, say) can be
+        // missing from listAvailableShaders(), and importShaderById then refuses
+        // its id; assigning it by id still works (checked live 2026-11-02). Its
+        // declared type is unknown on that path, so the caller names the target.
+        let shader: { id: string; name: string; type?: "effect" | "fill" };
+        let listed = true;
+        try {
+          shader = await figma.importShaderById(params.shaderId);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          if (!/Unknown shader id/.test(message)) throw err;
+          if (!requested) {
+            throw new Error(
+              `${message} A shader already in the file but not listed (e.g. applied from the Community) is applied by id: pass target "effect", "fill" or "stroke".`
+            );
+          }
+          shader = { id: params.shaderId, name: params.shaderId };
+          listed = false;
+        }
+        // Route by the shader's declared type: 'effect' shaders cannot be
+        // paints and vice versa. Omitted target derives from the shader.
         const target =
           requested ?? (shader.type === "effect" ? "effect" : "fill");
         if (shader.type === "effect" && target !== "effect") {
@@ -4467,6 +4481,8 @@ const handleRequest = async (
             shaderId: shader.id,
             shaderName: shader.name,
             target,
+            // false: not in listAvailableShaders(), applied by id without importing.
+            listed,
             // -1 = previous paints were mixed; otherwise the count replaced.
             replacedPaints,
           },

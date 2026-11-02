@@ -1263,7 +1263,7 @@ export function registerTools(
 
   server.tool(
     "apply_animation_style",
-    "WRITE Figma Motion animations — the official MCP cannot: apply a Figma animation style (optional duration/timelineOffset/props overrides) or a custom animation style (timelineOffset only — its entries carry the rest) to a node; type is detected from styleId when omitted. Returns the applied instance id. Remove one with remove:true + appliedStyleInstanceId. Discover style ids via get_motion. Beta API — errors clearly on older Figma versions.",
+    "WRITE Figma Motion animations — the official MCP cannot: apply a Figma animation style (optional duration/timelineOffset/props overrides) or a custom animation style (timelineOffset only — its entries carry the rest) to a node; type is detected from styleId when omitted. Returns the applied instance id. Remove one with remove:true + appliedStyleInstanceId, or + the styleId get_motion lists (an applied Figma style reads back with an internal styleId, so a listed id is matched by name; more than one match is refused). Discover style ids via get_motion. Beta API — errors clearly on older Figma versions.",
     applyAnimationStyleShape.shape,
     async (args): Promise<ToolResult> => {
       const parsed = parseToolInput(applyAnimationStyleInput, args);
@@ -1316,7 +1316,7 @@ export function registerTools(
 
   server.tool(
     "apply_shader",
-    "Apply a WebGPU shader as a node's fill, stroke, or effect (imports it first — mirrors font loading), with optional property assignments keyed by property-definition id. Target must match the shader's declared type ('fill' shaders → fill/stroke; 'effect' shaders → effect; omit target to auto-route). Fill/stroke application REPLACES the node's existing paints; effect application appends. The official MCP can only READ shaders; applying is plugin-only. Beta API — errors clearly on unsupported plans/versions.",
+    "Apply a WebGPU shader as a node's fill, stroke, or effect (imports it first — mirrors font loading), with optional property assignments keyed by property-definition id. Target must match the shader's declared type ('fill' shaders → fill/stroke; 'effect' shaders → effect; omit target to auto-route). Fill/stroke application REPLACES the node's existing paints; effect application appends. A shader already in the file but missing from list_shaders (e.g. one applied from the Community — Figma lists none of those) is applied by its id, read from get_node's SHADER entry; pass target on that path. The official MCP can only READ shaders; applying is plugin-only. Beta API — errors clearly on unsupported plans/versions.",
     applyShaderInput.shape,
     async ({ nodeId, shaderId, target, properties, fileKey }): Promise<ToolResult> => {
       const params: Record<string, unknown> = { shaderId };
