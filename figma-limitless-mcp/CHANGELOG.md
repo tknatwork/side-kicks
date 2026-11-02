@@ -53,6 +53,14 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Security
 
+- **Patched two dependency advisories (both medium).** `@hono/node-server` 2.1.0 → 2.1.6
+  ([GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f); transitive through the
+  MCP SDK, whose range `^1.19.9 || ^2.0.5` already allows it, so only the lockfile moves) and `vite`
+  6.4.4 → 6.4.5 in the plugin's dev build
+  ([GHSA-8g5g-mxqh-grgj](https://github.com/advisories/GHSA-8g5g-mxqh-grgj)). Dependabot's security
+  job failed on the first: its pnpm updater cannot pin a transitive dependency ("pnpm resolved
+  @hono/node-server to 2.1.6, above the requested 2.1.5"). `pnpm audit` is clean in both packages.
+
 - **The :1994 server no longer accepts tool calls from other devices or from web pages.** It
   listened on every network interface, and `/rpc` (which runs any tool, `execute_code` included)
   had no checks. Anyone on the same network could drive the open Figma file, and so could a web page
