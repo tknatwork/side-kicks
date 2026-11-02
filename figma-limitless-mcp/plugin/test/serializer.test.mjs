@@ -38,3 +38,28 @@ test("FigJam stickies, shapes, connectors, code blocks and tables carry their co
   assert.deepEqual([table.table.rows, table.table.cells.length, table.table.truncated], [300, 200, true]);
   assert.deepEqual(table.table.cells[1], ["1,0", "1,1"]);
 });
+
+test("a colour authored in a colour space reads back with its sourceColor; others are unchanged", () => {
+  const oklch = { space: "OKLCH", l: 0.7, c: 0.12, h: 60 };
+  const p3 = { space: "DISPLAY_P3", r: 1, g: 0.2, b: 0.1 };
+  const node = {
+    ...frame("1:9"),
+    fills: [
+      { type: "SOLID", visible: true, opacity: 1, color: { r: 0.83, g: 0.55, b: 0.3, sourceColor: oklch } },
+      { type: "SOLID", visible: true, opacity: 1, color: { r: 0, g: 0, b: 0 } },
+      { type: "GRADIENT_LINEAR", visible: true, opacity: 1, gradientTransform: [[1, 0, 0], [0, 1, 0]], gradientStops: [
+        { position: 0, color: { r: 1, g: 0, b: 0, a: 1, sourceColor: p3 } },
+        { position: 1, color: { r: 0, g: 0, b: 1, a: 0.5 } },
+      ] },
+    ],
+    effects: [
+      { type: "DROP_SHADOW", visible: true, color: { r: 0, g: 0, b: 0, a: 0.25, sourceColor: oklch }, offset: { x: 0, y: 2 }, radius: 4, spread: 0, blendMode: "NORMAL" },
+    ],
+  };
+  const { fills, effects } = serializeNode(node).styles;
+  assert.deepEqual(fills[0], { type: "SOLID", color: "#d48c4d", sourceColor: oklch, opacity: 1 });
+  assert.deepEqual(fills[1], { type: "SOLID", color: "#000000", opacity: 1 }, "no sourceColor key at all");
+  assert.deepEqual(fills[2].gradientStops[0].sourceColor, p3);
+  assert.equal("sourceColor" in fills[2].gradientStops[1], false);
+  assert.deepEqual(effects[0].sourceColor, oklch);
+});

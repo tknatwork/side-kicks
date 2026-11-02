@@ -29,6 +29,7 @@ import {
   createTextInput,
   setNodePropertiesInput,
   setGradientFillInput,
+  setSolidFillShape,
   setSolidFillInput,
   setEffectsShape,
   setEffectsInput,
@@ -625,9 +626,12 @@ export function registerTools(
 
   server.tool(
     "set_solid_fill",
-    "Replace a node's fill (or stroke) with a single solid paint. Provide a hex color and optional paint opacity. Use set_gradient_fill for gradient paints.",
-    setSolidFillInput.shape,
-    async ({ nodeId, fileKey, ...params }): Promise<ToolResult> => {
+    "Replace a node's fill (or stroke) with a single solid paint. Provide a hex color, or a color in its authored space (OKLCH, Display P3, HSL, HSB, OKLab, sRGB — kept as the paint's sourceColor, Plugin API Update 141), and optional paint opacity. Use set_gradient_fill for gradient paints.",
+    setSolidFillShape.shape,
+    async (args): Promise<ToolResult> => {
+      const parsed = parseToolInput(setSolidFillInput, args);
+      if (!parsed.success) return parsed.error;
+      const { nodeId, fileKey, ...params } = parsed.data;
       return renderResponse(() =>
         node.sendWithParams("set_solid_fill", [nodeId], params, fileKey)
       );
@@ -636,7 +640,7 @@ export function registerTools(
 
   server.tool(
     "set_gradient_fill",
-    "Replace a node's fill (or stroke) with a gradient paint. Provide ordered stops (position 0..1, hex color, optional alpha) and an optional 2x3 gradientTransform matching Figma's gradientTransform format. Useful for setting linear/radial/angular/diamond gradients programmatically.",
+    "Replace a node's fill (or stroke) with a gradient paint. Provide ordered stops (position 0..1, a hex color or a color in its authored space, optional alpha) and an optional 2x3 gradientTransform matching Figma's gradientTransform format. Useful for setting linear/radial/angular/diamond gradients programmatically.",
     setGradientFillInput.shape,
     async ({ nodeId, fileKey, ...params }): Promise<ToolResult> => {
       return renderResponse(() =>

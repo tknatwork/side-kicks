@@ -4,10 +4,21 @@
 // (rather than BaseNode) keeps child nodes typed as SceneNode.
 export type SerializableNode = SceneNode | PageNode;
 
+// `color` is the hex of Figma's r/g/b, the projection for the document profile.
+// `sourceColor` is the colour as authored (Plugin API Update 141), present only
+// when the colour was set in a colour space.
 type SerializedSolidPaint = {
   type: "SOLID";
   color: string;
+  sourceColor?: ColorWithColorSpace;
   opacity?: number;
+};
+
+type SerializedGradientStop = {
+  color: string;
+  sourceColor?: ColorWithColorSpace;
+  opacity: number;
+  position: number;
 };
 
 type SerializedGradientPaint = {
@@ -16,7 +27,7 @@ type SerializedGradientPaint = {
     | "GRADIENT_RADIAL"
     | "GRADIENT_ANGULAR"
     | "GRADIENT_DIAMOND";
-  gradientStops: { color: string; opacity: number; position: number }[];
+  gradientStops: SerializedGradientStop[];
   gradientTransform: Transform;
   opacity?: number;
 };
@@ -38,6 +49,7 @@ type SerializedPaint =
 type SerializedShadowEffect = {
   type: "DROP_SHADOW" | "INNER_SHADOW";
   color: string;
+  sourceColor?: ColorWithColorSpace;
   opacity: number;
   offset: { x: number; y: number };
   radius: number;
@@ -137,11 +149,14 @@ const toHex = (color: RGB): string => {
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 };
 
-const serializeGradientStops = (
-  stops: readonly ColorStop[]
-): { color: string; opacity: number; position: number }[] =>
+/** `{ sourceColor }` when the colour was authored in a colour space, else nothing. */
+const sourceOf = (color: RGBWithColorSpace | RGBAWithColorSpace) =>
+  color.sourceColor ? { sourceColor: color.sourceColor } : {};
+
+const serializeGradientStops = (stops: readonly ColorStop[]): SerializedGradientStop[] =>
   stops.map((stop) => ({
     color: toHex(stop.color),
+    ...sourceOf(stop.color),
     opacity: stop.color.a,
     position: stop.position,
   }));
@@ -161,6 +176,7 @@ const serializePaints = (
             {
               type: "SOLID",
               color: toHex(paint.color),
+              ...sourceOf(paint.color),
               opacity: paint.opacity,
             },
           ];
@@ -203,6 +219,7 @@ const serializeEffects = (effects: readonly Effect[]): SerializedEffect[] =>
             {
               type: effect.type,
               color: toHex(effect.color),
+              ...sourceOf(effect.color),
               opacity: effect.color.a,
               offset: effect.offset,
               radius: effect.radius,

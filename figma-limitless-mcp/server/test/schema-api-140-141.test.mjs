@@ -9,6 +9,7 @@ import {
   toolInputSchemas,
   applyAnimationStyleShape,
   updateAnimationStyleShape,
+  setSolidFillShape,
   validateRpc,
 } from "../dist/schema.js";
 
@@ -68,4 +69,55 @@ test("the registered (unrefined) shapes advertise the new fields", () => {
   for (const k of ["styleId", "removeEntryIds", "addEntries", "moveAfter", "moveFolder", "delete"]) {
     assert.ok(k in updateAnimationStyleShape.shape, k);
   }
+});
+
+// --- Update 141: colours in their authored space ----------------------------
+
+const OKLCH = { space: "OKLCH", l: 0.7, c: 0.12, h: 60 };
+
+test("set_solid_fill takes a colour in any of the six spaces, instead of hex", () => {
+  for (const color of [
+    OKLCH,
+    { space: "OKLAB", l: 0.7, a: 0.05, b: -0.1 },
+    { space: "DISPLAY_P3", r: 1, g: 0.2, b: 0.1 },
+    { space: "SRGB", r: 1, g: 0.5, b: 0 },
+    { space: "HSL", h: 200, s: 0.5, l: 0.5 },
+    { space: "HSB", h: 200, s: 0.5, b: 0.8 },
+  ]) {
+    ok("set_solid_fill", { nodeId: NODE, color });
+  }
+  ok("set_solid_fill", { nodeId: NODE, hex: "#FFAA00" });
+  assert.equal(validateRpc("set_solid_fill", [NODE], { color: OKLCH, target: "stroke" }), null);
+});
+
+test("set_solid_fill needs exactly one of hex and color", () => {
+  rejected("set_solid_fill", { nodeId: NODE }, /hex or color/);
+  rejected("set_solid_fill", { nodeId: NODE, hex: "#000000", color: OKLCH }, /hex or color/);
+  assert.match(validateRpc("set_solid_fill", [NODE], {}), /hex or color/);
+});
+
+test("components outside the ranges Figma enforces are refused before they reach it", () => {
+  // Each of these threw in figma.util.rgb live (2026-11-02).
+  rejected("set_solid_fill", { nodeId: NODE, color: { space: "HSL", h: 200, s: 50, l: 50 } });
+  rejected("set_solid_fill", { nodeId: NODE, color: { space: "OKLCH", l: 70, c: 0.12, h: 60 } });
+  rejected("set_solid_fill", { nodeId: NODE, color: { space: "DISPLAY_P3", r: 1.5, g: 0.2, b: 0.1 } });
+  rejected("set_solid_fill", { nodeId: NODE, color: { space: "LAB", l: 0.5, a: 0, b: 0 } });
+  rejected("set_solid_fill", { nodeId: NODE, color: { space: "OKLCH", l: 0.7, c: -0.1, h: 60 } });
+});
+
+test("gradient stops, shadows and paint styles take authored colours too", () => {
+  ok("set_gradient_fill", { nodeId: NODE, gradientStops: [{ position: 0, color: OKLCH }, { position: 1, hex: "#000000" }] });
+  rejected("set_gradient_fill", { nodeId: NODE, gradientStops: [{ position: 0 }, { position: 1, hex: "#000000" }] }, /hex or color/);
+  ok("set_effects", { nodeId: NODE, effects: [{ type: "DROP_SHADOW", color: OKLCH, offset: { x: 0, y: 2 }, radius: 4 }] });
+  ok("set_effects", { nodeId: NODE, effects: [{ type: "DROP_SHADOW", color: "#000000", offset: { x: 0, y: 2 }, radius: 4 }] });
+  ok("create_paint_style", { name: "Brand/Honey", color: OKLCH });
+  ok("create_paint_style", { name: "Brand/Ramp", gradientStops: [{ position: 0, color: OKLCH }, { position: 1, color: OKLCH }] });
+  ok("create_paint_style", { name: "Brand/Both", hex: "#000000", gradientStops: [{ position: 0, hex: "#000000" }, { position: 1, hex: "#ffffff" }] });
+  rejected("create_paint_style", { name: "Brand/Clash", hex: "#000000", color: OKLCH }, /not both/);
+  assert.equal(validateRpc("create_effect_style", undefined, { name: "E", effects: [{ type: "INNER_SHADOW", color: OKLCH, offset: { x: 0, y: 1 }, radius: 2 }] }), null);
+});
+
+test("the registered set_solid_fill shape advertises color", () => {
+  assert.ok("color" in setSolidFillShape.shape);
+  assert.ok("hex" in setSolidFillShape.shape);
 });

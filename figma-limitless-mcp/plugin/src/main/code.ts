@@ -460,15 +460,37 @@ const parseHexColor = (hex: string): RGB => {
   };
 };
 
+/** A hex string, or a colour in its authored space (Update 141), which Figma keeps as `sourceColor`. */
+type ColorInput = string | ColorWithColorSpace;
+
+const colorInputOf = (value: unknown, field: string): ColorInput => {
+  if (typeof value === "string") return value;
+  if (typeof value === "object" && value !== null && typeof (value as { space?: unknown }).space === "string") {
+    return value as ColorWithColorSpace;
+  }
+  throw new Error(`${field} must be a hex string or a { space, … } colour`);
+};
+
+// figma.util converts an authored colour and carries it as sourceColor; it
+// validates the components itself (ranges in the server's authoredColor).
+const toRgb = (color: ColorInput): RGB =>
+  typeof color === "string" ? parseHexColor(color) : figma.util.rgb(color);
+
+const toRgba = (color: ColorInput, alpha: number): RGBA => {
+  if (typeof color !== "string") return figma.util.rgba(color, alpha);
+  const rgb = parseHexColor(color);
+  return { r: rgb.r, g: rgb.g, b: rgb.b, a: alpha };
+};
+
 const setSolidFill = (
   node: SceneNode,
-  fillHex: string,
+  fill: ColorInput,
   fillOpacity?: number,
   target: "fill" | "stroke" = "fill"
 ): void => {
   const paint: SolidPaint = {
     type: "SOLID",
-    color: parseHexColor(fillHex),
+    color: toRgb(fill),
     opacity: fillOpacity ?? 1,
   };
 
@@ -486,7 +508,7 @@ const setSolidFill = (
   (node as GeometryMixin & { fills: ReadonlyArray<Paint> }).fills = [paint];
 };
 
-type GradientStopInput = { position: number; hex: string; opacity?: number };
+type GradientStopInput = { position: number; hex?: string; color?: unknown; opacity?: number };
 type GradientPaintType =
   | "GRADIENT_LINEAR"
   | "GRADIENT_RADIAL"
@@ -499,12 +521,11 @@ const buildGradientPaint = (
   transform: Transform | undefined,
   opacity: number | undefined
 ): GradientPaint => {
-  const colorStops = stops.map((stop) => {
-    const rgb = parseHexColor(stop.hex);
-    return {
-      position: stop.position,
-      color: { r: rgb.r, g: rgb.g, b: rgb.b, a: stop.opacity ?? 1 },
-    };
+  const colorStops = stops.map((stop, i) => {
+    const color =
+      stop.color !== undefined ? colorInputOf(stop.color, `gradientStops[${i}].color`) : stop.hex;
+    if (color === undefined) throw new Error(`gradientStops[${i}] needs hex or color`);
+    return { position: stop.position, color: toRgba(color, stop.opacity ?? 1) };
   });
   // Identity transform: [[1,0,0],[0,1,0]] (Figma-default, horizontal L→R).
   const gradientTransform: Transform = transform ?? [
@@ -1195,9 +1216,7 @@ const buildEffectsFromParams = (rawEffects: unknown): Effect[] => {
   return (rawEffects as Array<Record<string, unknown>>).map((raw, i): Effect => {
     const type = raw.type;
     if (type === "DROP_SHADOW" || type === "INNER_SHADOW") {
-      if (typeof raw.color !== "string") {
-        throw new Error(`effects[${i}].color must be a hex string`);
-      }
+      const color = colorInputOf(raw.color, `effects[${i}].color`);
       const offset = raw.offset as { x?: unknown; y?: unknown } | undefined;
       if (!offset || typeof offset.x !== "number" || typeof offset.y !== "number") {
         throw new Error(`effects[${i}].offset must be {x,y} numbers`);
@@ -1205,11 +1224,10 @@ const buildEffectsFromParams = (rawEffects: unknown): Effect[] => {
       if (typeof raw.radius !== "number") {
         throw new Error(`effects[${i}].radius must be a number`);
       }
-      const rgb = parseHexColor(raw.color);
       const alpha = typeof raw.opacity === "number" ? raw.opacity : 1;
       return {
         type,
-        color: { r: rgb.r, g: rgb.g, b: rgb.b, a: alpha },
+        color: toRgba(color, alpha),
         offset: { x: offset.x, y: offset.y },
         radius: raw.radius,
         spread: typeof raw.spread === "number" ? raw.spread : 0,
@@ -2208,14 +2226,20 @@ const handleRequest = async (
         const node = await getSceneNodeById(nodeId);
         const params = request.params ?? {};
 
-        if (typeof params.hex !== "string") {
-          throw new Error("hex is required");
+        const color =
+          params.color !== undefined
+            ? colorInputOf(params.color, "color")
+            : typeof params.hex === "string"
+              ? params.hex
+              : undefined;
+        if (color === undefined) {
+          throw new Error("hex or color is required");
         }
         const target = params.target === "stroke" ? "stroke" : "fill";
         const opacity =
           typeof params.opacity === "number" ? params.opacity : undefined;
 
-        setSolidFill(node, params.hex, opacity, target);
+        setSolidFill(node, color, opacity, target);
 
         return {
           type: request.type,
@@ -2225,7 +2249,7 @@ const handleRequest = async (
             nodeName: node.name,
             applied: {
               target,
-              hex: params.hex,
+              ...(typeof color === "string" ? { hex: color } : { color }),
               opacity: opacity ?? 1,
             },
           },
@@ -4797,14 +4821,16 @@ const handleRequest = async (
             undefined,
             typeof params.opacity === "number" ? params.opacity : undefined
           );
-        } else if (typeof params.hex === "string") {
+        } else if (params.color !== undefined || typeof params.hex === "string") {
           paint = {
             type: "SOLID",
-            color: parseHexColor(params.hex),
+            color: toRgb(
+              params.color !== undefined ? colorInputOf(params.color, "color") : (params.hex as string)
+            ),
             opacity: typeof params.opacity === "number" ? params.opacity : 1,
           };
         } else {
-          throw new Error("create_paint_style needs hex or gradientStops");
+          throw new Error("create_paint_style needs hex, color or gradientStops");
         }
         const style = figma.createPaintStyle();
         try {

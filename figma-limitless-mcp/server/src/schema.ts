@@ -99,20 +99,51 @@ const fileKeyField = z
     "The fileKey of the Figma file to query. Required when multiple files are connected. Use list_files to see connected files."
   );
 
-const gradientStop = z.object({
-  position: z
-    .number()
-    .min(0)
-    .max(1)
-    .describe("Stop position from 0 (start of gradient) to 1 (end)"),
-  hex: createHexColorSchema().describe("Stop color as hex"),
-  opacity: z
-    .number()
-    .min(0)
-    .max(1)
-    .optional()
-    .describe("Optional per-stop alpha (default 1)"),
-});
+const unitInterval = z.number().min(0).max(1);
+const hueDegrees = z.number().finite();
+
+/**
+ * A colour in the space it was authored in (Plugin API Update 141). Figma keeps
+ * it as the paint's `sourceColor` and projects r/g/b for the document profile.
+ * Ranges are the ones Figma enforces (checked live 2026-11-02): r/g/b, s, l and
+ * OKLab/OKLCH lightness in 0..1, hue in degrees.
+ */
+const authoredColor = z
+  .discriminatedUnion("space", [
+    z.object({ space: z.literal("SRGB"), r: unitInterval, g: unitInterval, b: unitInterval }),
+    z.object({ space: z.literal("DISPLAY_P3"), r: unitInterval, g: unitInterval, b: unitInterval }),
+    z.object({ space: z.literal("HSL"), h: hueDegrees, s: unitInterval, l: unitInterval }),
+    z.object({ space: z.literal("HSB"), h: hueDegrees, s: unitInterval, b: unitInterval }),
+    z.object({ space: z.literal("OKLAB"), l: unitInterval, a: z.number().finite(), b: z.number().finite() }),
+    z.object({ space: z.literal("OKLCH"), l: unitInterval, c: z.number().min(0), h: hueDegrees }),
+  ])
+  .describe(
+    "A colour in its authored space, kept as the paint's sourceColor (Plugin API Update 141): { space: 'OKLCH', l, c, h } and likewise SRGB/DISPLAY_P3 (r,g,b), HSL (h,s,l), HSB (h,s,b), OKLAB (l,a,b). r/g/b, s, l and OKLab/OKLCH l are 0..1; hue in degrees."
+  );
+
+/** A hex string or an authored colour: where a field already took hex alone. */
+const hexOrAuthoredColor = z.union([createHexColorSchema(), authoredColor]);
+
+const exactlyOneColor = (v: { hex?: unknown; color?: unknown }) =>
+  (v.hex === undefined) !== (v.color === undefined);
+
+const gradientStop = z
+  .object({
+    position: z
+      .number()
+      .min(0)
+      .max(1)
+      .describe("Stop position from 0 (start of gradient) to 1 (end)"),
+    hex: createHexColorSchema().optional().describe("Stop color as hex"),
+    color: authoredColor.optional().describe("Stop color in its authored space (instead of hex)"),
+    opacity: z
+      .number()
+      .min(0)
+      .max(1)
+      .optional()
+      .describe("Optional per-stop alpha (default 1)"),
+  })
+  .refine(exactlyOneColor, "each gradient stop needs hex or color (not both)");
 
 const gradientTransform = z
   .array(z.array(z.number()).length(3))
@@ -164,9 +195,12 @@ export const setNodePropertiesInput = z.object({
   fileKey: fileKeyField,
 });
 
-export const setSolidFillInput = z.object({
+export const setSolidFillShape = z.object({
   nodeId: createFigmaNodeIdSchema().describe("The node ID to update"),
-  hex: createHexColorSchema().describe("Solid color as hex (e.g. '#FFAA00')"),
+  hex: createHexColorSchema().optional().describe("Solid color as hex (e.g. '#FFAA00')"),
+  color: authoredColor
+    .optional()
+    .describe("Solid color in its authored space, e.g. { space: 'OKLCH', l: 0.7, c: 0.12, h: 60 } (instead of hex)"),
   opacity: z
     .number()
     .min(0)
@@ -179,6 +213,11 @@ export const setSolidFillInput = z.object({
     .describe("Apply to fills or strokes (default fill)"),
   fileKey: fileKeyField,
 });
+
+export const setSolidFillInput = setSolidFillShape.refine(
+  exactlyOneColor,
+  "set_solid_fill needs hex or color (not both)"
+);
 
 const blendMode = z.enum([
   "PASS_THROUGH",
@@ -204,7 +243,7 @@ const blendMode = z.enum([
 
 const shadowEffect = z.object({
   type: z.enum(["DROP_SHADOW", "INNER_SHADOW"]),
-  color: createHexColorSchema().describe("Shadow color as hex"),
+  color: hexOrAuthoredColor.describe("Shadow color as hex, or in its authored space"),
   opacity: z
     .number()
     .min(0)
@@ -238,9 +277,9 @@ const effectInput = z.object({
   type: z
     .enum(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"])
     .describe("Effect type"),
-  color: createHexColorSchema()
+  color: hexOrAuthoredColor
     .optional()
-    .describe("Required for shadow effects"),
+    .describe("Required for shadow effects: hex, or a colour in its authored space"),
   opacity: z
     .number()
     .min(0)
@@ -1254,28 +1293,25 @@ export const applyStyleInput = applyStyleShape.refine(
 export const createPaintStyleShape = z.object({
   name: z.string().min(1).describe("Style name (slash-grouped)"),
   hex: createHexColorSchema().optional().describe("Solid color"),
+  color: authoredColor.optional().describe("Solid color in its authored space (instead of hex)"),
   opacity: z.number().min(0).max(1).optional(),
   gradientType: z.enum(["LINEAR", "RADIAL", "ANGULAR", "DIAMOND"]).optional(),
   gradientStops: z
-    .array(
-      z.object({
-        position: z.number().min(0).max(1),
-        hex: createHexColorSchema(),
-        opacity: z.number().min(0).max(1).optional(),
-      })
-    )
+    .array(gradientStop)
     .min(2)
     .optional()
-    .describe("Gradient stops (alternative to hex)"),
+    .describe("Gradient stops (alternative to hex/color), each with hex or color"),
   description: z.string().optional(),
   skipIfExists: z.boolean().optional(),
   fileKey: fileKeyField,
 });
 
-export const createPaintStyleInput = createPaintStyleShape.refine(
-  (v) => v.hex !== undefined || v.gradientStops !== undefined,
-  "hex or gradientStops is required"
-);
+export const createPaintStyleInput = createPaintStyleShape
+  .refine(
+    (v) => v.hex !== undefined || v.color !== undefined || v.gradientStops !== undefined,
+    "hex, color or gradientStops is required"
+  )
+  .refine((v) => v.hex === undefined || v.color === undefined, "pass hex or color, not both");
 
 export const createEffectStyleInput = z.object({
   name: z.string().min(1).describe("Style name, slash-grouped (e.g. 'Elevation/Raised')"),

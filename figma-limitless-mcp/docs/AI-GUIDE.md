@@ -50,6 +50,7 @@ most Figma failures are ordering failures.
 - Read tokens with `get_variables_deep` — all modes, aliases resolved to names.
 - TIMING values are seconds (`0.2` = 200 ms).
 - Translucent colors: compose, don't copy (Update 139). A COLOR value `{color, opacity}` — `color` a hex or `{alias}`, `opacity` a 0–100 percentage (`60` = 60%) or `{alias}`, at least one side an alias — keeps the hue linked to its base. Scope the opacity FLOAT behind it `COLOR_OPACITY` (a color's opacity channel), not `OPACITY` (layer opacity).
+- Colours keep their authored space (Update 141). Where a tool takes `hex` it also takes `color: { space: 'OKLCH', l, c, h }` (or SRGB/DISPLAY_P3 r,g,b · HSL h,s,l · HSB h,s,b · OKLAB l,a,b; 0–1 except hue in degrees): `set_solid_fill`, gradient stops, shadow `color`, `create_paint_style`. Figma keeps it as the paint's `sourceColor`, and reads return it beside `color`, the hex of the r/g/b Figma projects for the document profile. Variable values are not affected.
 
 ## Components
 

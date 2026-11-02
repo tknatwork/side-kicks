@@ -16,6 +16,19 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   (`type: "CUSTOM"`, detected from the id when omitted) and passes `props` overrides through to a
   Figma style, which it did not before. A custom style takes only `timelineOffset`: its entries
   carry duration and props. Figma Design only. 104 → 106 tools.
+- **Colours in their authored space (Plugin API Update 141).** Figma now keeps a colour in the space
+  it was made in (sRGB, Display P3, HSL, HSB, OKLab, OKLCH) as `sourceColor`, beside the r/g/b it
+  projects for the document profile. Reads (`get_node`, `get_document`, …) return `sourceColor`
+  next to the hex on solid paints, gradient stops and shadows, when it is there. `set_solid_fill`,
+  `set_gradient_fill` stops, `set_effects` / `create_effect_style` shadow colours and
+  `create_paint_style` take `color: { space: "OKLCH", l, c, h }` (and the other five spaces) where
+  they took hex, and build it with `figma.util.rgb` / `rgba` so Figma records the authored space.
+  Components are checked against the ranges Figma enforces (0–1, hue in degrees) before the call.
+  Variable values are unchanged by Update 141.
+
+### Changed
+
+- `@figma/plugin-typings` 1.141.0 → 1.142.0 (Update 141).
 
 ### Security
 
