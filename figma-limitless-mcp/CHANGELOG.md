@@ -28,10 +28,20 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   Components are checked against the ranges Figma enforces (0–1, hue in degrees) before the call,
   and a Figma build older than Update 141, which would ignore the space, is refused instead.
   Variable values are unchanged by Update 141.
+- **A scripted client, `server/dist/client.js`, and `figma-limitless-run`.** Every MCP tool call
+  costs the AI a turn that re-reads its whole conversation, so a job of many calls (chunked
+  edits, a read after each write, polling after a dropped plugin, a lock around it) was paid for
+  once per step. A script can now drive the leader the way a follower does, over `/rpc`, and
+  `node server/dist/run.js job.mjs -- args` runs it and prints one JSON line, so the job costs the
+  AI one call. Reads retry after the plugin drops. A write is re-sent only when it never reached
+  the plugin: after a timeout the client reads the journal and stops unless the journal shows the
+  write finished. The lock is released in `finally`. The client only talks to this machine.
+  Tested against a real leader and a paired fake plugin (`test/client.test.mjs`).
 
 ### Changed
 
 - `@figma/plugin-typings` 1.141.0 → 1.142.0 (Update 141).
+- The port lives in `server/src/port.ts`, shared by the server and the scripted client.
 
 ### Fixed
 

@@ -89,6 +89,20 @@ Agent identity defaults to MCP clientInfo (`node.agentSupplier`); tools accept a
 `agent` for stable task names. **Adding a mutating tool ⇒ add it to both EDIT_REQUEST_TYPES
 (plugin) and JOURNALED_TOOLS (orchestration.ts).**
 
+## Scripted client (server/src/client.ts, server/src/run.ts)
+
+A script drives the leader the way a follower does — `POST /rpc` with an `RPCRequest`, no Origin —
+so a multi-step job costs the agent one tool call instead of one per step. `connect()` gives
+`call` (one RPC), `read` / `readCode` (retried after a failure that never reached the plugin),
+`apply` (a write: re-sent only when it provably never left; after a timeout it reads the journal
+and returns `decision: "stop"` unless an ok row of its own agent proves it finished),
+`withLock` (released in `finally`) and `waitForPlugin`. `figma-limitless-run job.mjs [-- args]`
+runs a script's default export `(fig, args)` and prints one JSON line. The client refuses a
+non-loopback URL. **Keep `NEVER_SENT` in step with the pre-send errors in `bridge.ts`
+(`resolveConnection`, `sendWithParams`)**: a pattern there that also matches a post-send error
+makes `apply` re-send an edit that may have run. `test/client.test.mjs` runs it against a real
+leader and a paired fake plugin.
+
 ## Beta-API tools (Motion, Shaders)
 
 `get_motion`/`apply_animation_style`/`list_shaders`/`apply_shader` guard with `'motion' in figma` /
@@ -193,7 +207,7 @@ case to `server/test/` and, if it belongs to a build step, wire it into
 ## Conventions & invariants
 
 - **pnpm only** (workspace rule). Build: `pnpm install && pnpm run build` in each package.
-- Port **1994** is hardcoded in `server/src/index.ts`, `plugin/src/ui/App.tsx`, `plugin/manifest.json` — change all three together or not at all.
+- Port **1994** is hardcoded in `server/src/port.ts` (the server and the scripted client), `plugin/src/ui/App.tsx`, `plugin/manifest.json` — change all three together or not at all.
 - Adding a tool touches 4 places: `plugin/src/main/code.ts` (RequestType union + handler, EDIT_REQUEST_TYPES if it writes), `server/src/schema.ts` (input schema + `toolInputSchemas` + `rpcToArgs` — Record types make omissions compile errors), `server/src/tools.ts` (registration). Refined Zod schemas register the **unrefined** `.shape` and validate the refined schema via `parseToolInput` (see `update_text_style`).
 - Font rules are load-bearing: exact `{family, style}` strings only (discover via `list_fonts`, never guess); load fonts before any text/style mutation; `lineHeight`/`letterSpacing` are `{unit, value}` objects. Variable fonts (API 138): `variationSettings` keys only from `list_fonts` `variationAxes`; `style` is optional only with axes on node writes (styles always take one); load dedupe stays `family::style` (`loadFontAsync` ignores axes); `mixed` may mean axes-only — use `uniformFontIdentity`.
 - A new optional field on a tool with an "at least one property" refine also goes into that refine's OR-chain AND the plugin-side gate (e.g. `hasFontDependentPatch`), or a call setting only it is rejected.

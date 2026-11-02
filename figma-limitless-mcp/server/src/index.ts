@@ -6,8 +6,7 @@ import { Node } from "./node.js";
 import { Election } from "./election.js";
 import { registerTools } from "./tools.js";
 import { VERSION } from "./version.js";
-
-const PORT = 1994;
+import { PORT } from "./port.js";
 
 async function main(): Promise<void> {
   const node = new Node(PORT);
