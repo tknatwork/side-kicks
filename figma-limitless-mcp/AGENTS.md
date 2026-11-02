@@ -104,6 +104,25 @@ config each kind takes, entry parsing, the read-back) and are Design-only
 its error names the steps that already landed. Verified live 2026-11-02 (read-only): the four
 Update 140 functions exist, `figmaAnimationStyles()` lists 7 styles with their props.
 
+**Verified live 2026-11-02** (#66 build, a scratch file, over `/rpc`; file left as found), 15 of 16
+steps: create / skipIfExists / apply (CUSTOM detected) / update (rename, replace an entry — the
+re-added one goes last — moveAfter, moveFolder) / delete of a custom animation style; a custom
+style refusing `duration`; a Figma style taking `props`; OKLCH and Display P3 fills, an OKLCH
+gradient stop, shadow and paint style keeping `sourceColor`; hex in `color` giving a plain fill.
+The 16th was remove-by-`styleId`, fixed in `appliedInstanceFor`: **an applied Figma style, and a
+custom style's entry, read back with an internal `styleId` (`CodeComponentId:…`), not the listed
+one (`Position`); `name` links them.** Colour components and opacity come back as float32
+(0.7 → 0.699999988), so compare with a tolerance.
+
+**Shaders, live 2026-11-02:** a Community shader (Crochet Shader, an effect) applied to a layer
+reads back through `get_node` as `{ type: "SHADER", shaderId, properties, propertyMetadata }` with
+all 18 properties and their names, types and defaults. But `listAvailableShaders()` returns 0 for
+it and `importShaderById` refuses both its in-file id and its Community id, while
+`node.effects = [{ type: "SHADER", id }]` applies it — hence `apply_shader`'s by-id path. Both
+fixes were verified live the same day on the branch build: `apply_shader` applied that shader by id
+(`listed: false`, a `brightness` override read back as 0.25), and removal by `styleId: "Position"`
+found its instance by name.
+
 The serializer reads applied shaders (paint and effect) as `{ type: "SHADER", shaderId, properties,
 propertyMetadata }`; before 2026-11-02 its `default: return []` dropped them.
 

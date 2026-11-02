@@ -35,12 +35,32 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+- **`apply_animation_style` removes a Figma style by the id `get_motion` lists.** An applied Figma
+  animation style reads back with an internal `styleId` (`CodeComponentId:1:8`), not the listed one
+  (`Position`), so `remove: true` with `styleId: "Position"` found nothing. The listed id is now
+  matched by the style's `name`, which both sides share; more than one match is refused with the
+  instance ids instead of removing the first. Found by the live test below.
+- **`apply_shader` applies a shader that is in the file but not listed.** A shader applied from the
+  Figma Community is in the file yet missing from `figma.listAvailableShaders()`, and
+  `importShaderById` refuses its id, so `apply_shader` failed with "Unknown shader id". Assigning it
+  by id works, so on that error `apply_shader` now applies it directly when `target` is given (its
+  declared type is unknown on that path) and reports `listed: false`. Both fixes verified live
+  2026-11-02 in a scratch file with the Community "Crochet Shader".
 - **Reads now show applied shaders.** A shader fill, stroke or effect was dropped from `get_node` /
   `get_document` output, so a node with one read as if it had none. It now reads as
   `{ type: "SHADER", shaderId, properties, propertyMetadata }`; `shaderId` is the id `apply_shader`
   takes, and `propertyMetadata` (typings 1.141.0) names each property's type and default.
 
 ### Security
+
+- **Patched two dependency advisories (both medium).** `@hono/node-server` 2.1.0 → 2.1.6
+  ([GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f); transitive through the
+  MCP SDK, whose range `^1.19.9 || ^2.0.5` already allows it, so only the lockfile moves) and `vite`
+  6.4.4 → 6.4.5 in the plugin's dev build
+  ([GHSA-8g5g-mxqh-grgj](https://github.com/advisories/GHSA-8g5g-mxqh-grgj), landed by Dependabot's
+  #67). Dependabot's security
+  job failed on the first: its pnpm updater cannot pin a transitive dependency ("pnpm resolved
+  @hono/node-server to 2.1.6, above the requested 2.1.5"). `pnpm audit` is clean in both packages.
 
 - **The :1994 server no longer accepts tool calls from other devices or from web pages.** It
   listened on every network interface, and `/rpc` (which runs any tool, `execute_code` included)
