@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/side-kicks-logo-dark.svg">
-    <img alt="Side-Kicks: a cut-paper sneaker kicking sideways on a taped card with the TKN sticker, beside the hand-lettered name" src="docs/brand/side-kicks-logo.svg" width="620">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/side-kicks-logo-header-dark.svg">
+    <img alt="Side-Kicks: a cut-paper sneaker kicking sideways on a taped card with the TKN sticker, beside the hand-lettered name" src="docs/brand/side-kicks-logo-header.svg" width="560">
   </picture>
 </p>
 
@@ -199,7 +199,8 @@ is reproducible.
 
 | File | Use |
 |------|-----|
-| `side-kicks-logo.svg` · `-dark.svg` · `.png` | The header above — 16:10 canvas, light + dark |
+| `side-kicks-logo-header.svg` · `-header-dark.svg` | The header above — cropped tight, light + dark |
+| `side-kicks-logo.svg` · `-dark.svg` · `.png` | The same lockup on a 16:10 canvas, light + dark |
 | `side-kicks-mark.svg` · `.png` | Square mark — the card, with the TKN sticker top-right (avatars, social preview) |
 | `side-kicks-folder.svg` · `.png` · `.icns` | Finder folder icon, with the TKN logo as a sticker |
 | `side-kicks-folder-16x10.svg` · `.png` | The folder art on a 16:10 canvas |

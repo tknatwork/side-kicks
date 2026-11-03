@@ -387,21 +387,28 @@ function svg(w, h, body, title = "Side-Kicks") {
 
 const LOCKUP = { width: 1280, height: 800 }; // 16:10
 
-/** Mark on the left, lettering on the right, centred on the 16:10 canvas. */
-function lockup(ink) {
+/**
+ * Mark on the left, lettering on the right, centred on the 16:10 canvas — or, with `tight`, on a
+ * canvas cropped to the ink plus a small pad (the README header, where 16:10 leaves dead space).
+ */
+function lockup(ink, { tight = false } = {}) {
   const markSize = 340;
   const size = 0.92;
   // Ink extents of the layout drawn from the origin (measured from a render): the card sits ~27 in
   // from its 512 box, the TKN sticker tops out at ~24, and the lettering overhangs its skeleton by half a nib.
   const [left, right] = [27, markSize + 36 + wordmarkWidth("side-kicks") * size + 10];
   const [top, bottom] = [24, 322];
-  const dx = fmt((LOCKUP.width - (right - left)) / 2 - left);
-  const dy = fmt((LOCKUP.height - (bottom - top)) / 2 - top);
+  const pad = 16;
+  const [width, height] = tight
+    ? [Math.ceil(right - left + 2 * pad), Math.ceil(bottom - top + 2 * pad)]
+    : [LOCKUP.width, LOCKUP.height];
+  const dx = fmt((width - (right - left)) / 2 - left);
+  const dy = fmt((height - (bottom - top)) / 2 - top);
   const body = `<g transform="translate(${dx} ${dy})">`
     + `<g transform="scale(${markSize / 512})">${mark()}</g>`
     + wordmark("side-kicks", { x: markSize + 36, baseline: 236, size, ink })
     + `</g>`;
-  return svg(LOCKUP.width, LOCKUP.height, body);
+  return svg(width, height, body);
 }
 
 /** The folder art centred on the same 16:10 canvas, filling 80% of its height. */
@@ -419,6 +426,8 @@ function folderWide() {
 const files = {
   "side-kicks-logo.svg": lockup(C.ink),
   "side-kicks-logo-dark.svg": lockup(C.inkOnDark),
+  "side-kicks-logo-header.svg": lockup(C.ink, { tight: true }),
+  "side-kicks-logo-header-dark.svg": lockup(C.inkOnDark, { tight: true }),
   "side-kicks-mark.svg": svg(512, 512, mark()),
   "side-kicks-folder.svg": svg(1024, 1024, folder(), "Side-Kicks folder"),
   "side-kicks-folder-16x10.svg": folderWide(),

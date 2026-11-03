@@ -22,7 +22,9 @@ For project-specific changes, see the project's own changelog:
   `side-kicks-mark.svg` (square, with the TKN sticker top-right — the lockup uses it), `side-kicks-folder.svg` (kraft folder, with the TKN brand logo — `tkn-logo.jpg` — as a sticker top-right;
   `side-kicks-folder-16x10.svg` is the same art on the 16:10 canvas), plus PNGs and
   `side-kicks-folder.icns` for the Finder via `--png` (macOS + Chrome).
-- Root `README.md` shows the lockup in a light/dark `<picture>` and lists `docs/brand/` in the layout.
+- Root `README.md` shows the lockup in a light/dark `<picture>` — the tightly cropped
+  `side-kicks-logo-header(-dark).svg`, so the 16:10 canvas leaves no dead space — and lists `docs/brand/`
+  in the layout.
 - **`LICENSE`** (MIT) at the root for workspace-level code and docs; per-project licenses still govern
   their own folders. **`docs/brand/LICENSE.md`** keeps the Side-Kicks and TKN artwork all rights reserved.
 
