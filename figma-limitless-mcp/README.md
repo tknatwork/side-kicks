@@ -113,6 +113,23 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
 4. **Fonts:** `list_fonts` returns exact `{family, style}` strings — including local/brand fonts the remote MCP can't see. Never guess ('Semibold' ≠ 'Semi Bold' ≠ 'SemiBold'). Variable fonts also report their `variationAxes`; drive them with `variationSettings` (e.g. `{wght: 550}`).
 5. **Structure over raw values:** bind variables > apply styles > raw values. Author with `write_variables` (one batched call via `$N.field` back-refs); read with `get_variables_deep`.
 6. **Parallel agents:** `acquire_lock` on what you mutate; locks auto-expire. After a timeout, **read before retrying** — the op may have landed; the journal knows.
+7. **Many steps? Script them.** Every tool call costs the AI a turn that re-reads its whole conversation. A job of many calls (chunked edits, retries, polling) runs cheaper as one script:
+
+   ```js
+   // job.mjs — `fig` is a connected client (server/src/client.ts)
+   export default async (fig, [pageId]) =>
+     fig.withLock(`page:${pageId}`, async () => {
+       const before = await fig.readCode(`return figma.currentPage.children.length`);
+       const edit = await fig.apply(`/* one small, idempotent step */ return true`);
+       return { before, edit };   // only this comes back to the AI
+     });
+   ```
+
+   ```bash
+   node server/dist/run.js job.mjs -- <pageId>   # → {"ok":true,"result":{…},"cost":{"calls":4,…}}
+   ```
+
+   Reads retry after the plugin drops; writes are never re-sent unless they provably never reached the plugin, and the lock is released in `finally`.
 
 ## 🛠️ Tool surface (106 tools)
 
