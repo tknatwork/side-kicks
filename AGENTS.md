@@ -23,6 +23,7 @@ A workspace for Figma plugins and design tooling, led by **Limitless MCP for Fig
 | Project | Folder | Status |
 |---------|--------|--------|
 | **Limitless MCP for Figma** (flagship) | [`figma-limitless-mcp/`](figma-limitless-mcp/) | Active (v0.5.1) — local Figma MCP server + Desktop plugin giving AI full, unthrottled Figma access across Design/Dev/FigJam/Slides/Buzz: local fonts, variable/component/prototype authoring, crash-safe orchestration, and a bundled **design-system knowledge layer + 57-rule structure linter** (build → lint → fix). **106 tools.** |
+| figma-to-indesign | [`figma-to-indesign/`](figma-to-indesign/) | Active (v0.1) — MCP toolset (Python) that turns a Figma page into editable InDesign (`.indd`/`.idml`) with no PDF in between: original bitmaps, live text, CMYK/sRGB, PDF/X-1a, verified hand-off package. macOS only; pairs with Limitless MCP **≥ 0.4.0**. |
 | Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published on Figma Community ([1584331992332668732](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor)) |
 | Natural Scroll Switch | [`natural-scroll-switch/`](natural-scroll-switch/) | Active (v1.0.0) — macOS launchd utility + one-click app that switches natural scrolling by pointing device. Swift/SwiftPM, universal binary, no permissions, no network. |
 
