@@ -12,6 +12,18 @@ For project-specific changes, see the project's own changelog:
 
 ---
 
+## [Unreleased] - workspace logo
+
+### Added
+- **`docs/brand/`** — the Side-Kicks logo: a cut-paper sneaker seen from the side, kicking, pasted on a
+  card beside marker lettering. `build.mjs` (Node, no dependencies) generates every file from a seeded
+  PRNG, so the hand-made wobble is reproducible: `side-kicks-logo.svg` / `-dark.svg` (lockup, centred
+  on a 16:10 canvas: 1280 × 800, PNG at 2560 × 1600),
+  `side-kicks-mark.svg` (square), `side-kicks-folder.svg` (kraft folder, with the TKN brand logo — `tkn-logo.jpg` — as a sticker top-right;
+  `side-kicks-folder-16x10.svg` is the same art on the 16:10 canvas), plus PNGs and
+  `side-kicks-folder.icns` for the Finder via `--png` (macOS + Chrome).
+- Root `README.md` shows the lockup in a light/dark `<picture>` and lists `docs/brand/` in the layout.
+
 ## [Unreleased] - natural-scroll-switch added
 
 ### Added

@@ -23,6 +23,9 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+# Finder custom folder icon (docs/brand/side-kicks-folder.icns). The name is Icon + CR;
+# git trims one trailing CR from each line, so this line ends with two.
+Icon
 
 # Logs
 *.log
