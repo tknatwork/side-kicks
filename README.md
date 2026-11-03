@@ -16,7 +16,7 @@
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
 📖 **AI builders start here:** [AGENTS.md](AGENTS.md) — workspace-level canonical rules.
-🏷️ **Latest release:** [Limitless MCP for Figma 0.4.0](https://github.com/tknatwork/side-kicks/releases/tag/figma-limitless-mcp-v0.4.0) (9 Aug 2026) — motion variables, MP4/GIF/WEBM export, 57-rule DS linter.
+🏷️ **Latest releases:** [Natural Scroll Switch 1.0.0](https://github.com/tknatwork/side-kicks/releases/tag/natural-scroll-switch-v1.0.0) (17 Aug 2026) · [Limitless MCP for Figma 0.4.0](https://github.com/tknatwork/side-kicks/releases/tag/figma-limitless-mcp-v0.4.0) (9 Aug 2026) — motion variables, MP4/GIF/WEBM export, 57-rule DS linter. `main` carries Limitless 0.5.1 (not yet released).
 🔒 **Reporting a vulnerability:** [`.github/SECURITY.md`](.github/SECURITY.md).
 🐛 **Reporting a bug:** [Open an issue](https://github.com/tknatwork/side-kicks/issues/new/choose).
 
@@ -35,7 +35,7 @@
 | Project | Folder | Status |
 |---------|--------|--------|
 | figma-to-indesign | [`figma-to-indesign/`](figma-to-indesign/) | v0.1 (9 Aug 2026) · MCP toolset — Figma → editable InDesign (.indd/.idml) without PDF: original bitmaps, live text, CMYK/sRGB, PDF/X-1a, verified hand-off package. macOS only; pairs with Limitless MCP **≥ 0.4.0**. |
-| Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.1.2 (first 17 Jan 2026) · Figma plugin — export/import Figma variables & styles as JSON (Figma · Tokens Studio · W3C). [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
+| Variables & Styles Extractor | [`variables-styles-extractor/`](variables-styles-extractor/) | Published v2.2.0 (first published 17 Jan 2026) · Figma plugin — export/import Figma variables & styles as JSON (Figma · Tokens Studio · W3C). [Community page](https://www.figma.com/community/plugin/1584331992332668732/variables-and-styles-extractor) |
 | Natural Scroll Switch | [`natural-scroll-switch/`](natural-scroll-switch/) | v1.0.0 (17 Aug 2026) · macOS utility — natural scrolling follows the device in your hand: OFF for a third-party mouse, ON for trackpads and Apple Magic devices. One-click app, universal binary (arm64 + x86_64), no permissions, no network. macOS 12+. |
 
 ---
@@ -57,7 +57,7 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │       ├── codeql.yml              ← Security scanning (JS/TS only)
 │       ├── natural-scroll-switch-ci.yml       ← copies of natural-scroll-switch/ci/*
 │       └── natural-scroll-switch-release.yml  ← (that folder is the source of truth)
-├── .gcc/                           ← Workspace session memory + build log
+├── .gcc/                           ← Workspace session memory + build log (local only — gitignored)
 │   ├── session-memory.md
 │   ├── commit.md
 │   ├── metadata.yaml
@@ -91,6 +91,14 @@ side-kicks/                                     (this repo: tknatwork/side-kicks
 │   ├── scripts/e2e-live-test.mjs   ← Live end-to-end tool suite
 │   ├── docs/                       ← AI-GUIDE (operating rules for AI sessions)
 │   └── .gcc/                       ← Project session memory + build log
+├── figma-to-indesign/              ← Project: Figma → editable InDesign MCP toolset (macOS)
+│   ├── AGENTS.md                   ← Project AI rules (canonical)
+│   ├── CLAUDE.md                   ← Pointer to project AGENTS.md
+│   ├── README.md                   ← Public-facing docs (pipeline, hand-off package)
+│   ├── LICENSE.md                  ← MIT
+│   ├── server/server.py            ← MCP server (Python)
+│   ├── pipeline/                   ← Python conversion steps + jsx/ InDesign scripts
+│   └── docs/                       ← SPEC, WINDOWS (why Windows is unsupported)
 └── natural-scroll-switch/          ← Project: macOS natural-scrolling switcher (Swift)
     ├── AGENTS.md                   ← Project AI rules (canonical)
     ├── CLAUDE.md                   ← Pointer to project AGENTS.md
@@ -120,7 +128,7 @@ All builder LLMs (Claude Code, Cursor, Copilot, Aider, Continue, Gemini CLI, Cod
 
 **Read order at session start:**
 1. Workspace [`AGENTS.md`](AGENTS.md) — what this repo is, project scope rules, security posture
-2. Workspace [`.gcc/session-memory.md`](.gcc/session-memory.md) — warm-start state
+2. Workspace `.gcc/session-memory.md` — warm-start state (local only — `.gcc/` is gitignored)
 3. Per-project `AGENTS.md` (when working inside a project folder)
 4. Per-project `.gcc/session-memory.md`
 
@@ -175,9 +183,34 @@ cd "Side-Kicks/<project-name>"
 ```
 
 Then update:
-1. This README's "Projects" table.
+1. This README's "Also in this repo" table and "Repository layout" tree.
 2. Workspace [`AGENTS.md`](AGENTS.md) "What this repo is" table.
-3. Workspace [`.gcc/main.md`](.gcc/main.md) "Sub-projects" table.
+3. Workspace `.gcc/main.md` "Sub-projects" table (local only).
+
+---
+
+## Brand
+
+The Side-Kicks logo is a cut-paper sneaker seen from the side — a *side kick* — taped to a card beside
+marker lettering. Everything in [`docs/brand/`](docs/brand/) is generated by
+[`build.mjs`](docs/brand/build.mjs) (Node, no dependencies) from a seeded PRNG, so the hand-made wobble
+is reproducible.
+
+| File | Use |
+|------|-----|
+| `side-kicks-logo.svg` · `-dark.svg` · `.png` | The header above — 16:10 canvas, light + dark |
+| `side-kicks-mark.svg` · `.png` | Square mark (avatars, social preview) |
+| `side-kicks-folder.svg` · `.png` · `.icns` | Finder folder icon, with the TKN logo as a sticker |
+| `side-kicks-folder-16x10.svg` · `.png` | The folder art on a 16:10 canvas |
+| `tkn-logo.jpg` | The TKN logo the sticker embeds (cropped 3:2 from the master) |
+
+```bash
+node docs/brand/build.mjs          # SVGs
+node docs/brand/build.mjs --png    # + PNGs and the .icns (macOS; renders with Google Chrome)
+```
+
+**Folder icon:** Get Info on the folder → drag `side-kicks-folder.icns` onto the small icon at the top
+left. Finder writes a hidden `Icon\r` file into the folder; `.gitignore` already ignores it.
 
 ---
 
@@ -190,4 +223,4 @@ Then update:
 
 ---
 
-*Last updated: 2026-07-15 (repositioned MCP-first — Limitless MCP for Figma is the flagship, 98 tools + 57-rule design-system linter)*
+*Last updated: 2026-11-03 (hand-built logo + Finder folder icon in `docs/brand/`; figma-to-indesign added to the layout; VSE 2.2.0; latest releases) · 2026-07-15 (repositioned MCP-first — Limitless MCP for Figma is the flagship)*
