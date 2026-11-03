@@ -45,6 +45,41 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Fixed
 
+Seven fixes to the scripted client and `figma-limitless-run`, from a live test on 2026-11-03; each
+has a test in `test/client.test.mjs` that fails on the client as first merged.
+
+- **A failed write no longer comes back as "ran" because of someone else's row.** After a write
+  failed, `apply` took any newer ok `execute_code` row of its agent as proof the write finished,
+  but reads are journaled as `execute_code` too and parallel jobs can share an agent name: live, a
+  `readCode` made a failed write read as done. Each attempt now starts its code with its own
+  `/*limitless-apply:<uuid>*/` marker, and only an ok row carrying that marker counts; anything
+  else after the request was sent is "stop".
+- **No more "fetch failed" from a stale connection.** The client reused keep-alive connections,
+  so after the leader closed an idle one (its 5 s timeout, a sleeping Mac, a long synchronous step
+  in the script) the next call failed after it was sent: reads did not retry it and writes ended
+  in "stop" though nothing ran. Every call now opens a fresh connection on loopback.
+- **`figma-limitless-run` prints a large answer whole.** It called `process.exit` straight after
+  writing, which cut a piped line short (at 64 or 128 KiB, live). It now sets the exit code and
+  lets the line drain, then ends the process a moment later if the job left a timer or a socket
+  open.
+- **`figma-limitless-run` always prints exactly one JSON line.** Bad arguments, an unknown flag,
+  `--agent` without a name and a bad or non-loopback `--url` now print `{"ok":false,"error":…}` and
+  exit 2 instead of printing nothing. A result that is not JSON (a BigInt, a cycle) prints
+  `"ok":true,"result":null,"resultError":…`, because the job did run. A crash in a stray callback
+  or a promise that never settles prints `ok:false`. Anything the job writes to stdout,
+  `console.log` included, goes to stderr.
+- **`withLock` excludes a second job with the same agent name.** The lock was taken under the agent
+  name, so a second job of that name was told it held the lock too, and either release freed it.
+  Each call now holds the lock under its own name (`agent#pid-random`), releases with it, and
+  renews it every half TTL while the job runs; a lock lost part-way is reported as
+  `{ lockLost, reason, result }`.
+- **The loopback check no longer accepts DNS names.** `127.example.com` and `127.0.0.1.nip.io`
+  passed because the check only looked at the start of the name. Only `localhost`, an IP in
+  127.0.0.0/8 and `::1` are accepted now, and only over http.
+- **Smaller client fixes.** "Multiple files connected" is known to happen before anything is sent,
+  so `apply` returns `decision: "retry"` and does not wait for a plugin, since only a `fileKey`
+  fixes it. A JSON `null` answer is a clear error instead of a TypeError. Answers are capped at
+  128 MiB, above the most the leader can relay, with an error that says so.
 - **`apply_animation_style` removes a Figma style by the id `get_motion` lists.** An applied Figma
   animation style reads back with an internal `styleId` (`CodeComponentId:1:8`), not the listed one
   (`Position`), so `remove: true` with `styleId: "Position"` found nothing. The listed id is now
