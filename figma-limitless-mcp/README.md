@@ -129,7 +129,7 @@ Point your AI at [docs/AI-GUIDE.md](docs/AI-GUIDE.md) — directives, guardrails
    node server/dist/run.js job.mjs -- <pageId>   # → {"ok":true,"result":{…},"cost":{"calls":4,…}}
    ```
 
-   Reads retry after the plugin drops; writes are never re-sent unless they provably never reached the plugin, and the lock is released in `finally`.
+   Reads retry after the plugin drops; writes are never re-sent unless they provably never reached the plugin. The lock is held for that one call (two jobs under one agent name still exclude each other), renewed while the job runs, and released in `finally`. stdout carries the one JSON line and nothing else (the job's `console.log` goes to stderr); exit 0 means `ok`, 2 means bad arguments.
 
 ## 🛠️ Tool surface (106 tools)
 

@@ -94,14 +94,25 @@ Agent identity defaults to MCP clientInfo (`node.agentSupplier`); tools accept a
 A script drives the leader the way a follower does — `POST /rpc` with an `RPCRequest`, no Origin —
 so a multi-step job costs the agent one tool call instead of one per step. `connect()` gives
 `call` (one RPC), `read` / `readCode` (retried after a failure that never reached the plugin),
-`apply` (a write: re-sent only when it provably never left; after a timeout it reads the journal
-and returns `decision: "stop"` unless an ok row of its own agent proves it finished),
-`withLock` (released in `finally`) and `waitForPlugin`. `figma-limitless-run job.mjs [-- args]`
-runs a script's default export `(fig, args)` and prints one JSON line. The client refuses a
-non-loopback URL. **Keep `NEVER_SENT` in step with the pre-send errors in `bridge.ts`
-(`resolveConnection`, `sendWithParams`)**: a pattern there that also matches a post-send error
-makes `apply` re-send an edit that may have run. `test/client.test.mjs` runs it against a real
-leader and a paired fake plugin.
+`apply` (a write: re-sent only when it provably never left; after a post-send failure it reads the
+journal and returns `decision: "stop"` unless an ok row carrying its own marker proves it finished),
+`withLock` and `waitForPlugin`. `figma-limitless-run job.mjs [-- args]` runs a script's default
+export `(fig, args)` and prints exactly one JSON line on stdout on every path (the job's own output
+goes to stderr; exit 0 iff `ok`, 2 for bad arguments). The client accepts only `localhost`, a
+127.0.0.0/8 literal or `::1` (`isLoopbackHost`, no DNS names), and opens a fresh connection per
+call (`agent: false`): a pooled keep-alive socket the leader already closed fails a call after it
+was sent, which `apply` would have to call "stop". **Keep `NEVER_SENT` in step with the pre-send
+errors in `bridge.ts` (`resolveConnection`, `sendWithParams`)**: a pattern there that also matches
+a post-send error makes `apply` re-send an edit that may have run. **Each `apply` attempt leads its
+code with its own `/*limitless-apply:<uuid>*/` marker, and only an ok journal row whose `preview`
+carries that marker means "ran"**: reads are journaled as `execute_code` too and parallel jobs may
+share an agent name, so agent and time prove nothing. The marker must stay first in the code, or
+the 500-char preview cut can drop it. **`withLock` holds the lock as `<agent>#<pid>-<random>`, a
+holder unique to that call**, and releases with the same holder: the leader treats a second
+acquire by the same holder as a renewal, so a shared agent name alone would let two jobs both
+"hold" it. It renews every half TTL until `fn` settles and returns `{ lockLost, reason, result }`
+if a renewal finds the lock gone. `test/client.test.mjs` runs it against a real leader and a
+paired fake plugin.
 
 ## Beta-API tools (Motion, Shaders)
 
