@@ -199,7 +199,7 @@ is reproducible.
 | File | Use |
 |------|-----|
 | `side-kicks-logo.svg` · `-dark.svg` · `.png` | The header above — 16:10 canvas, light + dark |
-| `side-kicks-mark.svg` · `.png` | Square mark (avatars, social preview) |
+| `side-kicks-mark.svg` · `.png` | Square mark — the card, with the TKN sticker top-right (avatars, social preview) |
 | `side-kicks-folder.svg` · `.png` · `.icns` | Finder folder icon, with the TKN logo as a sticker |
 | `side-kicks-folder-16x10.svg` · `.png` | The folder art on a 16:10 canvas |
 | `tkn-logo.jpg` | The TKN logo the sticker embeds (cropped 3:2 from the master) |

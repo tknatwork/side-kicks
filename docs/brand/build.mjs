@@ -323,7 +323,7 @@ function wordmark(text, { x, baseline, size = 1, ink }) {
 
 // ---------- compositions ----------
 
-/** The mark on a 512 × 512 canvas: a taped-up card with the sneaker kicking across it. */
+/** The mark on a 512 × 512 canvas: a taped-up card with the sneaker kicking across it, TKN sticker top-right. */
 function mark() {
   const rng = rngFor("card");
   const sheet = place(cut(card(404, 404, 14), rng, { snip: [16, 38], wiggle: 0.9 }), { x: 256, y: 266, r: -3 });
@@ -336,6 +336,7 @@ function mark() {
     `<g id="card">${paper(sheet, C.card, { lift: [5, 7], shade: 0.22 })}${flecks}</g>`,
     sneaker({ x: 249, y: 262, s: 1, r: -15 }, C.ink, "mark"),
     `<g id="tape">${paper(strip, C.tape, { lift: [1, 1.5], shade: 0.12, opacity: 0.82 })}</g>`,
+    brandSticker({ x: 412, y: 100, width: 146, r: 8 }),
   ].join("");
 }
 
@@ -348,15 +349,16 @@ const BRAND = { file: "tkn-logo.jpg", width: 600, height: 400 };
  */
 function brandSticker({ x, y, width, r }) {
   const rng = rngFor("brand-sticker");
+  const k = width / 250; // border and shadow are tuned for a 250-wide sticker
   const [w, h] = [width, (width * BRAND.height) / BRAND.width];
-  const [radius, border] = [h * 0.12, 12];
+  const [radius, border] = [h * 0.12, 12 * k];
   const backing = place(cut(card(w + 2 * border, h + 2 * border, radius + border), rng, { snip: [12, 26], wiggle: 0.9 }),
     { x, y, r });
   const data = readFileSync(path.join(OUT, BRAND.file)).toString("base64");
   return [
     `<g id="brand-sticker">`,
     `<defs><clipPath id="tkn-clip"><rect width="${fmt(w)}" height="${fmt(h)}" rx="${fmt(radius)}"/></clipPath></defs>`,
-    paper(backing, C.cream, { lift: [4, 6], shade: 0.26 }),
+    paper(backing, C.cream, { lift: [4 * k, 6 * k], shade: 0.26 }),
     `<g transform="translate(${fmt(x)} ${fmt(y)}) rotate(${r}) translate(${fmt(-w / 2)} ${fmt(-h / 2)})">`,
     `<image width="${fmt(w)}" height="${fmt(h)}" clip-path="url(#tkn-clip)" xlink:href="data:image/jpeg;base64,${data}"/>`,
     `</g></g>`,
@@ -389,10 +391,10 @@ const LOCKUP = { width: 1280, height: 800 }; // 16:10
 function lockup(ink) {
   const markSize = 340;
   const size = 0.92;
-  // Ink extents of the layout drawn from the origin: the card sits ~27 in from its 512 box,
-  // the tape tops out at ~35, and the lettering overhangs its skeleton by half a nib.
+  // Ink extents of the layout drawn from the origin (measured from a render): the card sits ~27 in
+  // from its 512 box, the TKN sticker tops out at ~24, and the lettering overhangs its skeleton by half a nib.
   const [left, right] = [27, markSize + 36 + wordmarkWidth("side-kicks") * size + 10];
-  const [top, bottom] = [35, 317];
+  const [top, bottom] = [24, 322];
   const dx = fmt((LOCKUP.width - (right - left)) / 2 - left);
   const dy = fmt((LOCKUP.height - (bottom - top)) / 2 - top);
   const body = `<g transform="translate(${dx} ${dy})">`
