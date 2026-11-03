@@ -23,6 +23,8 @@ For project-specific changes, see the project's own changelog:
   `side-kicks-folder-16x10.svg` is the same art on the 16:10 canvas), plus PNGs and
   `side-kicks-folder.icns` for the Finder via `--png` (macOS + Chrome).
 - Root `README.md` shows the lockup in a light/dark `<picture>` and lists `docs/brand/` in the layout.
+- **`LICENSE`** (MIT) at the root for workspace-level code and docs; per-project licenses still govern
+  their own folders. **`docs/brand/LICENSE.md`** keeps the Side-Kicks and TKN artwork all rights reserved.
 
 ## [Unreleased] - natural-scroll-switch added
 
