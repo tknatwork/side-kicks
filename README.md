@@ -214,13 +214,4 @@ left. Finder writes a hidden `Icon\r` file into the folder; `.gitignore` already
 
 ---
 
-## Related folders
-
-| Folder | Relationship |
-|--------|--------------|
-| My Portfolio | Independent |
-| Research Study | Independent |
-
----
-
 *Last updated: 2026-11-03 (hand-built logo + Finder folder icon in `docs/brand/`; figma-to-indesign added to the layout; VSE 2.2.0; latest releases) · 2026-07-15 (repositioned MCP-first — Limitless MCP for Figma is the flagship)*
